@@ -196,8 +196,10 @@ async def stream_gemini_answer(
     api_key: str,
     bot_identity: str = "",
     catalog: Optional[List[Dict[str, str]]] = None,
+    conversation_summary: str = "",
+    recent_messages: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[str, None]:
-    """בונה את הפרומפט לתשובת צ'אט לסטודנט (עם ה-RAG שנשלף + זהות הבוט + מפת הנושאים) ומזרים אותו מ-Gemini."""
+    """בונה את הפרומפט לתשובת צ'אט לסטודנט (עם ה-RAG שנשלף + זהות הבוט + מפת הנושאים + הקשר השיחה) ומזרים אותו מ-Gemini."""
     # הרכבת ההקשר מתוך מסמכי המכללה שנשלפו
     if context_chunks:
         context_text = "\n\n---\n\n".join(
@@ -206,17 +208,54 @@ async def stream_gemini_answer(
     else:
         context_text = "לא נמצאו מסמכים במאגר המכללה."
 
-    full_prompt = f"""{build_system_prompt(bot_identity, catalog)}
+    history_block = ""
+    if conversation_summary:
+        history_block += f"\n=== תקציר השיחה עד כה ===\n{conversation_summary}\n"
+    if recent_messages:
+        turns = "\n".join(
+            f"{'סטודנט' if m['role'] == 'user' else 'בוט'}: {m['content']}" for m in recent_messages
+        )
+        history_block += f"\n=== הודעות אחרונות בשיחה ===\n{turns}\n"
 
-=== מידע המכללה הרלוונטי ===
+    full_prompt = f"""{build_system_prompt(bot_identity, catalog)}
+{history_block}
+=== מידע המכללה הרלוונטי לשאלה הנוכחית ===
 {context_text}
 =============================
 
-שאלת הסטודנט: {question}
-תשובה (בהתבסס אך ורק על המידע המצורף למעלה):"""
+שאלת הסטודנט (הנוכחית): {question}
+תשובה (בהתבסס אך ורק על המידע המצורף למעלה, ותוך המשכיות עם השיחה אם רלוונטי):"""
 
     async for token in _stream_from_gemini(full_prompt, api_key, call_type="chat_answer"):
         yield token
+
+
+async def summarize_conversation(old_summary: str, messages: List[Dict[str, str]], api_key: str) -> str:
+    """
+    מכווץ חלק ישן של השיחה לתוך סיכום קצר אחד (2-4 משפטים), כדי שלא יישלח למודל
+    טקסט ארוך מדי ככל שהשיחה מתארכת - משלב את הסיכום הקודם עם ההודעות החדשות.
+    """
+    if not messages:
+        return old_summary
+
+    convo_text = "\n".join(
+        f"{'סטודנט' if m['role'] == 'user' else 'בוט'}: {m['content']}" for m in messages
+    )
+    prompt = f"""סכם בקצרה (2-4 משפטים, בעברית) את קטע השיחה הבא בין סטודנט לעוזר AI של מכללה,
+כדי לשמר את ההקשר החשוב להמשך השיחה (מה הסטודנט שאל/רצה, מה כבר נענה).
+אם יש סיכום קודם - שלב אותו עם המידע החדש לכדי סיכום מעודכן אחד, לא שני סיכומים נפרדים.
+
+סיכום קודם: {old_summary or "(אין סיכום קודם)"}
+
+קטע השיחה החדש:
+{convo_text}
+
+החזר אך ורק את הסיכום המעודכן, בלי הקדמות או כותרות."""
+
+    full_response = ""
+    async for token in _stream_from_gemini(prompt, api_key, max_output_tokens=200, call_type="summarize"):
+        full_response += token
+    return full_response.strip()
 
 
 CATEGORIZE_SYSTEM_PROMPT = """את/ה מסווג/ת מידע חדש למאגר ידע של צ'אטבוט מכללה.

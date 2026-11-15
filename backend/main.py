@@ -17,14 +17,15 @@ from typing import Optional
 from pypdf import PdfReader
 
 from db import db
-from auth import admin_auth, require_admin, hash_password
+from auth import admin_auth, require_admin, hash_password, student_auth, require_student
 from gemini_diagnostics import run_full_diagnostics, test_connectivity
 from rag_engine import (
     chunk_text,
     get_embedding,
     categorize_and_summarize,
     stream_gemini_answer,
-    stream_knowledge_draft
+    stream_knowledge_draft,
+    summarize_conversation,
 )
 
 app = FastAPI(
@@ -80,11 +81,25 @@ class AiDraftKnowledgeRequest(BaseModel):
 
 
 class ChatQuestionRequest(BaseModel):
-    user_id: str
+    question: str
+
+
+class ChatQuestionV2Request(BaseModel):
+    conversation_id: str
     question: str
 
 
 class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class StudentSignupRequest(BaseModel):
+    username: str
+    password: str
+
+
+class StudentLoginRequest(BaseModel):
+    username: str
     password: str
 
 
@@ -131,6 +146,34 @@ async def get_usage_metrics():
         "api_usage_today": api_usage_today,
         "student_usage": student_usage,
     }
+
+
+@app.get("/api/admin/users", dependencies=[Depends(require_admin)])
+async def list_app_users():
+    """רשימת כל המשתמשים הרשומים (שם משתמש אמיתי) + כמה הודעות כל אחד שלח."""
+    return {"users": await db.get_all_users_with_counts()}
+
+
+# =====================================================================
+# 0.5 התחברות/הרשמה אמיתית לסטודנטים (שם משתמש + סיסמה, חשבון ב-DB)
+# =====================================================================
+@app.post("/api/signup")
+async def student_signup(req: StudentSignupRequest):
+    """יצירת חשבון סטודנט חדש - שם משתמש + סיסמה, נשמר ב-DB (app_users)."""
+    user_id = await student_auth.signup(db, req.username, req.password)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="שם המשתמש כבר תפוס, או שהסיסמה קצרה מדי (מינימום 3 תווים)")
+    login_result = await student_auth.login(db, req.username, req.password)
+    return login_result
+
+
+@app.post("/api/login")
+async def student_login(req: StudentLoginRequest):
+    """התחברות לחשבון סטודנט קיים."""
+    result = await student_auth.login(db, req.username, req.password)
+    if not result:
+        raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
+    return result
 
 
 # =====================================================================
@@ -290,38 +333,27 @@ async def check_student_quota(user_id: str):
     return await db.get_user_quota_status(user_id)
 
 
-@app.post("/api/chat/stream")
-async def chat_stream_endpoint(req: ChatQuestionRequest):
-    """
-    הנתיב המרכזי של הצ'אט:
-    1. בודק אם לסטודנט נשארה מכסה יומית.
-    2. בודק אם יש מפתח API בשרת (אם עוד לא הוזן מפתח, מחזיר תשובת הדגמה חכמה מה-RAG!).
-    3. שולף את הנהלים הרלוונטיים של המכללה.
-    4. מעדכן את המכסה ומזרים את התשובה מילה-אחר-מילה (Streaming).
-    """
-    if not req.question.strip():
-        raise HTTPException(status_code=400, detail="נא להזין שאלה")
+SUMMARIZE_AFTER_MESSAGES = 16  # אחרי כמה הודעות בשיחה מתחילים לדחוס הודעות ישנות לסיכום
+KEEP_RECENT_MESSAGES = 12  # כמה הודעות אחרונות נשארות מילה-במילה (לא מסוכמות)
 
-    # 1. בדיקת מכסה יומית (שומר הסף)
-    quota = await db.get_user_quota_status(req.user_id)
-    if not quota["can_ask"]:
-        raise HTTPException(
-            status_code=429,
-            detail=f"סיימת את מכסת השאלות היומית שלך ({quota['daily_limit']} שאלות). המכסה תתאפס אוטומטית מחר!"
-        )
 
+async def _stream_chat_response(conversation_id: str, question: str) -> StreamingResponse:
+    """
+    ליבת הצ'אט המשותפת: שולפת מידע רלוונטי (pgvector), שומרת את שאלת הסטודנט,
+    מזרימה תשובה עם הקשר (סיכום + הודעות אחרונות), שומרת אותה, ודוחסת הקשר ישן לסיכום
+    כשהשיחה מתארכת. אין יותר הגבלת מכסה יומית - סטודנט יכול לשאול כמה שאלות שהוא רוצה.
+    """
     api_key = await db.get_api_key()
 
-    # 2. שליפת המידע הרלוונטי ממאגר הידע של המכללה - חיפוש וקטורי שרץ בתוך ה-DB עצמו (pgvector)
-    question_embedding = await get_embedding(req.question, api_key) if api_key else []
+    # שליפת המידע הרלוונטי ממאגר הידע של המכללה - חיפוש וקטורי שרץ בתוך ה-DB עצמו (pgvector)
+    question_embedding = await get_embedding(question, api_key) if api_key else []
     relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3)
 
-    # 3. הורדת שאלה אחת מהמכסה של הסטודנט
-    await db.increment_user_usage(req.user_id)
+    await db.add_message(conversation_id, "user", question)
 
-    # 4. הזרמת התשובה (Streaming)
     async def response_generator():
-        # אם המנהל עדיין לא הזין מפתח Gemini API, נציג מצב הדגמה שמראה שה-RAG עובד!
+        full_answer = ""
+
         if not api_key:
             import asyncio
             demo_intro = "💡 **[מצב הדגמה - טרם הוזן מפתח Gemini API במסך המנהל]**\n\nחיפשתי במאגר הידע של המכללה ומצאתי עבורך את הנהלים הרלוונטיים ביותר לשאלתך:\n\n"
@@ -338,15 +370,78 @@ async def chat_stream_endpoint(req: ChatQuestionRequest):
             for word in text_out.split(" "):
                 yield word + " "
                 await asyncio.sleep(0.03)
+            await db.add_message(conversation_id, "assistant", text_out)
             return
 
-        # כשיש מפתח API - פונים ל-Gemini דרך התור ומזרימים בזמן אמת
         bot_identity = await db.get_bot_identity()
         catalog = await db.get_catalog()
-        async for token in stream_gemini_answer(req.question, relevant_chunks, api_key, bot_identity, catalog):
+        conversation_summary = await db.get_conversation_summary(conversation_id)
+        recent_messages = await db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES)
+        # ההודעה האחרונה ברשימה היא השאלה הנוכחית עצמה - לא צריך לשלוח אותה פעמיים
+        history_for_prompt = recent_messages[:-1] if recent_messages else []
+
+        async for token in stream_gemini_answer(
+            question, relevant_chunks, api_key, bot_identity, catalog,
+            conversation_summary, history_for_prompt
+        ):
+            full_answer += token
             yield token
 
+        await db.add_message(conversation_id, "assistant", full_answer)
+
+        # דחיסת הקשר: אם השיחה התארכה, נסכם את ההודעות הישנות כדי שלא יישלח טקסט ענק למודל בהמשך
+        total_messages = await db.count_messages(conversation_id)
+        if total_messages > SUMMARIZE_AFTER_MESSAGES:
+            old_messages = await db.get_old_messages_to_summarize(conversation_id, keep_recent=KEEP_RECENT_MESSAGES)
+            if old_messages:
+                old_summary = await db.get_conversation_summary(conversation_id)
+                new_summary = await summarize_conversation(old_summary, old_messages, api_key)
+                await db.update_conversation_summary(conversation_id, new_summary)
+
     return StreamingResponse(response_generator(), media_type="text/plain; charset=utf-8")
+
+
+@app.get("/api/conversations")
+async def list_conversations(session=Depends(require_student)):
+    """רשימת כל השיחות של הסטודנט המחובר, מהחדשה לישנה."""
+    return {"conversations": await db.get_user_conversations(session["user_id"])}
+
+
+@app.post("/api/conversations")
+async def create_new_conversation(session=Depends(require_student)):
+    """פותח שיחה חדשה לסטודנט המחובר - אין הגבלה על כמות השיחות."""
+    return await db.create_conversation(session["user_id"])
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+async def get_conversation_messages(conversation_id: str, session=Depends(require_student)):
+    """היסטוריית ההודעות המלאה של שיחה - רק אם היא שייכת לסטודנט המחובר."""
+    owner_id = await db.get_conversation_owner(conversation_id)
+    if owner_id != session["user_id"]:
+        raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
+    return {"messages": await db.get_all_messages(conversation_id)}
+
+
+@app.post("/api/chat/stream")
+async def chat_stream_endpoint(req: ChatQuestionRequest, session=Depends(require_student)):
+    """גרסה ישנה/פשוטה: משתמשת תמיד ב"שיחת היום" האוטומטית של המשתמש (נשמר לתאימות אחורה)."""
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="נא להזין שאלה")
+    conversation_id = await db.get_or_create_today_conversation(session["user_id"])
+    return await _stream_chat_response(conversation_id, question)
+
+
+@app.post("/api/chat/stream/v2")
+async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(require_student)):
+    """שולח שאלה לתוך שיחה ספציפית (תומך בכמה שיחות פתוחות ביום, בלי הגבלה)."""
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="נא להזין שאלה")
+    owner_id = await db.get_conversation_owner(req.conversation_id)
+    if owner_id != session["user_id"]:
+        raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
+    return await _stream_chat_response(req.conversation_id, question)
 
 
 # =====================================================================
@@ -361,3 +456,18 @@ async def serve_student_app():
 @app.get("/admin")
 async def serve_admin_app():
     return FileResponse(os.path.join(FRONTEND_DIR, "admin.html"))
+
+# קבצים סטטיים ל-PWA (manifest, service worker, אייקונים) ולסקריפט בדיקת העדכונים
+@app.get("/manifest.json")
+async def serve_manifest():
+    return FileResponse(os.path.join(FRONTEND_DIR, "manifest.json"), media_type="application/manifest+json")
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    return FileResponse(os.path.join(FRONTEND_DIR, "sw.js"), media_type="application/javascript")
+
+@app.get("/update-check.js")
+async def serve_update_check():
+    return FileResponse(os.path.join(FRONTEND_DIR, "update-check.js"), media_type="application/javascript")
+
+app.mount("/icons", StaticFiles(directory=os.path.join(FRONTEND_DIR, "icons")), name="icons")

@@ -341,5 +341,200 @@ class Database:
                     (category, summary),
                 )
 
+    # ----------------------------------------------------------------
+    # משתמשי אפליקציה (app_users) - התחברות אמיתית בשם משתמש + סיסמה
+    # ----------------------------------------------------------------
+    async def create_user(self, username: str, password_hash: str) -> Optional[str]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                try:
+                    await cur.execute(
+                        "insert into app_users (username, password_hash) values (%s, %s) returning id;",
+                        (username, password_hash),
+                    )
+                    row = await cur.fetchone()
+                    return str(row[0])
+                except Exception:
+                    return None
+
+    async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "select id, username, password_hash from app_users where username = %s;", (username,)
+                )
+                row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        row["id"] = str(row["id"])  # psycopg מחזיר UUID כאובייקט - ממירים למחרוזת לעקביות בהשוואות
+        return row
+
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("select id, username from app_users where id = %s;", (user_id,))
+                row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        row["id"] = str(row["id"])
+        return row
+
+    async def get_all_users_with_counts(self) -> List[Dict[str, Any]]:
+        """שורה אחת לכל משתמש - לדשבורד הניהול: כמה שיחות וכמה הודעות יש לו בסה"כ (JOIN יחיד, לא לולאת N+1)."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select u.id, u.username, u.created_at,
+                           count(distinct c.id) as conversation_count,
+                           count(m.id) as message_count,
+                           max(m.created_at) as last_message_at
+                    from app_users u
+                    left join conversations c on c.user_id = u.id
+                    left join messages m on m.conversation_id = c.id
+                    group by u.id, u.username, u.created_at
+                    order by u.created_at desc;
+                    """
+                )
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    # ----------------------------------------------------------------
+    # שיחות והודעות (conversations/messages) - היסטוריה אמיתית + הקשר
+    # ----------------------------------------------------------------
+    async def get_or_create_today_conversation(self, user_id: str) -> str:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select id from conversations
+                    where user_id = %s and created_at::date = current_date
+                    order by created_at desc limit 1;
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return str(row["id"])
+
+                await cur.execute(
+                    "insert into conversations (user_id) values (%s) returning id;", (user_id,)
+                )
+                new_row = await cur.fetchone()
+        return str(new_row["id"])
+
+    async def create_conversation(self, user_id: str, title: str = "שיחה חדשה") -> Dict[str, Any]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "insert into conversations (user_id, title) values (%s, %s) returning id, title, created_at;",
+                    (user_id, title),
+                )
+                row = await cur.fetchone()
+        return dict(row)
+
+    async def get_user_conversations(self, user_id: str) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select id, title, created_at, updated_at
+                    from conversations
+                    where user_id = %s
+                    order by coalesce(updated_at, created_at) desc;
+                    """,
+                    (user_id,),
+                )
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_conversation_owner(self, conversation_id: str) -> Optional[str]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select user_id from conversations where id = %s;", (conversation_id,))
+                row = await cur.fetchone()
+        return str(row[0]) if row else None
+
+    async def get_all_messages(self, conversation_id: str) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "select role, content, created_at from messages where conversation_id = %s order by created_at asc;",
+                    (conversation_id,),
+                )
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def touch_conversation(self, conversation_id: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("update conversations set updated_at = now() where id = %s;", (conversation_id,))
+
+    async def add_message(self, conversation_id: str, role: str, content: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "insert into messages (conversation_id, role, content) values (%s, %s, %s);",
+                    (conversation_id, role, content),
+                )
+                await cur.execute(
+                    "update conversations set updated_at = now() where id = %s;", (conversation_id,)
+                )
+
+    async def get_recent_messages(self, conversation_id: str, limit: int = 12) -> List[Dict[str, str]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select role, content from messages
+                    where conversation_id = %s
+                    order by created_at desc
+                    limit %s;
+                    """,
+                    (conversation_id, limit),
+                )
+                rows = await cur.fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    async def count_messages(self, conversation_id: str) -> int:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select count(*) from messages where conversation_id = %s;", (conversation_id,))
+                row = await cur.fetchone()
+        return row[0] if row else 0
+
+    async def get_conversation_summary(self, conversation_id: str) -> str:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select summary from conversations where id = %s;", (conversation_id,))
+                row = await cur.fetchone()
+        return (row[0] if row else "") or ""
+
+    async def update_conversation_summary(self, conversation_id: str, summary: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "update conversations set summary = %s where id = %s;", (summary, conversation_id)
+                )
+
+    async def get_old_messages_to_summarize(self, conversation_id: str, keep_recent: int = 12) -> List[Dict[str, str]]:
+        """מחזיר הודעות ישנות (מעבר ל-keep_recent האחרונות) שעדיין לא סוכמו - לדחיסה לתוך summary."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select role, content from messages
+                    where conversation_id = %s
+                    order by created_at asc
+                    offset greatest((select count(*) from messages where conversation_id = %s) - %s - 6, 0)
+                    limit 6;
+                    """,
+                    (conversation_id, conversation_id, keep_recent),
+                )
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
 
 db = Database()

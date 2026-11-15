@@ -66,3 +66,54 @@ async def require_admin(authorization: Optional[str] = Header(None)):
     token = authorization[len("Bearer "):]
     if not admin_auth.validate_token(token):
         raise HTTPException(status_code=401, detail="ההתחברות פגה או שאינה תקפה, יש להתחבר מחדש")
+
+
+class StudentAuth:
+    """התחברות אמיתית לסטודנטים: שם משתמש + סיסמה, חשבון משל עצמם ב-DB (app_users)."""
+
+    def __init__(self):
+        self.sessions: dict[str, dict] = {}  # token -> {"user_id":..., "expiry":...}
+
+    async def signup(self, db, username: str, password: str) -> Optional[str]:
+        username = (username or "").strip()
+        if not username or not password or len(password) < 3:
+            return None
+        user_id = await db.create_user(username, hash_password(password))
+        return user_id
+
+    async def login(self, db, username: str, password: str) -> Optional[dict]:
+        user = await db.get_user_by_username((username or "").strip())
+        if not user:
+            return None
+        if not hmac.compare_digest(hash_password(password), user["password_hash"]):
+            return None
+        token = secrets.token_urlsafe(32)
+        self.sessions[token] = {
+            "user_id": user["id"],
+            "username": user["username"],
+            "expiry": datetime.utcnow() + timedelta(days=30),
+        }
+        return {"token": token, "user_id": user["id"], "username": user["username"]}
+
+    def validate_token(self, token: str) -> Optional[dict]:
+        session = self.sessions.get(token)
+        if not session:
+            return None
+        if datetime.utcnow() > session["expiry"]:
+            del self.sessions[token]
+            return None
+        return session
+
+
+student_auth = StudentAuth()
+
+
+async def require_student(authorization: Optional[str] = Header(None)) -> dict:
+    """Dependency שמגינה על נתיבי הצ'אט - דורשת טוקן תקף שהתקבל מ-/api/login"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="נדרשת התחברות")
+    token = authorization[len("Bearer "):]
+    session = student_auth.validate_token(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="ההתחברות פגה או שאינה תקפה, יש להתחבר מחדש")
+    return session
