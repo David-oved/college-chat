@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "college-chat-backend",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-3.13", "backend/run.py"],
+      "port": 8000
+    }
+  ]
+}

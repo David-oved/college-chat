@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>העוזר החכם של המכללה - צ'אט סטודנטים</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap');
+    body { font-family: 'Heebo', sans-serif; }
+    .typing-cursor::after {
+      content: '▋';
+      display: inline-block;
+      animation: blink 0.8s infinite;
+      color: #4f46e5;
+      margin-right: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
+
+  <!-- קונטיינר דמוי אפליקציית מובייל (PWA) -->
+  <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[92vh] border border-slate-200">
+    
+    <!-- Header + מדד מכסה יומית -->
+    <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 shadow-md">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl shadow-inner">
+            🎓
+          </div>
+          <div>
+            <h1 class="font-bold text-lg leading-tight">העוזר החכם של המכללה</h1>
+            <p class="text-xs text-indigo-100">מענה מיידי מבוסס נהלי המכללה הרשמיים</p>
+          </div>
+        </div>
+        <a href="/admin" target="_blank" class="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg transition">
+          ⚙️ מסך מנהל
+        </a>
+      </div>
+
+      <!-- מדד מכסה ויזואלי לסטודנט -->
+      <div class="bg-black/20 rounded-xl p-2.5 backdrop-blur-sm">
+        <div class="flex justify-between items-center text-xs mb-1.5">
+          <span class="font-medium">מכסת שאלות יומית:</span>
+          <span id="quotaText" class="font-bold bg-white/20 px-2 py-0.5 rounded-full">טוען...</span>
+        </div>
+        <div class="w-full bg-white/20 h-2 rounded-full overflow-hidden">
+          <div id="quotaBar" class="bg-emerald-400 h-full transition-all duration-500" style="width: 100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- בחירת מזהה סטודנט לבדיקה -->
+    <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
+      <div class="flex items-center gap-2">
+        <span>משתמש פעיל (דמה):</span>
+        <select id="userSelect" onchange="loadQuota()" class="bg-white border border-slate-300 rounded-md px-2 py-0.5 font-medium text-slate-800">
+          <option value="student_101">סטודנט #101 (דניאל)</option>
+          <option value="student_102">סטודנט #102 (נועה)</option>
+          <option value="student_103">סטודנט #103 (עומר)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- אזור הודעות הצ'אט -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
+      <!-- הודעת פתיחה -->
+      <div class="flex items-start gap-2.5">
+        <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">🤖</div>
+        <div class="bg-white border border-slate-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-slate-800 shadow-sm max-w-[85%]">
+          שלום! 👋 אני העוזר החכם של המכללה.
+          <br><br>
+          אפשר לשאול אותי שאלות כמו:
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <button onclick="askQuick('למי פונים כשיש בעיה בשכר לימוד?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+              💳 למי פונים בנושא שכר לימוד?
+            </button>
+            <button onclick="askQuick('הייתי במילואים והפסדתי מבחן, מה עושים?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+              🪖 מועד מיוחד למילואים
+            </button>
+            <button onclick="askQuick('שכחתי סיסמה למודל, למי פונים?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+              🔑 שכחתי סיסמה למודל
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- שורת הקלדה -->
+    <form onsubmit="sendMessage(event)" class="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+      <input
+        id="questionInput"
+        type="text"
+        placeholder="הקלד שאלה על נהלי המכללה..."
+        class="flex-1 bg-slate-100 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition"
+      />
+      <button
+        id="sendBtn"
+        type="submit"
+        class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm"
+      >
+        שלח
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    function getUserId() {
+      return document.getElementById('userSelect').value;
+    }
+
+    async function loadQuota() {
+      const userId = getUserId();
+      try {
+        const res = await fetch(`${API_BASE}/api/quota/${userId}`);
+        const data = await res.json();
+        updateQuotaUI(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function updateQuotaUI(quota) {
+      const quotaText = document.getElementById('quotaText');
+      const quotaBar = document.getElementById('quotaBar');
+      const input = document.getElementById('questionInput');
+      const sendBtn = document.getElementById('sendBtn');
+
+      quotaText.textContent = `נותרו ${quota.remaining} מתוך ${quota.daily_limit} שאלות להיום`;
+      const pct = quota.daily_limit > 0 ? (quota.remaining / quota.daily_limit) * 100 : 0;
+      quotaBar.style.width = `${pct}%`;
+
+      if (quota.remaining === 0) {
+        quotaBar.className = 'bg-rose-500 h-full transition-all duration-500';
+        input.placeholder = 'ניצלת את מכסת השאלות היומית שלך להיום';
+        input.disabled = true;
+        sendBtn.disabled = true;
+      } else if (quota.remaining <= 2) {
+        quotaBar.className = 'bg-amber-400 h-full transition-all duration-500';
+        input.placeholder = 'הקלד שאלה על נהלי המכללה...';
+        input.disabled = false;
+        sendBtn.disabled = false;
+      } else {
+        quotaBar.className = 'bg-emerald-400 h-full transition-all duration-500';
+        input.placeholder = 'הקלד שאלה על נהלי המכללה...';
+        input.disabled = false;
+        sendBtn.disabled = false;
+      }
+    }
+
+    function askQuick(text) {
+      const input = document.getElementById('questionInput');
+      if (input.disabled) return;
+      input.value = text;
+      sendMessage(new Event('submit'));
+    }
+
+    function appendUserBubble(text) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'flex items-start justify-end gap-2.5';
+      div.innerHTML = `
+        <div class="bg-indigo-600 text-white rounded-2xl rounded-tl-none p-3.5 text-sm shadow-sm max-w-[80%] whitespace-pre-wrap">${escapeHtml(text)}</div>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function createBotBubble() {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2.5';
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'bg-white border border-slate-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-slate-800 shadow-sm max-w-[85%] whitespace-pre-wrap typing-cursor';
+      div.innerHTML = `<div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">🤖</div>`;
+      div.appendChild(contentDiv);
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return contentDiv;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    async function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('questionInput');
+      const sendBtn = document.getElementById('sendBtn');
+      const question = input.value.trim();
+      if (!question) return;
+
+      input.value = '';
+      appendUserBubble(question);
+
+      input.disabled = true;
+      sendBtn.disabled = true;
+
+      const botBubble = createBotBubble();
+      const container = document.getElementById('chatMessages');
+
+      try {
+        const response = await fetch(`${API_BASE}/api/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: getUserId(),
+            question: question
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          botBubble.textContent = `⛔ ${err.detail || 'שגיאה בשליחת השאלה'}`;
+          botBubble.classList.remove('typing-cursor');
+          botBubble.classList.add('text-rose-600', 'border-rose-200', 'bg-rose-50');
+          await loadQuota();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let fullText = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
+          botBubble.textContent = fullText;
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch (err) {
+        botBubble.textContent = '⚠️ שגיאת תקשורת מול השרת.';
+      } finally {
+        botBubble.classList.remove('typing-cursor');
+        await loadQuota();
+      }
+    }
+
+    loadQuota();
+  </script>
+</body>
+</html>

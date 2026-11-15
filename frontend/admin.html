@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>פאנל ניהול מערכת AI - מכללה</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap');
+    body { font-family: 'Heebo', sans-serif; }
+    .typing-cursor::after {
+      content: '▋';
+      display: inline-block;
+      animation: blink 0.8s infinite;
+      color: #4f46e5;
+      margin-right: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 sm:p-8 text-slate-800">
+
+  <!-- מסך התחברות -->
+  <div id="loginGate" class="max-w-sm mx-auto mt-24 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+    <h1 class="text-xl font-bold mb-1">🔐 התחברות לפאנל הניהול</h1>
+    <p class="text-xs text-slate-500 mb-4">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה שלו.</p>
+    <form onsubmit="doLogin(event)" class="space-y-3">
+      <input
+        id="loginPasswordInput"
+        type="password"
+        required
+        placeholder="סיסמת מנהל"
+        class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+      />
+      <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
+        התחבר
+      </button>
+      <div id="loginError" class="hidden text-rose-600 text-xs font-bold text-center"></div>
+    </form>
+  </div>
+
+  <div id="appContent" class="hidden max-w-4xl mx-auto space-y-6">
+    <!-- כותרת עליונה -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">⚙️ פאנל ניהול - צ'אטבוט המכללה (Admin)</h1>
+        <p class="text-sm text-slate-500 mt-1">ניהול מפתח Gemini API (בשרת בלבד), הגדרת מכסות יומיות, והעלאת נהלים/שנתונים למאגר ה-RAG</p>
+      </div>
+      <a href="/" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition shrink-0">
+        📱 מעבר לצ'אט הסטודנטים
+      </a>
+    </div>
+
+    <!-- הודעת חיווי -->
+    <div id="statusToast" class="hidden rounded-xl p-4 text-sm font-medium"></div>
+
+    <!-- חלק 1: הגדרות API ומכסה יומית -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+        <span>🔑 הגדרות מפתח AI ומכסת שאלות יומית</span>
+        <span id="keyStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">טוען...</span>
+      </h2>
+
+      <form onsubmit="saveConfig(event)" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div class="md:col-span-2">
+          <label class="block text-xs font-bold text-slate-600 mb-1">
+            מפתח Google Gemini API (נשמר מוסתר בשרת בלבד):
+          </label>
+          <input
+            id="apiKeyInput"
+            type="password"
+            placeholder="הדבק כאן מפתח AIzaSy... (השאר ריק אם אינך רוצה לשנות)"
+            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+          />
+          <p class="text-[11px] text-slate-400 mt-1">
+            אפשר להוציא מפתח חינמי ב-<a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a>. גם בלי מפתח המערכת תעבוד במצב הדגמה!
+          </p>
+          <button
+            type="button"
+            onclick="testApiKey()"
+            class="mt-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition"
+          >
+            🧪 בדוק את המפתח (מודלים זמינים, מכסות ובדיקת חיבור)
+          </button>
+          <div id="keyTestResults" class="hidden mt-3"></div>
+        </div>
+
+        <div class="md:col-span-3">
+          <label class="block text-xs font-bold text-slate-600 mb-1">
+            מידע בסיסי על הבוט (מי הוא, בשם איזו מכללה הוא פועל, מה הוא יודע לעשות) - תמיד זמין לבוט, גם בלי RAG:
+          </label>
+          <textarea
+            id="botIdentityInput"
+            rows="2"
+            placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות."
+            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+          ></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">
+            מכסת שאלות לסטודנט ביום:
+          </label>
+          <input
+            id="quotaLimitInput"
+            type="number"
+            min="1"
+            max="100"
+            value="5"
+            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div class="md:col-span-3 flex items-end gap-2">
+          <div class="flex-1">
+            <label class="block text-xs font-bold text-slate-600 mb-1">איפוס מכסה למשתמש (לבדיקות):</label>
+            <input
+              id="resetUserIdInput"
+              type="text"
+              placeholder="למשל: student_101"
+              class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <button type="button" onclick="resetUserQuota()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
+            ♻️ אפס מכסה
+          </button>
+        </div>
+
+        <div class="md:col-span-3 flex items-end gap-2">
+          <div class="flex-1">
+            <label class="block text-xs font-bold text-slate-600 mb-1">שינוי סיסמת כניסה לפאנל הניהול:</label>
+            <input
+              id="newAdminPasswordInput"
+              type="text"
+              placeholder="סיסמה חדשה"
+              class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <button type="button" onclick="changeAdminPassword()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
+            🔑 עדכן סיסמה
+          </button>
+        </div>
+
+        <div class="md:col-span-3 flex justify-end">
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-sm">
+            💾 שמור הגדרות בשרת
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- חלק: מדדי שימוש -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold">📊 מדדי שימוש</h2>
+        <button onclick="loadUsage()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
+      </div>
+      <div id="usagePanel" class="text-sm text-slate-500">טוען...</div>
+    </div>
+
+    <!-- חלק 1.5: ניסוח מידע עם AI משפה חופשית -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <h2 class="text-lg font-bold mb-1">✨ ניסוח מידע עם AI (שפה חופשית)</h2>
+      <p class="text-xs text-slate-500 mb-3">
+        כתוב בשפה חופשית מה לעדכן, ה-AI ינסח מזה טיוטת "נוהל" מסודרת (כותרת + תוכן) ויזרים אותה למטה.
+        <b>זו טיוטה בלבד</b> - היא מועתקת לטופס "הוספת נוהל" כדי שתבדוק, תערוך אם צריך, ותלחץ בעצמך על השמירה.
+      </p>
+      <div class="space-y-3">
+        <textarea
+          id="aiInstructionInput"
+          rows="3"
+          placeholder="למשל: מחר המזכירות האקדמית תהיה סגורה בגלל יום כיפור, תפתח שוב ביום ראשון בשעה הרגילה"
+          class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
+        ></textarea>
+        <button id="aiDraftBtn" type="button" onclick="draftKnowledgeWithAI()" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
+          ✨ נסח עם AI
+        </button>
+        <div id="aiDraftPreview" class="hidden whitespace-pre-wrap text-sm bg-violet-50 border border-violet-200 rounded-xl p-3 text-slate-700 min-h-[2.5rem]"></div>
+      </div>
+    </div>
+
+    <!-- חלק 2: הוספת מידע למאגר המכללה (RAG) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- הוספת טקסט ישיר -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <h2 class="text-lg font-bold mb-3">📝 הוספת נוהל / מידע בטקסט</h2>
+        <form onsubmit="addTextKnowledge(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">כותרת הנוהל / הנושא:</label>
+            <input
+              id="docTitleInput"
+              type="text"
+              required
+              placeholder="למשל: שעות פעילות ספרייה / מלגות דיקן"
+              class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">תוכן הנוהל (ייחתך אוטומטית ל-Chunks ויהפוך לוקטורים):</label>
+            <textarea
+              id="docTextInput"
+              rows="4"
+              required
+              placeholder="כתוב כאן את כל הפרטים: למי פונים, מספרי טלפון, שעות קבלה, חדרים ונהלים..."
+              class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
+            ></textarea>
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
+            ➕ הוסף למאגר הידע (RAG)
+          </button>
+        </form>
+      </div>
+
+      <!-- העלאת קובץ PDF / TXT -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
+        <div>
+          <h2 class="text-lg font-bold mb-3">📄 העלאת קובץ PDF / TXT (שנתון / תקנון)</h2>
+          <form onsubmit="uploadFileKnowledge(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">שם המסמך:</label>
+              <input
+                id="fileTitleInput"
+                type="text"
+                required
+                placeholder="למשל: תקנון לימודים תשפ״ז"
+                class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">בחר קובץ (PDF או TXT):</label>
+              <input
+                id="fileInput"
+                type="file"
+                accept=".pdf,.txt"
+                required
+                class="w-full text-sm text-slate-600 file:ml-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
+              📤 העלה ועבד קובץ לוקטורים
+            </button>
+          </form>
+        </div>
+        <div class="mt-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-500">
+          💡 השרת מחלץ את הטקסט מהקובץ, חותך אותו למקטעים חכמים עם חפיפה (Overlap), ומייצר עבורם Embeddings לחיפוש מהיר.
+        </div>
+      </div>
+    </div>
+
+    <!-- חלק 3: רשימת מקטעי הידע השמורים במערכת -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
+        <button onclick="loadKnowledge()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן רשימה</button>
+      </div>
+      <div id="chunksList" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const TOKEN_KEY = 'admin_token';
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('statusToast');
+      el.textContent = msg;
+      el.className = `rounded-xl p-4 text-sm font-bold ${isError ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`;
+      setTimeout(() => { el.className = 'hidden'; }, 4000);
+    }
+
+    // ===================== התחברות (Auth) =====================
+    function getToken() {
+      return sessionStorage.getItem(TOKEN_KEY);
+    }
+
+    function showApp() {
+      document.getElementById('loginGate').classList.add('hidden');
+      document.getElementById('appContent').classList.remove('hidden');
+      loadConfig();
+      loadKnowledge();
+      loadUsage();
+    }
+
+    function showLoginGate(message) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById('appContent').classList.add('hidden');
+      document.getElementById('loginGate').classList.remove('hidden');
+      const errEl = document.getElementById('loginError');
+      if (message) {
+        errEl.textContent = message;
+        errEl.classList.remove('hidden');
+      } else {
+        errEl.classList.add('hidden');
+      }
+    }
+
+    async function doLogin(e) {
+      e.preventDefault();
+      const password = document.getElementById('loginPasswordInput').value;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          showLoginGate(data.detail || 'סיסמה שגויה');
+          return;
+        }
+        const data = await res.json();
+        sessionStorage.setItem(TOKEN_KEY, data.token);
+        document.getElementById('loginPasswordInput').value = '';
+        showApp();
+      } catch (err) {
+        showLoginGate('שגיאת תקשורת עם השרת');
+      }
+    }
+
+    // fetch עם Authorization אוטומטי + ניתוק אוטומטי כשההתחברות פגה
+    async function adminFetch(url, options = {}) {
+      const headers = Object.assign({}, options.headers || {}, { 'Authorization': `Bearer ${getToken()}` });
+      const res = await fetch(url, Object.assign({}, options, { headers }));
+      if (res.status === 401) {
+        showLoginGate('ההתחברות פגה, יש להתחבר מחדש');
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    // ===================== בדיקת מפתח Gemini =====================
+    async function testApiKey() {
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const resultsEl = document.getElementById('keyTestResults');
+      if (!apiKey) {
+        showToast('הדבק מפתח API בשדה ולאחר מכן בדוק אותו', true);
+        return;
+      }
+      resultsEl.classList.remove('hidden');
+      resultsEl.innerHTML = '<div class="text-sm text-slate-500 p-3">⏳ בודק את המפתח מול שרתי Google (רשימת מודלים + קריאת בדיקה אמיתית)...</div>';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/test-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey })
+        });
+        const data = await res.json();
+        renderKeyTestResults(data);
+      } catch (err) {
+        resultsEl.innerHTML = `<div class="text-rose-700 text-sm p-3">שגיאה בבדיקה: ${err.message}</div>`;
+      }
+    }
+
+    function renderConnectivityBox(conn) {
+      return `<div id="connectivityBox" class="p-3 rounded-xl border ${conn.success ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'} mb-2">
+        <div class="font-bold text-sm">${conn.success ? '✅ המפתח מגיב בפועל' : '❌ המפתח לא הצליח להגיב'}</div>
+        ${conn.success
+          ? `<div class="text-xs text-slate-600 mt-1">מודל שנבדק: ${conn.model_used} · זמן תגובה: ${conn.latency_ms}ms · תשובת בדיקה: "${conn.sample_reply || ''}"</div>`
+          : `<div class="text-xs text-rose-700 mt-1">מודל שנבדק: ${conn.model_used || '—'} · שגיאת Google (קוד ${conn.status_code ?? '—'}): ${conn.error}</div>`}
+      </div>`;
+    }
+
+    async function retestConnectivity() {
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const modelSelect = document.getElementById('modelSelect');
+      const model = modelSelect ? modelSelect.value : '';
+      const box = document.getElementById('connectivityBox');
+      if (box) {
+        box.outerHTML = `<div id="connectivityBox" class="p-3 rounded-xl border border-slate-200 bg-slate-50 mb-2 text-sm text-slate-500">⏳ בודק חיבור מול ${model}...</div>`;
+      }
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/test-key/connectivity`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, model })
+        });
+        const conn = await res.json();
+        const target = document.getElementById('connectivityBox');
+        if (target) target.outerHTML = renderConnectivityBox(conn);
+      } catch (err) {
+        const target = document.getElementById('connectivityBox');
+        if (target) target.outerHTML = `<div id="connectivityBox" class="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs mb-2">שגיאה: ${err.message}</div>`;
+      }
+    }
+
+    function renderKeyTestResults(data) {
+      const el = document.getElementById('keyTestResults');
+
+      if (data.error) {
+        el.innerHTML = `<div class="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm font-bold">${data.error}</div>`;
+        return;
+      }
+
+      const fmt = data.key_format;
+      const conn = data.connectivity_test;
+      const models = data.models;
+
+      let html = '';
+
+      html += `<div class="p-3 rounded-xl border ${fmt.format_ok ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'} mb-2">
+        <div class="font-bold text-sm">סוג המפתח: ${fmt.type}</div>
+        <div class="text-xs text-slate-600 mt-1">${fmt.note}</div>
+      </div>`;
+
+      let chatModels = [];
+      if (models.success) {
+        chatModels = models.models.filter(m => m.supports_generate_content);
+        const preferred =
+          chatModels.find(m => /lite/i.test(m.name) && !/preview|image|tts|embedding/i.test(m.name)) ||
+          chatModels.find(m => m.name === conn.model_used) ||
+          chatModels[0];
+        const preferredName = preferred ? preferred.name : '';
+
+        if (chatModels.length) {
+          const optionsHtml = chatModels.map(m =>
+            `<option value="${m.name}" ${m.name === preferredName ? 'selected' : ''}>${m.display_name} (${m.name})</option>`
+          ).join('');
+          html += `<div class="flex items-center gap-2 mb-2">
+            <label class="text-xs font-bold text-slate-600 shrink-0">בדוק חיבור עם מודל:</label>
+            <select id="modelSelect" class="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500">
+              ${optionsHtml}
+            </select>
+            <button type="button" onclick="retestConnectivity()" class="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition shrink-0">
+              🔄 בדוק
+            </button>
+          </div>`;
+        }
+      }
+
+      html += renderConnectivityBox(conn);
+
+      if (models.success) {
+        html += `<div class="mb-1.5 font-bold text-sm">📋 מודלים זמינים למפתח זה (${models.count}):</div>`;
+        html += '<div class="space-y-2 max-h-64 overflow-y-auto mb-2">';
+        models.models.forEach(m => {
+          const ref = m.free_tier_reference;
+          html += `<div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+            <div class="font-bold text-slate-800">${m.display_name} <span class="text-slate-400">(${m.name})</span>${m.supports_generate_content ? '' : ' <span class="text-amber-600">— לא תומך בצ\'אט</span>'}</div>
+            <div class="text-slate-500 mt-0.5">מגבלת קלט: ${m.input_token_limit ?? '—'} טוקנים · מגבלת פלט: ${m.output_token_limit ?? '—'} טוקנים</div>
+            ${ref ? `<div class="text-indigo-600 mt-0.5">מכסה חינמית ידועה: ${ref.rpm} בקשות/דקה · ${ref.rpd} בקשות/יום · ${ref.tpm} טוקנים/דקה</div>` : ''}
+          </div>`;
+        });
+        html += '</div>';
+      } else {
+        html += `<div class="text-rose-700 text-xs mb-2">לא ניתן היה לשלוף רשימת מודלים (קוד ${models.status_code ?? '—'}): ${models.error}</div>`;
+      }
+
+      html += `<div class="text-[11px] text-slate-400">${data.disclaimer}</div>`;
+
+      el.innerHTML = html;
+    }
+
+    async function loadConfig() {
+      const res = await adminFetch(`${API_BASE}/api/admin/config`);
+      const data = await res.json();
+      document.getElementById('quotaLimitInput').value = data.daily_quota_limit;
+      document.getElementById('botIdentityInput').value = data.bot_identity_info || '';
+      const badge = document.getElementById('keyStatusBadge');
+      if (data.has_api_key) {
+        badge.textContent = `מפתח מוגדר (${data.masked_api_key})`;
+        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold';
+      } else {
+        badge.textContent = 'טרם הוזן מפתח API (מצב הדגמה פעיל)';
+        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold';
+      }
+    }
+
+    async function saveConfig(e) {
+      e.preventDefault();
+      const apiKey = document.getElementById('apiKeyInput').value;
+      const limit = parseInt(document.getElementById('quotaLimitInput').value, 10);
+      const botIdentity = document.getElementById('botIdentityInput').value;
+      const res = await adminFetch(`${API_BASE}/api/admin/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gemini_api_key: apiKey, daily_quota_limit: limit, bot_identity_info: botIdentity })
+      });
+      const data = await res.json();
+      document.getElementById('apiKeyInput').value = '';
+      showToast(data.message);
+      await loadConfig();
+    }
+
+    async function resetUserQuota() {
+      const userId = document.getElementById('resetUserIdInput').value.trim();
+      if (!userId) {
+        showToast('הזן מזהה משתמש לאיפוס', true);
+        return;
+      }
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/reset-quota/${encodeURIComponent(userId)}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`המכסה של ${userId} אופסה בהצלחה`);
+          document.getElementById('resetUserIdInput').value = '';
+        } else {
+          showToast(data.detail || 'שגיאה באיפוס המכסה', true);
+        }
+      } catch (err) { /* adminFetch כבר מציג מסך התחברות אם ה-token פג */ }
+    }
+
+    async function changeAdminPassword() {
+      const newPassword = document.getElementById('newAdminPasswordInput').value.trim();
+      if (!newPassword) {
+        showToast('הזן סיסמה חדשה', true);
+        return;
+      }
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/change-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_password: newPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('הסיסמה עודכנה - תידרש התחברות מחדש בפעם הבאה');
+          document.getElementById('newAdminPasswordInput').value = '';
+        } else {
+          showToast(data.detail || 'שגיאה בעדכון הסיסמה', true);
+        }
+      } catch (err) { /* adminFetch כבר מציג מסך התחברות אם ה-token פג */ }
+    }
+
+    const USAGE_LABELS = {
+      chat_answer: '💬 תשובות צ\'אט לסטודנטים',
+      ai_draft: '✨ ניסוחי AI למנהל',
+      categorize: '🗂️ סיווגי קטגוריה אוטומטיים',
+      embedding: '🧮 יצירת embeddings'
+    };
+
+    async function loadUsage() {
+      const panel = document.getElementById('usagePanel');
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/usage`);
+        const data = await res.json();
+
+        const api = data.api_usage_today || {};
+        const total = api.total || 0;
+        const rows = Object.keys(USAGE_LABELS)
+          .map(key => `<div class="flex justify-between py-1"><span class="text-slate-600">${USAGE_LABELS[key]}</span><span class="font-bold">${api[key] || 0}</span></div>`)
+          .join('');
+
+        const su = data.student_usage || {};
+        const students = su.students || [];
+        const studentRows = students.length
+          ? students.map(s => `<div class="flex justify-between py-1 text-xs">
+              <span class="text-slate-600">${s.user_id}</span>
+              <span class="font-bold">${s.used_today}/${s.daily_limit} <span class="text-slate-400 font-normal">(נותרו ${s.remaining})</span></span>
+            </div>`).join('')
+          : '<div class="text-xs text-slate-400">אין עדיין נתוני שימוש היום</div>';
+
+        panel.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-bold text-sm">קריאות ל-Gemini היום</span>
+                <span class="font-bold text-indigo-700 text-lg">${total}</span>
+              </div>
+              ${rows}
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-bold text-sm">שאלות סטודנטים היום</span>
+                <span class="font-bold text-indigo-700 text-lg">${su.total_questions_today || 0}</span>
+              </div>
+              <div class="text-xs text-slate-500 mb-2">סטודנטים פעילים היום: ${su.active_students_today || 0} · מכסה יומית לכל סטודנט: ${su.daily_quota_limit ?? '—'}</div>
+              ${studentRows}
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-3">
+            המספרים האלה הם ספירה אמיתית של קריאות שהמערכת עצמה ביצעה היום - לא מכסת Google בפועל (זו לא נחשפת ע"י גוגל; אפשר לבדוק מגבלות ידועות דרך "בדוק את המפתח" למעלה).
+          </div>
+        `;
+      } catch (err) {
+        panel.innerHTML = '<div class="text-rose-600 text-xs">שגיאה בטעינת מדדי השימוש</div>';
+      }
+    }
+
+    async function draftKnowledgeWithAI() {
+      const instruction = document.getElementById('aiInstructionInput').value.trim();
+      const previewEl = document.getElementById('aiDraftPreview');
+      const btn = document.getElementById('aiDraftBtn');
+
+      if (!instruction) {
+        showToast('כתוב קודם תיאור חופשי למה שרוצים להוסיף', true);
+        return;
+      }
+
+      previewEl.classList.remove('hidden');
+      previewEl.classList.add('typing-cursor');
+      previewEl.textContent = '';
+      btn.disabled = true;
+
+      let fullText = '';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/knowledge/ai-draft`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          previewEl.textContent = `⛔ ${err.detail || 'שגיאה בניסוח'}`;
+          previewEl.classList.remove('typing-cursor');
+          btn.disabled = false;
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          fullText += decoder.decode(value, { stream: true });
+          previewEl.textContent = fullText;
+        }
+      } catch (err) {
+        previewEl.textContent = `⚠️ שגיאת תקשורת: ${err.message}`;
+      } finally {
+        previewEl.classList.remove('typing-cursor');
+        btn.disabled = false;
+      }
+
+      // חילוץ "כותרת:" / "תוכן:" מהתשובה והעתקה לטופס הרגיל לבדיקה ואישור של המנהל
+      const titleMatch = fullText.match(/כותרת:\s*([^\n]+)/);
+      const contentMatch = fullText.match(/תוכן:\s*([\s\S]+)/);
+      if (titleMatch) document.getElementById('docTitleInput').value = titleMatch[1].trim();
+      if (contentMatch) document.getElementById('docTextInput').value = contentMatch[1].trim();
+      if (titleMatch || contentMatch) {
+        showToast('ה-AI ניסח טיוטה - בדוק, ערוך אם צריך, ולחץ "הוסף למאגר הידע" בטופס למטה כדי לשמור בפועל');
+        document.getElementById('docTitleInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    async function loadKnowledge() {
+      const res = await adminFetch(`${API_BASE}/api/admin/knowledge`);
+      const data = await res.json();
+      const list = document.getElementById('chunksList');
+      document.getElementById('chunksCount').textContent = data.chunks.length;
+      list.innerHTML = '';
+
+      data.chunks.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4';
+        item.innerHTML = `
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${c.category || 'כללי'}</span>
+              <div class="font-bold text-sm text-indigo-900">${c.title}</div>
+            </div>
+            <div class="text-xs text-slate-600 leading-relaxed">${c.text}</div>
+          </div>
+          <button onclick="deleteChunk('${c.id}')" class="text-xs text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200 shrink-0">
+            🗑️ מחק
+          </button>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    async function addTextKnowledge(e) {
+      e.preventDefault();
+      const title = document.getElementById('docTitleInput').value;
+      const text = document.getElementById('docTextInput').value;
+      const res = await adminFetch(`${API_BASE}/api/admin/knowledge/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, text })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message);
+        document.getElementById('docTitleInput').value = '';
+        document.getElementById('docTextInput').value = '';
+        await loadKnowledge();
+      } else {
+        showToast(data.detail || 'שגיאה', true);
+      }
+    }
+
+    async function uploadFileKnowledge(e) {
+      e.preventDefault();
+      const title = document.getElementById('fileTitleInput').value;
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput.files.length) return;
+
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('file', fileInput.files[0]);
+
+      const res = await adminFetch(`${API_BASE}/api/admin/knowledge/pdf`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message);
+        document.getElementById('fileTitleInput').value = '';
+        fileInput.value = '';
+        await loadKnowledge();
+      } else {
+        showToast(data.detail || 'שגיאה בהעלאת הקובץ', true);
+      }
+    }
+
+    async function deleteChunk(id) {
+      await adminFetch(`${API_BASE}/api/admin/knowledge/${id}`, { method: 'DELETE' });
+      await loadKnowledge();
+    }
+
+    if (getToken()) {
+      showApp();
+    } else {
+      showLoginGate();
+    }
+  </script>
+</body>
+</html>
