@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>העוזר החכם של המכללה - צ'אט סטודנטים</title>
 
   <!-- PWA -->
@@ -75,6 +75,21 @@
       border-top-color: #4f46e5;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* ===== מובייל: מסך מלא קבוע, רק שורת ההקלדה עולה עם המקלדת ===== */
+    html, body { overscroll-behavior: none; }
+    @media (max-width: 639px) {
+      html, body { height: 100%; overflow: hidden; }
+      body { display: block !important; min-height: 0 !important; padding: 0 !important; }
+      #appRoot {
+        position: fixed; top: 0; left: 0;
+        width: 100%; max-width: none;
+        height: var(--app-h, 100dvh);
+        border-radius: 0; border: 0; box-shadow: none;
+        padding-top: env(safe-area-inset-top);
+        background: linear-gradient(to bottom, #4f46e5 env(safe-area-inset-top), #fff env(safe-area-inset-top));
+      }
+      #chatScreen form { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+    }
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
@@ -585,6 +600,29 @@
     })();
   </script>
 
-  <script src="/update-check.js"></script>
+  <script>
+  /* התאמת הגובה למקלדת (iOS Safari ודפדפנים שלא תומכים ב-interactive-widget) */
+  (function () {
+    const vv = window.visualViewport;
+    const root = document.getElementById('appRoot');
+    if (!vv || !root) return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    let lastH = vv.height;
+    function fit() {
+      if (!mq.matches) { root.style.removeProperty('--app-h'); root.style.removeProperty('top'); return; }
+      root.style.setProperty('--app-h', vv.height + 'px');
+      root.style.top = vv.offsetTop + 'px';
+      window.scrollTo(0, 0);
+      if (vv.height < lastH) chatMessages.scrollTop = chatMessages.scrollHeight;
+      lastH = vv.height;
+    }
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    mq.addEventListener('change', fit);
+    fit();
+  })();
+</script>
+
+<script src="/update-check.js"></script>
 </body>
 </html>
