@@ -6,7 +6,7 @@
   <title>פאנל ניהול מערכת AI - מכללה</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap');
     body { font-family: 'Heebo', sans-serif; }
     .typing-cursor::after {
       content: '▋';
@@ -19,250 +19,392 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0; }
     }
+
+    /* ===== ניווט (סיידבר + פס עליון למובייל) ===== */
+    .navbtn {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .7rem 1rem;
+      border-radius: .75rem;
+      font-size: .8125rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      transition: background .15s ease, color .15s ease;
+      cursor: pointer;
+      white-space: nowrap;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: right;
+    }
+    .navbtn:hover { background: rgba(255,255,255,.08); color: #ffffff; }
+    .navbtn.active { background: #4f46e5; color: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+    .navbtn .navbtn-icon { font-size: 1rem; line-height: 1; }
+
+    .navbtn-mobile {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .6rem .9rem;
+      border-radius: .65rem;
+      font-size: .78rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      white-space: nowrap;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    .navbtn-mobile.active { background: #4f46e5; color: #fff; }
+
+    /* גלילה דקה ונעימה בתוך האזורים הפנימיים */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen p-4 sm:p-8 text-slate-800">
+<body class="bg-slate-100 min-h-screen text-slate-800">
 
   <!-- מסך התחברות -->
-  <div id="loginGate" class="max-w-sm mx-auto mt-24 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-    <h1 class="text-xl font-bold mb-1">🔐 התחברות לפאנל הניהול</h1>
-    <p class="text-xs text-slate-500 mb-4">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה שלו.</p>
-    <form onsubmit="doLogin(event)" class="space-y-3">
-      <input
-        id="loginPasswordInput"
-        type="password"
-        required
-        placeholder="סיסמת מנהל"
-        class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-      />
-      <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
-        התחבר
-      </button>
-      <div id="loginError" class="hidden text-rose-600 text-xs font-bold text-center"></div>
-    </form>
-  </div>
-
-  <div id="appContent" class="hidden max-w-4xl mx-auto space-y-6">
-    <!-- כותרת עליונה -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">⚙️ פאנל ניהול - צ'אטבוט המכללה (Admin)</h1>
-        <p class="text-sm text-slate-500 mt-1">ניהול מפתח Gemini API (בשרת בלבד), הגדרת מכסות יומיות, והעלאת נהלים/שנתונים למאגר ה-RAG</p>
-      </div>
-      <a href="/" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition shrink-0">
-        📱 מעבר לצ'אט הסטודנטים
-      </a>
-    </div>
-
-    <!-- הודעת חיווי -->
-    <div id="statusToast" class="hidden rounded-xl p-4 text-sm font-medium"></div>
-
-    <!-- חלק 1: הגדרות API ומכסה יומית -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-      <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
-        <span>🔑 הגדרות מפתח AI ומכסת שאלות יומית</span>
-        <span id="keyStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">טוען...</span>
-      </h2>
-
-      <form onsubmit="saveConfig(event)" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        <div class="md:col-span-2">
-          <label class="block text-xs font-bold text-slate-600 mb-1">
-            מפתח Google Gemini API (נשמר מוסתר בשרת בלבד):
-          </label>
-          <input
-            id="apiKeyInput"
-            type="password"
-            placeholder="הדבק כאן מפתח AIzaSy... (השאר ריק אם אינך רוצה לשנות)"
-            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-          />
-          <p class="text-[11px] text-slate-400 mt-1">
-            אפשר להוציא מפתח חינמי ב-<a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a>. גם בלי מפתח המערכת תעבוד במצב הדגמה!
-          </p>
-          <button
-            type="button"
-            onclick="testApiKey()"
-            class="mt-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition"
-          >
-            🧪 בדוק את המפתח (מודלים זמינים, מכסות ובדיקת חיבור)
-          </button>
-          <div id="keyTestResults" class="hidden mt-3"></div>
-        </div>
-
-        <div class="md:col-span-3">
-          <label class="block text-xs font-bold text-slate-600 mb-1">
-            מידע בסיסי על הבוט (מי הוא, בשם איזו מכללה הוא פועל, מה הוא יודע לעשות) - תמיד זמין לבוט, גם בלי RAG:
-          </label>
-          <textarea
-            id="botIdentityInput"
-            rows="2"
-            placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות."
-            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-          ></textarea>
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-slate-600 mb-1">
-            מכסת שאלות לסטודנט ביום:
-          </label>
-          <input
-            id="quotaLimitInput"
-            type="number"
-            min="1"
-            max="100"
-            value="5"
-            class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <div class="md:col-span-3 flex items-end gap-2">
-          <div class="flex-1">
-            <label class="block text-xs font-bold text-slate-600 mb-1">איפוס מכסה למשתמש (לבדיקות):</label>
-            <input
-              id="resetUserIdInput"
-              type="text"
-              placeholder="למשל: student_101"
-              class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-            />
-          </div>
-          <button type="button" onclick="resetUserQuota()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
-            ♻️ אפס מכסה
-          </button>
-        </div>
-
-        <div class="md:col-span-3 flex items-end gap-2">
-          <div class="flex-1">
-            <label class="block text-xs font-bold text-slate-600 mb-1">שינוי סיסמת כניסה לפאנל הניהול:</label>
-            <input
-              id="newAdminPasswordInput"
-              type="text"
-              placeholder="סיסמה חדשה"
-              class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
-            />
-          </div>
-          <button type="button" onclick="changeAdminPassword()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
-            🔑 עדכן סיסמה
-          </button>
-        </div>
-
-        <div class="md:col-span-3 flex justify-end">
-          <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-sm">
-            💾 שמור הגדרות בשרת
-          </button>
-        </div>
+  <div id="loginGate" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900">
+    <div class="max-w-sm w-full bg-white rounded-2xl p-7 shadow-xl border border-slate-200">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-2xl mb-4">🔐</div>
+      <h1 class="text-xl font-extrabold mb-1">התחברות לפאנל הניהול</h1>
+      <p class="text-xs text-slate-500 mb-5">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה שלו.</p>
+      <form onsubmit="doLogin(event)" class="space-y-3">
+        <input
+          id="loginPasswordInput"
+          type="password"
+          required
+          placeholder="סיסמת מנהל"
+          class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+        />
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
+          התחבר
+        </button>
+        <div id="loginError" class="hidden text-rose-600 text-xs font-bold text-center"></div>
       </form>
     </div>
+  </div>
 
-    <!-- חלק: מדדי שימוש -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-bold">📊 מדדי שימוש</h2>
-        <button onclick="loadUsage()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
+  <!-- ============== לוח הניהול (אחרי התחברות) ============== -->
+  <div id="appContent" class="hidden h-screen flex overflow-hidden bg-slate-100">
+
+    <!-- סיידבר (דסקטופ) -->
+    <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 h-screen overflow-y-auto bg-slate-900">
+      <div class="px-5 py-5 border-b border-white/10">
+        <div class="text-white font-extrabold text-base flex items-center gap-2">
+          <span class="text-xl">⚙️</span>
+          <span>פאנל ניהול</span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-0.5">צ'אטבוט המכללה · AI</div>
       </div>
-      <div id="usagePanel" class="text-sm text-slate-500">טוען...</div>
-    </div>
 
-    <!-- חלק 1.5: ניסוח מידע עם AI משפה חופשית -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-      <h2 class="text-lg font-bold mb-1">✨ ניסוח מידע עם AI (שפה חופשית)</h2>
-      <p class="text-xs text-slate-500 mb-3">
-        כתוב בשפה חופשית מה לעדכן, ה-AI ינסח מזה טיוטת "נוהל" מסודרת (כותרת + תוכן) ויזרים אותה למטה.
-        <b>זו טיוטה בלבד</b> - היא מועתקת לטופס "הוספת נוהל" כדי שתבדוק, תערוך אם צריך, ותלחץ בעצמך על השמירה.
-      </p>
-      <div class="space-y-3">
-        <textarea
-          id="aiInstructionInput"
-          rows="3"
-          placeholder="למשל: מחר המזכירות האקדמית תהיה סגורה בגלל יום כיפור, תפתח שוב ביום ראשון בשעה הרגילה"
-          class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
-        ></textarea>
-        <button id="aiDraftBtn" type="button" onclick="draftKnowledgeWithAI()" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
-          ✨ נסח עם AI
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <button type="button" class="navbtn active" data-tab="overview" onclick="switchTab('overview')">
+          <span class="navbtn-icon">🔑</span><span>הגדרות ומכסות</span>
         </button>
-        <div id="aiDraftPreview" class="hidden whitespace-pre-wrap text-sm bg-violet-50 border border-violet-200 rounded-xl p-3 text-slate-700 min-h-[2.5rem]"></div>
-      </div>
-    </div>
+        <button type="button" class="navbtn" data-tab="knowledge" onclick="switchTab('knowledge')">
+          <span class="navbtn-icon">📚</span><span>מאגר ידע (RAG)</span>
+        </button>
+        <button type="button" class="navbtn" data-tab="users" onclick="switchTab('users')">
+          <span class="navbtn-icon">👥</span><span>משתמשים</span>
+        </button>
+        <button type="button" class="navbtn" data-tab="usage" onclick="switchTab('usage')">
+          <span class="navbtn-icon">📊</span><span>מדדי שימוש</span>
+        </button>
+      </nav>
 
-    <!-- חלק 2: הוספת מידע למאגר המכללה (RAG) -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <!-- הוספת טקסט ישיר -->
-      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-        <h2 class="text-lg font-bold mb-3">📝 הוספת נוהל / מידע בטקסט</h2>
-        <form onsubmit="addTextKnowledge(event)" class="space-y-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-600 mb-1">כותרת הנוהל / הנושא:</label>
-            <input
-              id="docTitleInput"
-              type="text"
-              required
-              placeholder="למשל: שעות פעילות ספרייה / מלגות דיקן"
-              class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-600 mb-1">תוכן הנוהל (ייחתך אוטומטית ל-Chunks ויהפוך לוקטורים):</label>
-            <textarea
-              id="docTextInput"
-              rows="4"
-              required
-              placeholder="כתוב כאן את כל הפרטים: למי פונים, מספרי טלפון, שעות קבלה, חדרים ונהלים..."
-              class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:border-indigo-500"
-            ></textarea>
-          </div>
-          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
-            ➕ הוסף למאגר הידע (RAG)
-          </button>
-        </form>
+      <div class="px-3 py-4 border-t border-white/10 space-y-1">
+        <a href="/" class="navbtn">
+          <span class="navbtn-icon">📱</span><span>צ'אט הסטודנטים</span>
+        </a>
+        <button type="button" onclick="showLoginGate()" class="navbtn">
+          <span class="navbtn-icon">🚪</span><span>התנתקות</span>
+        </button>
       </div>
+    </aside>
 
-      <!-- העלאת קובץ PDF / TXT -->
-      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
-        <div>
-          <h2 class="text-lg font-bold mb-3">📄 העלאת קובץ PDF / TXT (שנתון / תקנון)</h2>
-          <form onsubmit="uploadFileKnowledge(event)" class="space-y-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-600 mb-1">שם המסמך:</label>
-              <input
-                id="fileTitleInput"
-                type="text"
-                required
-                placeholder="למשל: תקנון לימודים תשפ״ז"
-                class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-600 mb-1">בחר קובץ (PDF או TXT):</label>
-              <input
-                id="fileInput"
-                type="file"
-                accept=".pdf,.txt"
-                required
-                class="w-full text-sm text-slate-600 file:ml-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-              />
-            </div>
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition">
-              📤 העלה ועבד קובץ לוקטורים
-            </button>
-          </form>
-        </div>
-        <div class="mt-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-500">
-          💡 השרת מחלץ את הטקסט מהקובץ, חותך אותו למקטעים חכמים עם חפיפה (Overlap), ומייצר עבורם Embeddings לחיפוש מהיר.
+    <!-- עמודת תוכן -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+
+      <!-- פס ניווט למובייל/טאבלט -->
+      <div class="lg:hidden bg-slate-900 overflow-x-auto shrink-0">
+        <div class="flex gap-1 px-3 py-2 min-w-max">
+          <button type="button" class="navbtn-mobile active" data-tab="overview" onclick="switchTab('overview')">🔑 הגדרות</button>
+          <button type="button" class="navbtn-mobile" data-tab="knowledge" onclick="switchTab('knowledge')">📚 מאגר ידע</button>
+          <button type="button" class="navbtn-mobile" data-tab="users" onclick="switchTab('users')">👥 משתמשים</button>
+          <button type="button" class="navbtn-mobile" data-tab="usage" onclick="switchTab('usage')">📊 שימוש</button>
+          <a href="/" class="navbtn-mobile">📱 לצ'אט</a>
         </div>
       </div>
-    </div>
 
-    <!-- חלק 3: רשימת מקטעי הידע השמורים במערכת -->
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
-        <button onclick="loadKnowledge()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן רשימה</button>
-      </div>
-      <div id="chunksList" class="space-y-3"></div>
+      <!-- כותרת עליונה -->
+      <header class="bg-white border-b border-slate-200 px-5 sm:px-7 py-4 shrink-0">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h1 id="pageTitle" class="text-xl font-extrabold text-slate-900">🔑 הגדרות ומכסות</h1>
+            <p class="text-xs text-slate-500 mt-0.5">ניהול מפתח Gemini API, מכסות יומיות, מאגר הידע, משתמשים ומדדי שימוש</p>
+          </div>
+          <span id="keyStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shrink-0">טוען...</span>
+        </div>
+      </header>
+
+      <!-- תוכן גלילה -->
+      <main class="flex-1 overflow-y-auto p-4 sm:p-7 space-y-6">
+
+        <!-- הודעת חיווי -->
+        <div id="statusToast" class="hidden rounded-xl p-4 text-sm font-medium"></div>
+
+        <!-- ===================== טאב 1: הגדרות ומכסות ===================== -->
+        <section id="tabPanel-overview" class="tab-panel space-y-6">
+
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+              <span>🔑 הגדרות מפתח AI ומכסת שאלות יומית</span>
+            </h2>
+
+            <form onsubmit="saveConfig(event)" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div class="md:col-span-2">
+                <label class="block text-xs font-bold text-slate-600 mb-1">
+                  מפתח Google Gemini API (נשמר מוסתר בשרת בלבד):
+                </label>
+                <input
+                  id="apiKeyInput"
+                  type="password"
+                  placeholder="הדבק כאן מפתח AIzaSy... (השאר ריק אם אינך רוצה לשנות)"
+                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                />
+                <p class="text-[11px] text-slate-400 mt-1">
+                  אפשר להוציא מפתח חינמי ב-<a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a>. גם בלי מפתח המערכת תעבוד במצב הדגמה!
+                </p>
+                <button
+                  type="button"
+                  onclick="testApiKey()"
+                  class="mt-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition"
+                >
+                  🧪 בדוק את המפתח (מודלים זמינים, מכסות ובדיקת חיבור)
+                </button>
+                <div id="keyTestResults" class="hidden mt-3"></div>
+              </div>
+
+              <div class="md:col-span-3">
+                <label class="block text-xs font-bold text-slate-600 mb-1">
+                  מידע בסיסי על הבוט (מי הוא, בשם איזו מכללה הוא פועל, מה הוא יודע לעשות) - תמיד זמין לבוט, גם בלי RAG:
+                </label>
+                <textarea
+                  id="botIdentityInput"
+                  rows="2"
+                  placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות."
+                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                ></textarea>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">
+                  מכסת שאלות לסטודנט ביום:
+                </label>
+                <input
+                  id="quotaLimitInput"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value="5"
+                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                />
+              </div>
+
+              <div class="md:col-span-3 flex items-end gap-2">
+                <div class="flex-1">
+                  <label class="block text-xs font-bold text-slate-600 mb-1">איפוס מכסה למשתמש (לבדיקות):</label>
+                  <input
+                    id="resetUserIdInput"
+                    type="text"
+                    placeholder="למשל: student_101"
+                    class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                  />
+                </div>
+                <button type="button" onclick="resetUserQuota()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
+                  ♻️ אפס מכסה
+                </button>
+              </div>
+
+              <div class="md:col-span-3 flex items-end gap-2">
+                <div class="flex-1">
+                  <label class="block text-xs font-bold text-slate-600 mb-1">שינוי סיסמת כניסה לפאנל הניהול:</label>
+                  <input
+                    id="newAdminPasswordInput"
+                    type="text"
+                    placeholder="סיסמה חדשה"
+                    class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-500 transition"
+                  />
+                </div>
+                <button type="button" onclick="changeAdminPassword()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
+                  🔑 עדכן סיסמה
+                </button>
+              </div>
+
+              <div class="md:col-span-3 flex justify-end">
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-sm">
+                  💾 שמור הגדרות בשרת
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- ===================== טאב 2: מאגר ידע ===================== -->
+        <section id="tabPanel-knowledge" class="tab-panel space-y-6 hidden">
+
+          <!-- ניסוח מידע עם AI -->
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold mb-1">✨ ניסוח מידע עם AI (שפה חופשית)</h2>
+            <p class="text-xs text-slate-500 mb-3">
+              כתוב בשפה חופשית מה לעדכן, ה-AI ינסח מזה טיוטת "נוהל" מסודרת (כותרת + תוכן) ויזרים אותה למטה.
+              <b>זו טיוטה בלבד</b> - היא מועתקת לטופס "הוספת נוהל" כדי שתבדוק, תערוך אם צריך, ותלחץ בעצמך על השמירה.
+            </p>
+            <div class="space-y-3">
+              <textarea
+                id="aiInstructionInput"
+                rows="3"
+                placeholder="למשל: מחר המזכירות האקדמית תהיה סגורה בגלל יום כיפור, תפתח שוב ביום ראשון בשעה הרגילה"
+                class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-500 transition"
+              ></textarea>
+              <button id="aiDraftBtn" type="button" onclick="draftKnowledgeWithAI()" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
+                ✨ נסח עם AI
+              </button>
+              <div id="aiDraftPreview" class="hidden whitespace-pre-wrap text-sm bg-violet-50 border border-violet-200 rounded-xl p-3 text-slate-700 min-h-[2.5rem]"></div>
+            </div>
+          </div>
+
+          <!-- הוספת מידע -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- הוספת טקסט ישיר -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 class="text-lg font-bold mb-3">📝 הוספת נוהל / מידע בטקסט</h2>
+              <form onsubmit="addTextKnowledge(event)" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 mb-1">כותרת הנוהל / הנושא:</label>
+                  <input
+                    id="docTitleInput"
+                    type="text"
+                    required
+                    placeholder="למשל: שעות פעילות ספרייה / מלגות דיקן"
+                    class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 mb-1">תוכן הנוהל (ייחתך אוטומטית ל-Chunks ויהפוך לוקטורים):</label>
+                  <textarea
+                    id="docTextInput"
+                    rows="4"
+                    required
+                    placeholder="כתוב כאן את כל הפרטים: למי פונים, מספרי טלפון, שעות קבלה, חדרים ונהלים..."
+                    class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
+                  ></textarea>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
+                  ➕ הוסף למאגר הידע (RAG)
+                </button>
+              </form>
+            </div>
+
+            <!-- העלאת קובץ PDF / TXT -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
+              <div>
+                <h2 class="text-lg font-bold mb-3">📄 העלאת קובץ PDF / TXT (שנתון / תקנון)</h2>
+                <form onsubmit="uploadFileKnowledge(event)" class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">שם המסמך:</label>
+                    <input
+                      id="fileTitleInput"
+                      type="text"
+                      required
+                      placeholder="למשל: תקנון לימודים תשפ״ז"
+                      class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">בחר קובץ (PDF או TXT):</label>
+                    <input
+                      id="fileInput"
+                      type="file"
+                      accept=".pdf,.txt"
+                      required
+                      class="w-full text-sm text-slate-600 file:ml-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                  </div>
+                  <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
+                    📤 העלה ועבד קובץ לוקטורים
+                  </button>
+                </form>
+              </div>
+              <div class="mt-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-500">
+                💡 השרת מחלץ את הטקסט מהקובץ, חותך אותו למקטעים חכמים עם חפיפה (Overlap), ומייצר עבורם Embeddings לחיפוש מהיר.
+              </div>
+            </div>
+          </div>
+
+          <!-- רשימת מקטעי הידע -->
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
+              <button onclick="loadKnowledge()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן רשימה</button>
+            </div>
+            <div id="chunksList" class="space-y-3"></div>
+          </div>
+        </section>
+
+        <!-- ===================== טאב 3: משתמשים ===================== -->
+        <section id="tabPanel-users" class="tab-panel space-y-6 hidden">
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold">👥 משתמשים (<span id="usersCount">0</span>)</h2>
+              <button onclick="loadUsers()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
+            </div>
+            <div id="usersPanel" class="text-sm text-slate-500">טוען...</div>
+          </div>
+        </section>
+
+        <!-- ===================== טאב 4: מדדי שימוש ===================== -->
+        <section id="tabPanel-usage" class="tab-panel space-y-6 hidden">
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-lg font-bold">📊 מדדי שימוש</h2>
+              <button onclick="loadUsage()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
+            </div>
+            <div id="usagePanel" class="text-sm text-slate-500">טוען...</div>
+          </div>
+        </section>
+
+      </main>
     </div>
   </div>
 
   <script>
     const API_BASE = window.location.origin;
     const TOKEN_KEY = 'admin_token';
+
+    const TAB_TITLES = {
+      overview: { icon: '🔑', title: 'הגדרות ומכסות' },
+      knowledge: { icon: '📚', title: 'מאגר ידע (RAG)' },
+      users: { icon: '👥', title: 'משתמשים' },
+      usage: { icon: '📊', title: 'מדדי שימוש' }
+    };
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('hidden', p.id !== `tabPanel-${name}`);
+      });
+      document.querySelectorAll('[data-tab]').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === name);
+      });
+      const meta = TAB_TITLES[name];
+      const titleEl = document.getElementById('pageTitle');
+      if (meta && titleEl) titleEl.textContent = `${meta.icon} ${meta.title}`;
+      if (name === 'users') loadUsers();
+    }
 
     function showToast(msg, isError = false) {
       const el = document.getElementById('statusToast');
@@ -279,9 +421,11 @@
     function showApp() {
       document.getElementById('loginGate').classList.add('hidden');
       document.getElementById('appContent').classList.remove('hidden');
+      switchTab('overview');
       loadConfig();
       loadKnowledge();
       loadUsage();
+      loadUsers();
     }
 
     function showLoginGate(message) {
@@ -461,10 +605,10 @@
       const badge = document.getElementById('keyStatusBadge');
       if (data.has_api_key) {
         badge.textContent = `מפתח מוגדר (${data.masked_api_key})`;
-        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold';
+        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold shrink-0';
       } else {
         badge.textContent = 'טרם הוזן מפתח API (מצב הדגמה פעיל)';
-        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold';
+        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold shrink-0';
       }
     }
 
@@ -576,6 +720,63 @@
         `;
       } catch (err) {
         panel.innerHTML = '<div class="text-rose-600 text-xs">שגיאה בטעינת מדדי השימוש</div>';
+      }
+    }
+
+    // ===================== משתמשים =====================
+    async function loadUsers() {
+      const panel = document.getElementById('usersPanel');
+      const countEl = document.getElementById('usersCount');
+      panel.innerHTML = '<div class="text-sm text-slate-500">טוען...</div>';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/users`);
+
+        if (res.status === 404) {
+          panel.innerHTML = '<div class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">⏳ הנתונים עדיין לא זמינים</div>';
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(`status ${res.status}`);
+        }
+
+        const data = await res.json();
+        const users = data.users || [];
+        if (countEl) countEl.textContent = users.length;
+
+        if (!users.length) {
+          panel.innerHTML = '<div class="text-sm text-slate-400 text-center py-6">אין משתמשים רשומים עדיין</div>';
+          return;
+        }
+
+        const rows = users.map(u => {
+          let created = u.created_at || '—';
+          if (u.created_at) {
+            const d = new Date(u.created_at);
+            if (!isNaN(d.getTime())) created = d.toLocaleString('he-IL');
+          }
+          return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+            <td class="px-4 py-2.5 text-sm font-bold text-slate-800">${u.username ?? '—'}</td>
+            <td class="px-4 py-2.5 text-xs text-slate-500">${created}</td>
+            <td class="px-4 py-2.5 text-sm text-center">${u.conversation_count ?? 0}</td>
+            <td class="px-4 py-2.5 text-sm text-center">${u.message_count ?? 0}</td>
+          </tr>`;
+        }).join('');
+
+        panel.innerHTML = `<div class="overflow-x-auto">
+          <table class="w-full text-right">
+            <thead>
+              <tr class="border-b-2 border-slate-200 text-xs text-slate-500 font-bold">
+                <th class="px-4 py-2">שם משתמש</th>
+                <th class="px-4 py-2">נוצר בתאריך</th>
+                <th class="px-4 py-2 text-center">מספר שיחות</th>
+                <th class="px-4 py-2 text-center">מספר הודעות</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      } catch (err) {
+        panel.innerHTML = '<div class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">⏳ הנתונים עדיין לא זמינים</div>';
       }
     }
 
@@ -718,5 +919,6 @@
       showLoginGate();
     }
   </script>
+  <script src="/update-check.js"></script>
 </body>
 </html>

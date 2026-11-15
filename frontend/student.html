@@ -2,12 +2,22 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>העוזר החכם של המכללה - צ'אט סטודנטים</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap');
+    * { -webkit-tap-highlight-color: transparent; }
     body { font-family: 'Heebo', sans-serif; }
+
     .typing-cursor::after {
       content: '▋';
       display: inline-block;
@@ -19,213 +29,513 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0; }
     }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-in { animation: fadeSlideUp 0.25s ease-out; }
+
+    @keyframes screenIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .screen-in { animation: screenIn 0.3s ease-out; }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 37%, #e2e8f0 63%);
+      background-size: 400% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+    }
+
+    .drawer-overlay { transition: opacity 0.25s ease; }
+    .drawer-panel { transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+    .btn-press:active { transform: scale(0.97); }
+
+    #appRoot::-webkit-scrollbar, .scroll-area::-webkit-scrollbar { width: 6px; }
+    #appRoot::-webkit-scrollbar-thumb, .scroll-area::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+
+    .tab-pill { transition: all 0.2s ease; }
+
+    .spinner {
+      border: 2.5px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      width: 16px; height: 16px;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    .spinner-dark {
+      border: 2.5px solid #e2e8f0;
+      border-top-color: #4f46e5;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
 
   <!-- קונטיינר דמוי אפליקציית מובייל (PWA) -->
-  <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[92vh] border border-slate-200">
-    
-    <!-- Header + מדד מכסה יומית -->
-    <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 shadow-md">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl shadow-inner">
-            🎓
+  <div id="appRoot" class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[92vh] border border-slate-200">
+
+    <!-- ===================== מסך טעינה ראשוני ===================== -->
+    <div id="initLoader" class="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center gap-3">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-l from-indigo-600 to-blue-600 flex items-center justify-center text-2xl shadow-lg">🎓</div>
+      <div class="spinner spinner-dark w-6 h-6"></div>
+    </div>
+
+    <!-- ===================== מסך התחברות / הרשמה ===================== -->
+    <div id="authScreen" class="hidden absolute inset-0 z-40 bg-white flex flex-col overflow-y-auto scroll-area">
+      <div class="flex-1 flex flex-col justify-center px-7 py-10 screen-in">
+        <div class="flex flex-col items-center mb-7">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-l from-indigo-600 to-blue-600 flex items-center justify-center text-3xl shadow-lg mb-3">🎓</div>
+          <h1 class="font-extrabold text-xl text-slate-800">העוזר החכם של המכללה</h1>
+          <p class="text-xs text-slate-500 mt-1">מענה מיידי מבוסס נהלי המכללה הרשמיים</p>
+        </div>
+
+        <!-- טאבים -->
+        <div class="flex bg-slate-100 rounded-xl p-1 mb-6">
+          <button id="tabLoginBtn" onclick="showAuthTab('login')" class="tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm">
+            התחברות
+          </button>
+          <button id="tabSignupBtn" onclick="showAuthTab('signup')" class="tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500">
+            הרשמה
+          </button>
+        </div>
+
+        <!-- הודעת שגיאה -->
+        <div id="authError" class="hidden mb-4 text-sm bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-3.5 py-2.5"></div>
+
+        <!-- טופס התחברות -->
+        <form id="loginForm" onsubmit="handleLogin(event)" class="flex flex-col gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">שם משתמש</label>
+            <input id="loginUsername" type="text" autocomplete="username" placeholder="לדוגמה: דניאל כהן"
+              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
           </div>
           <div>
-            <h1 class="font-bold text-lg leading-tight">העוזר החכם של המכללה</h1>
-            <p class="text-xs text-indigo-100">מענה מיידי מבוסס נהלי המכללה הרשמיים</p>
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">סיסמה</label>
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"
+              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
+          </div>
+          <button id="loginSubmitBtn" type="submit" class="btn-press mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2">
+            <span id="loginSubmitText">התחברות</span>
+          </button>
+        </form>
+
+        <!-- טופס הרשמה -->
+        <form id="signupForm" onsubmit="handleSignup(event)" class="hidden flex flex-col gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">שם משתמש</label>
+            <input id="signupUsername" type="text" autocomplete="username" placeholder="בחרו שם משתמש"
+              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">סיסמה</label>
+            <input id="signupPassword" type="password" autocomplete="new-password" placeholder="בחרו סיסמה"
+              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">אימות סיסמה</label>
+            <input id="signupConfirm" type="password" autocomplete="new-password" placeholder="הקלידו שוב את הסיסמה"
+              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
+          </div>
+          <button id="signupSubmitBtn" type="submit" class="btn-press mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2">
+            <span id="signupSubmitText">יצירת חשבון</span>
+          </button>
+        </form>
+
+        <p class="text-[11px] text-slate-400 text-center mt-6">
+          בהתחברות או ברישום הנתונים נשמרים במכשיר זה כדי לשמור אתכם מחוברים 🔒
+        </p>
+      </div>
+    </div>
+
+    <!-- ===================== מסך הצ'אט ===================== -->
+    <div id="chatScreen" class="hidden flex-1 flex flex-col screen-in">
+
+      <!-- Header -->
+      <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 shadow-md shrink-0">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl shadow-inner shrink-0">
+              🎓
+            </div>
+            <div>
+              <h1 class="font-bold text-base leading-tight">העוזר החכם של המכללה</h1>
+              <p class="text-[11px] text-indigo-100">מענה מיידי מבוסס נהלי המכללה - שאלות ללא הגבלה</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <a href="/admin" target="_blank" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">⚙️</a>
+            <button onclick="handleLogout()" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">יציאה</button>
           </div>
         </div>
-        <a href="/admin" target="_blank" class="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg transition">
-          ⚙️ מסך מנהל
-        </a>
       </div>
 
-      <!-- מדד מכסה ויזואלי לסטודנט -->
-      <div class="bg-black/20 rounded-xl p-2.5 backdrop-blur-sm">
-        <div class="flex justify-between items-center text-xs mb-1.5">
-          <span class="font-medium">מכסת שאלות יומית:</span>
-          <span id="quotaText" class="font-bold bg-white/20 px-2 py-0.5 rounded-full">טוען...</span>
-        </div>
-        <div class="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-          <div id="quotaBar" class="bg-emerald-400 h-full transition-all duration-500" style="width: 100%"></div>
-        </div>
-      </div>
+      <!-- התראת מערכת (שגיאות תקשורת וכד') -->
+      <div id="systemNotice" class="hidden px-4 pt-3"></div>
+
+      <!-- אזור הודעות הצ'אט -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 scroll-area"></div>
+
+      <!-- שורת הקלדה -->
+      <form onsubmit="sendMessage(event)" class="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0">
+        <input
+          id="questionInput"
+          type="text"
+          placeholder="הקלד שאלה על נהלי המכללה..."
+          class="flex-1 bg-slate-100 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition"
+          autocomplete="off"
+        />
+        <button
+          id="sendBtn"
+          type="submit"
+          class="btn-press bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0"
+        >
+          שלח
+        </button>
+      </form>
     </div>
 
-    <!-- בחירת מזהה סטודנט לבדיקה -->
-    <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-      <div class="flex items-center gap-2">
-        <span>משתמש פעיל (דמה):</span>
-        <select id="userSelect" onchange="loadQuota()" class="bg-white border border-slate-300 rounded-md px-2 py-0.5 font-medium text-slate-800">
-          <option value="student_101">סטודנט #101 (דניאל)</option>
-          <option value="student_102">סטודנט #102 (נועה)</option>
-          <option value="student_103">סטודנט #103 (עומר)</option>
-        </select>
-      </div>
-    </div>
+  </div>
 
-    <!-- אזור הודעות הצ'אט -->
-    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-      <!-- הודעת פתיחה -->
-      <div class="flex items-start gap-2.5">
+  <script>
+    const API_BASE = window.location.origin;
+
+    function safeStorageGet(key) {
+      try { return localStorage.getItem(key); } catch { return null; }
+    }
+    function safeStorageSet(key, value) {
+      try { localStorage.setItem(key, value); } catch { /* storage unavailable (private mode, etc.) */ }
+    }
+    function safeStorageRemove(key) {
+      try { localStorage.removeItem(key); } catch { /* ignore */ }
+    }
+
+    let TOKEN = safeStorageGet('token') || null;
+    let USER_ID = safeStorageGet('user_id') || null;
+    let isSending = false;
+
+    // ---------- DOM refs ----------
+    const initLoader = document.getElementById('initLoader');
+    const authScreen = document.getElementById('authScreen');
+    const chatScreen = document.getElementById('chatScreen');
+    const chatMessages = document.getElementById('chatMessages');
+    const systemNotice = document.getElementById('systemNotice');
+
+    // ---------- Helpers ----------
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    async function apiFetch(path, options = {}) {
+      const headers = Object.assign({}, options.headers || {});
+      if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`;
+      try {
+        const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+        return { res, networkError: false };
+      } catch (err) {
+        return { res: null, networkError: true, error: err };
+      }
+    }
+
+    async function safeJson(res) {
+      try { return await res.json(); } catch { return {}; }
+    }
+
+    function showSystemNotice(text, tone = 'warn') {
+      const toneClasses = tone === 'warn'
+        ? 'bg-amber-50 border-amber-200 text-amber-700'
+        : 'bg-rose-50 border-rose-200 text-rose-700';
+      systemNotice.innerHTML = `<div class="text-xs border rounded-xl px-3 py-2 mb-1 ${toneClasses}">${escapeHtml(text)}</div>`;
+      systemNotice.classList.remove('hidden');
+    }
+
+    function clearSystemNotice() {
+      systemNotice.classList.add('hidden');
+      systemNotice.innerHTML = '';
+    }
+
+    // ---------- Auth screen ----------
+    function showAuthTab(tab) {
+      const loginForm = document.getElementById('loginForm');
+      const signupForm = document.getElementById('signupForm');
+      const tabLoginBtn = document.getElementById('tabLoginBtn');
+      const tabSignupBtn = document.getElementById('tabSignupBtn');
+      clearAuthError();
+      if (tab === 'login') {
+        loginForm.classList.remove('hidden');
+        signupForm.classList.add('hidden');
+        tabLoginBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm';
+        tabSignupBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500';
+      } else {
+        signupForm.classList.remove('hidden');
+        loginForm.classList.add('hidden');
+        tabSignupBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm';
+        tabLoginBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500';
+      }
+    }
+
+    function showAuthError(text) {
+      const el = document.getElementById('authError');
+      el.textContent = text;
+      el.classList.remove('hidden');
+    }
+
+    function clearAuthError() {
+      const el = document.getElementById('authError');
+      el.classList.add('hidden');
+      el.textContent = '';
+    }
+
+    function setAuthLoading(formPrefix, loading) {
+      const btn = document.getElementById(`${formPrefix}SubmitBtn`);
+      const text = document.getElementById(`${formPrefix}SubmitText`);
+      btn.disabled = loading;
+      if (loading) {
+        text.innerHTML = `<span class="spinner"></span>`;
+      } else {
+        text.textContent = formPrefix === 'login' ? 'התחברות' : 'יצירת חשבון';
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      clearAuthError();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      if (!username || !password) { showAuthError('נא למלא שם משתמש וסיסמה'); return; }
+
+      setAuthLoading('login', true);
+      const { res, networkError } = await apiFetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      setAuthLoading('login', false);
+
+      if (networkError) {
+        showAuthError('⚠️ לא ניתן להתחבר לשרת כרגע. בדקו את החיבור ונסו שוב.');
+        return;
+      }
+      const data = await safeJson(res);
+      if (!res.ok) {
+        showAuthError(data.detail || 'שם משתמש או סיסמה שגויים.');
+        return;
+      }
+      if (!data.token) {
+        showAuthError('התקבלה תשובה לא תקינה מהשרת. נסו שוב.');
+        return;
+      }
+      TOKEN = data.token;
+      USER_ID = data.user_id || null;
+      safeStorageSet('token', TOKEN);
+      if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
+      await enterApp();
+    }
+
+    async function handleSignup(e) {
+      e.preventDefault();
+      clearAuthError();
+      const username = document.getElementById('signupUsername').value.trim();
+      const password = document.getElementById('signupPassword').value;
+      const confirm = document.getElementById('signupConfirm').value;
+      if (!username || !password) { showAuthError('נא למלא שם משתמש וסיסמה'); return; }
+      if (password !== confirm) { showAuthError('הסיסמאות אינן תואמות.'); return; }
+
+      setAuthLoading('signup', true);
+      const { res, networkError } = await apiFetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      setAuthLoading('signup', false);
+
+      if (networkError) {
+        showAuthError('⚠️ לא ניתן להתחבר לשרת כרגע. בדקו את החיבור ונסו שוב.');
+        return;
+      }
+      const data = await safeJson(res);
+      if (!res.ok) {
+        showAuthError(data.detail || 'שם המשתמש הזה כבר תפוס. נסו שם אחר.');
+        return;
+      }
+      if (!data.token) {
+        showAuthError('התקבלה תשובה לא תקינה מהשרת. נסו שוב.');
+        return;
+      }
+      TOKEN = data.token;
+      USER_ID = data.user_id || null;
+      safeStorageSet('token', TOKEN);
+      if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
+      await enterApp();
+    }
+
+    function handleLogout() {
+      safeStorageRemove('token');
+      safeStorageRemove('user_id');
+      TOKEN = null;
+      USER_ID = null;
+      chatMessages.innerHTML = '';
+      clearSystemNotice();
+      chatScreen.classList.add('hidden');
+      authScreen.classList.remove('hidden');
+      document.getElementById('loginUsername').value = '';
+      document.getElementById('loginPassword').value = '';
+    }
+
+    // ---------- App entry ----------
+    // השרת מנהל "שיחה" (conversation) אחת פר-משתמש פר-יום אוטומטית, כולל הקשר/סיכום -
+    // הלקוח לא צריך לנהל רשימת שיחות או היסטוריה בעצמו, רק לשלוח שאלה ולהציג תשובה.
+    async function enterApp() {
+      authScreen.classList.add('hidden');
+      chatScreen.classList.remove('hidden');
+      clearSystemNotice();
+      showWelcomeMessage();
+    }
+
+    function clearChatMessages() {
+      chatMessages.innerHTML = '';
+    }
+
+    function renderWelcomeLoading() {
+      chatMessages.innerHTML = `<div class="skeleton h-20 rounded-2xl"></div><div class="skeleton h-14 w-2/3 rounded-2xl mr-auto"></div>`;
+    }
+
+    function showWelcomeMessage() {
+      clearChatMessages();
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2.5 msg-in';
+      div.innerHTML = `
         <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">🤖</div>
         <div class="bg-white border border-slate-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-slate-800 shadow-sm max-w-[85%]">
           שלום! 👋 אני העוזר החכם של המכללה.
           <br><br>
           אפשר לשאול אותי שאלות כמו:
           <div class="mt-2 flex flex-wrap gap-1.5">
-            <button onclick="askQuick('למי פונים כשיש בעיה בשכר לימוד?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+            <button onclick="askQuick('למי פונים כשיש בעיה בשכר לימוד?')" class="btn-press text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
               💳 למי פונים בנושא שכר לימוד?
             </button>
-            <button onclick="askQuick('הייתי במילואים והפסדתי מבחן, מה עושים?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+            <button onclick="askQuick('הייתי במילואים והפסדתי מבחן, מה עושים?')" class="btn-press text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
               🪖 מועד מיוחד למילואים
             </button>
-            <button onclick="askQuick('שכחתי סיסמה למודל, למי פונים?')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
+            <button onclick="askQuick('שכחתי סיסמה למודל, למי פונים?')" class="btn-press text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition text-right">
               🔑 שכחתי סיסמה למודל
             </button>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- שורת הקלדה -->
-    <form onsubmit="sendMessage(event)" class="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-      <input
-        id="questionInput"
-        type="text"
-        placeholder="הקלד שאלה על נהלי המכללה..."
-        class="flex-1 bg-slate-100 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition"
-      />
-      <button
-        id="sendBtn"
-        type="submit"
-        class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm"
-      >
-        שלח
-      </button>
-    </form>
-  </div>
-
-  <script>
-    const API_BASE = window.location.origin;
-
-    function getUserId() {
-      return document.getElementById('userSelect').value;
+      `;
+      chatMessages.appendChild(div);
     }
 
-    async function loadQuota() {
-      const userId = getUserId();
-      try {
-        const res = await fetch(`${API_BASE}/api/quota/${userId}`);
-        const data = await res.json();
-        updateQuotaUI(data);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    function updateQuotaUI(quota) {
-      const quotaText = document.getElementById('quotaText');
-      const quotaBar = document.getElementById('quotaBar');
-      const input = document.getElementById('questionInput');
-      const sendBtn = document.getElementById('sendBtn');
-
-      quotaText.textContent = `נותרו ${quota.remaining} מתוך ${quota.daily_limit} שאלות להיום`;
-      const pct = quota.daily_limit > 0 ? (quota.remaining / quota.daily_limit) * 100 : 0;
-      quotaBar.style.width = `${pct}%`;
-
-      if (quota.remaining === 0) {
-        quotaBar.className = 'bg-rose-500 h-full transition-all duration-500';
-        input.placeholder = 'ניצלת את מכסת השאלות היומית שלך להיום';
-        input.disabled = true;
-        sendBtn.disabled = true;
-      } else if (quota.remaining <= 2) {
-        quotaBar.className = 'bg-amber-400 h-full transition-all duration-500';
-        input.placeholder = 'הקלד שאלה על נהלי המכללה...';
-        input.disabled = false;
-        sendBtn.disabled = false;
-      } else {
-        quotaBar.className = 'bg-emerald-400 h-full transition-all duration-500';
-        input.placeholder = 'הקלד שאלה על נהלי המכללה...';
-        input.disabled = false;
-        sendBtn.disabled = false;
-      }
+    function showChatError(text) {
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2.5 msg-in';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold shrink-0">⚠️</div>
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-rose-700 shadow-sm max-w-[85%]">${escapeHtml(text)}</div>
+      `;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     function askQuick(text) {
       const input = document.getElementById('questionInput');
-      if (input.disabled) return;
+      if (isSending) return;
       input.value = text;
       sendMessage(new Event('submit'));
     }
 
     function appendUserBubble(text) {
-      const container = document.getElementById('chatMessages');
       const div = document.createElement('div');
-      div.className = 'flex items-start justify-end gap-2.5';
+      div.className = 'flex items-start justify-end gap-2.5 msg-in';
       div.innerHTML = `
         <div class="bg-indigo-600 text-white rounded-2xl rounded-tl-none p-3.5 text-sm shadow-sm max-w-[80%] whitespace-pre-wrap">${escapeHtml(text)}</div>
       `;
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function appendStaticBotBubble(text) {
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2.5 msg-in';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">🤖</div>
+        <div class="bg-white border border-slate-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-slate-800 shadow-sm max-w-[85%] whitespace-pre-wrap">${escapeHtml(text)}</div>
+      `;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     function createBotBubble() {
-      const container = document.getElementById('chatMessages');
       const div = document.createElement('div');
-      div.className = 'flex items-start gap-2.5';
+      div.className = 'flex items-start gap-2.5 msg-in';
       const contentDiv = document.createElement('div');
       contentDiv.className = 'bg-white border border-slate-200 rounded-2xl rounded-tr-none p-3.5 text-sm text-slate-800 shadow-sm max-w-[85%] whitespace-pre-wrap typing-cursor';
       div.innerHTML = `<div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">🤖</div>`;
       div.appendChild(contentDiv);
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
       return contentDiv;
     }
 
-    function escapeHtml(str) {
-      return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    function setInputLoading(loading) {
+      const input = document.getElementById('questionInput');
+      const sendBtn = document.getElementById('sendBtn');
+      isSending = loading;
+      input.disabled = loading;
+      sendBtn.disabled = loading;
+      sendBtn.innerHTML = loading ? `<span class="spinner"></span>` : 'שלח';
     }
 
     async function sendMessage(e) {
       e.preventDefault();
+      if (isSending) return;
       const input = document.getElementById('questionInput');
-      const sendBtn = document.getElementById('sendBtn');
       const question = input.value.trim();
       if (!question) return;
 
       input.value = '';
       appendUserBubble(question);
-
-      input.disabled = true;
-      sendBtn.disabled = true;
-
-      const botBubble = createBotBubble();
-      const container = document.getElementById('chatMessages');
+      setInputLoading(true);
 
       try {
-        const response = await fetch(`${API_BASE}/api/chat/stream`, {
+        const botBubble = createBotBubble();
+
+        const { res, networkError } = await apiFetch('/api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: getUserId(),
-            question: question
-          })
+          body: JSON.stringify({ question: question })
         });
 
-        if (!response.ok) {
-          const err = await response.json();
-          botBubble.textContent = `⛔ ${err.detail || 'שגיאה בשליחת השאלה'}`;
+        if (networkError) {
+          botBubble.textContent = '⚠️ שגיאת תקשורת מול השרת. ודאו שהשרת פעיל ונסו שוב.';
           botBubble.classList.remove('typing-cursor');
           botBubble.classList.add('text-rose-600', 'border-rose-200', 'bg-rose-50');
-          await loadQuota();
           return;
         }
 
-        const reader = response.body.getReader();
+        if (!res.ok) {
+          const err = await safeJson(res);
+          botBubble.textContent = `⛔ ${err.detail || 'שגיאה בשליחת השאלה'}`;
+          botBubble.classList.remove('typing-cursor');
+          botBubble.classList.add('text-rose-600', 'border-rose-200', 'bg-rose-50');
+          return;
+        }
+
+        if (!res.body || !res.body.getReader) {
+          const text = await res.text();
+          botBubble.textContent = text;
+          botBubble.classList.remove('typing-cursor');
+          return;
+        }
+
+        const reader = res.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let fullText = '';
 
@@ -235,17 +545,46 @@
           const chunk = decoder.decode(value, { stream: true });
           fullText += chunk;
           botBubble.textContent = fullText;
-          container.scrollTop = container.scrollHeight;
+          chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-      } catch (err) {
-        botBubble.textContent = '⚠️ שגיאת תקשורת מול השרת.';
-      } finally {
+
+        if (!fullText.trim()) {
+          botBubble.textContent = 'לא התקבלה תשובה מהשרת. נסו לשאול שוב.';
+        }
         botBubble.classList.remove('typing-cursor');
-        await loadQuota();
+      } catch (err) {
+        const existing = chatMessages.lastElementChild;
+        if (existing) {
+          const bubble = existing.querySelector('div:last-child');
+          if (bubble) {
+            bubble.textContent = '⚠️ שגיאה לא צפויה. נסו שוב.';
+            bubble.classList.remove('typing-cursor');
+          }
+        }
+      } finally {
+        setInputLoading(false);
       }
     }
 
-    loadQuota();
+    // ---------- Service worker ----------
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    // ---------- Boot ----------
+    (async function boot() {
+      if (TOKEN) {
+        authScreen.classList.add('hidden');
+        chatScreen.classList.remove('hidden');
+        showWelcomeMessage();
+      } else {
+        chatScreen.classList.add('hidden');
+        authScreen.classList.remove('hidden');
+      }
+      initLoader.classList.add('hidden');
+    })();
   </script>
+
+  <script src="/update-check.js"></script>
 </body>
 </html>
