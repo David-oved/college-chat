@@ -620,6 +620,30 @@ class Database:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
+        """מוחק שיחה אחת של המשתמש (וכל ההודעות שלה). מחזיר False אם השיחה לא קיימת או לא שלו."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "delete from messages where conversation_id in (select id from conversations where id = %s and user_id = %s);",
+                    (conversation_id, user_id),
+                )
+                await cur.execute(
+                    "delete from conversations where id = %s and user_id = %s returning id;", (conversation_id, user_id)
+                )
+                row = await cur.fetchone()
+        return row is not None
+
+    async def delete_all_conversations(self, user_id: str) -> int:
+        """מוחק את כל השיחות וההודעות של המשתמש. מחזיר כמה שיחות נמחקו."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "delete from messages where conversation_id in (select id from conversations where user_id = %s);", (user_id,)
+                )
+                await cur.execute("delete from conversations where user_id = %s;", (user_id,))
+                return cur.rowcount or 0
+
     async def get_conversation_owner(self, conversation_id: str) -> Optional[str]:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:

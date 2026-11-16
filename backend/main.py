@@ -1,7 +1,8 @@
 import sys
 import time
 import base64
-from urllib.parse import unquote
+import uuid
+from urllib.parse import quote, unquote
 try:
     # מונע קריסה בהדפסת עברית/אימוג'י לקונסול של Windows (cp1255/cp1252 לא תומכים ב-UTF-8)
     sys.stdout.reconfigure(encoding="utf-8")
@@ -27,6 +28,7 @@ from db import db
 from auth import admin_auth, require_admin, hash_password, student_auth, require_student
 from gemini_diagnostics import run_full_diagnostics, test_connectivity
 from push import send_push_to_subscription, VAPID_PUBLIC_KEY
+from moodle_tools import decode_file_ref, MOODLE_FILE_BASE
 from rag_engine import (
     chunk_text,
     get_embedding,
@@ -181,6 +183,11 @@ class StudentSignupRequest(BaseModel):
 class StudentLoginRequest(BaseModel):
     username: str
     password: str
+
+
+class MoodleFileRequest(BaseModel):
+    ref: str = Field(..., min_length=4, max_length=1700)
+    moodle_token: str = Field(..., min_length=8, max_length=4000)
 
 
 class MoodleConnectRequest(BaseModel):
@@ -902,6 +909,118 @@ async def get_conversation_messages(conversation_id: str, session=Depends(requir
     if owner_id != session["user_id"]:
         raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
     return {"messages": await db.get_all_messages(conversation_id)}
+
+
+def _valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(str(value))
+        return True
+    except ValueError:
+        return False
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_one_conversation(conversation_id: str, session=Depends(require_student)):
+    """מוחק שיחה אחת של הסטודנט המחובר (וכל ההודעות שלה). אי אפשר לשחזר."""
+    if not _valid_uuid(conversation_id) or not await db.delete_conversation(conversation_id, session["user_id"]):
+        raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
+    return {"deleted": 1}
+
+
+@app.delete("/api/conversations")
+async def delete_all_my_conversations(session=Depends(require_student)):
+    """מוחק את כל השיחות וההודעות של הסטודנט המחובר. אי אפשר לשחזר."""
+    return {"deleted": await db.delete_all_conversations(session["user_id"])}
+
+
+# =====================================================================
+# הורדת קובץ מ-Moodle לסטודנט (מסמכי תרגילים וכו') - הטוקן לא נחשף בכתובת ולא נשמר
+# =====================================================================
+MAX_FILE_BYTES = 25 * 1024 * 1024
+_SAFE_FILE_TYPES = {
+    "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "text/plain", "application/zip",
+    "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+
+@app.post("/api/moodle/file")
+async def moodle_download_file(req: MoodleFileRequest, session=Depends(require_student)):
+    """
+    מוריד קובץ מ-Moodle בשם הסטודנט ומעביר אותו לאפליקציה. ה-ref (שהמודל שלף בכלי get_course_files) הוא רק הנתיב של
+    הקובץ ב-Moodle; השרת בונה את הכתובת בעצמו (תמיד באתר ה-Moodle של המכללה, בלי הפניות), מצרף את הטוקן שהגיע בגוף
+    הבקשה (מאומת שהוא של אותו סטודנט) ומזרים את הקובץ הלאה. הטוקן לא נשמר ולא מופיע בשום כתובת.
+    """
+    _rate_limit("file:" + session["user_id"], 20, 60)
+    path = decode_file_ref(req.ref)
+    if not path:
+        raise HTTPException(status_code=400, detail="קישור קובץ לא תקין")
+
+    own_moodle_id = session["username"][len("moodle_"):] if session["username"].startswith("moodle_") else None
+    if not own_moodle_id:
+        raise HTTPException(status_code=403, detail="הורדת קבצים זמינה רק עם חיבור Moodle")
+    try:
+        token, info = await _verify_moodle_token(req.moodle_token)
+    except HTTPException as e:
+        if e.status_code == 401:
+            raise HTTPException(status_code=403, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה")
+        raise
+    if str(info.get("userid")) != own_moodle_id:
+        raise HTTPException(status_code=403, detail="הטוקן שייך למשתמש אחר")
+
+    client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=False)
+    try:
+        upstream = await client.send(client.build_request("GET", MOODLE_FILE_BASE + path, params={"token": token}), stream=True)
+    except httpx.HTTPError:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail="לא ניתן להתחבר לשרת Moodle כרגע")
+
+    async def close_all():
+        await upstream.aclose()
+        await client.aclose()
+
+    fname = unquote(path.rsplit("/", 1)[-1]) or "file"
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    ctype = (upstream.headers.get("content-type") or "application/octet-stream").split(";")[0].strip().lower()
+    if upstream.status_code in (401, 403):
+        await close_all()
+        raise HTTPException(status_code=403, detail="אין הרשאה להוריד את הקובץ הזה")
+    if upstream.status_code == 404:
+        await close_all()
+        raise HTTPException(status_code=404, detail="הקובץ לא נמצא")
+    if upstream.status_code != 200 or ctype == "application/json" or (ctype == "text/html" and ext not in ("html", "htm")):
+        await close_all()  # בדרך כלל דף שגיאה/כניסה של Moodle ולא הקובץ עצמו
+        raise HTTPException(status_code=404, detail="הקובץ לא זמין להורדה")
+    try:
+        length = int(upstream.headers.get("content-length") or 0)
+    except ValueError:
+        length = 0
+    if length > MAX_FILE_BYTES:
+        await close_all()
+        raise HTTPException(status_code=413, detail="הקובץ גדול מדי להורדה כאן (מעל 25MB)")
+
+    async def body():
+        total = 0
+        try:
+            async for chunk in upstream.aiter_bytes(65536):
+                total += len(chunk)
+                if total > MAX_FILE_BYTES:
+                    break
+                yield chunk
+        finally:
+            await close_all()
+
+    headers = {
+        "Content-Disposition": "attachment; filename*=UTF-8''" + quote(fname),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if length:
+        headers["Content-Length"] = str(length)
+    # סוגים "בטוחים" בלבד נשמרים כמו שהם; כל השאר (html, svg, סקריפטים...) יורדים כקובץ גנרי ולא יפתחו בתוך האפליקציה
+    return StreamingResponse(body(), media_type=ctype if ctype in _SAFE_FILE_TYPES else "application/octet-stream", headers=headers)
 
 
 @app.post("/api/chat/stream")

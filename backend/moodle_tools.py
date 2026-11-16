@@ -13,12 +13,76 @@
 בפאנל הניהול, כדי שלא יהיו שלושה מקומות שונים שצריך לעדכן בכל הוספת פונקציה.
 """
 import asyncio
+import base64
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
 MOODLE_BASE_URL = "https://moodle.jct.ac.il/webservice/rest/server.php"
+
+# --- שליחת קבצים לסטודנט ---
+# כתובת קובץ של Moodle דורשת את הטוקן של הסטודנט (?token=...). הטוקן לא יכול להופיע בטקסט שהמודל כותב
+# (זה נשמר ב-DB ומוצג בצ'אט), לכן הכלי מחזיר "אסמכתא" (ref) אטומה בלבד: הנתיב של הקובץ בתוך
+# webservice/pluginfile.php, בקידוד base64url. האפליקציה מבקשת מהשרת את הקובץ באמצעות ה-ref + הטוקן
+# (בגוף בקשה מאובטחת, לא בכתובת), והשרת מוריד אותו מ-Moodle ומעביר הלאה.
+_MOODLE_HOST = urlsplit(MOODLE_BASE_URL).netloc
+_FILE_PREFIX = "/webservice/pluginfile.php/"
+MOODLE_FILE_BASE = f"https://{_MOODLE_HOST}{_FILE_PREFIX}"
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9._~%!$&'()*+,;=:@/-]+$")
+MAX_FILES_PER_LISTING = 40
+
+
+def make_file_ref(fileurl: Any) -> Optional[str]:
+    """הופך fileurl של Moodle ל-ref בטוח, או None אם זו לא כתובת קובץ תקינה באתר ה-Moodle שלנו."""
+    try:
+        u = urlsplit(str(fileurl or ""))
+    except ValueError:
+        return None
+    if u.netloc != _MOODLE_HOST or not u.path.startswith(_FILE_PREFIX):
+        return None
+    rest = u.path[len(_FILE_PREFIX):]
+    if not rest or ".." in unquote(rest) or not _SAFE_PATH.match(rest):
+        return None
+    return base64.urlsafe_b64encode(rest.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def decode_file_ref(ref: str) -> Optional[str]:
+    """מפענח ref ומאמת אותו. מחזיר את הנתיב בתוך pluginfile.php, או None אם הוא לא תקין (למניעת כל ניסיון להגיע לכתובת אחרת)."""
+    try:
+        raw = base64.urlsafe_b64decode((ref or "") + "=" * (-len(ref or "") % 4)).decode("utf-8")
+    except Exception:
+        return None
+    if not raw or len(raw) > 1200 or raw.startswith("/") or "://" in raw or not _SAFE_PATH.match(raw) or ".." in unquote(raw):
+        return None
+    return raw
+
+
+def _fmt_size(n: Any) -> str:
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    if n < 1024:
+        return f"{n}B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.0f}KB"
+    return f"{n / (1024 * 1024):.1f}MB"
+
+
+def _file_kind(filename: str, mimetype: str) -> str:
+    ext = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
+    names = {"pdf": "PDF", "doc": "Word", "docx": "Word", "ppt": "PowerPoint", "pptx": "PowerPoint", "xls": "Excel", "xlsx": "Excel",
+             "zip": "ZIP", "rar": "RAR", "txt": "טקסט", "py": "Python", "java": "Java", "c": "C", "cpp": "C++", "png": "תמונה", "jpg": "תמונה", "jpeg": "תמונה"}
+    return names.get(ext) or (mimetype.split("/")[-1].upper() if mimetype else ext.upper() or "קובץ")
+
+
+def _clean_label(s: Any) -> str:
+    return re.sub(r"[\[\]|\r\n]+", " ", str(s or "")).strip()[:90] or "קובץ"
 
 _CACHE_TTL_SECONDS = 300  # 5 דקות - מספיק כדי לא להכביד על השרת, קצר מספיק כדי לא להציג מידע מיושן
 _cache: Dict[tuple, tuple] = {}  # key -> (expires_at_monotonic, value)
@@ -233,6 +297,78 @@ async def _exec_get_course_content(wstoken, moodle_user_id, args) -> Tuple[Any, 
     if not lines:
         return data, f"לא נמצא תוכן בקורס '{course.get('fullname')}'."
     return data, f"תוכן הקורס '{course.get('fullname')}':\n" + "\n".join(lines)
+
+
+@_register(
+    name="get_course_files", moodle_function="core_course_get_contents",
+    icon="📎", label="קבצים ומסמכים בקורס (שליחה לסטודנט)",
+    description_admin="מוצא קבצים בקורס - מסמכי תרגילים, סיכומים, מצגות, וקבצים מצורפים למטלות - וממיר כל אחד ל'סמן קובץ' שהמודל מעתיק לתשובה כדי שהסטודנט יקבל כפתור הורדה ישירות בצ'אט. הטוקן אף פעם לא מופיע בסמן.",
+    description_ai="מחזיר רשימת קבצים בקורס מסוים (מסמכי תרגילים, סיכומים, מצגות, קבצים מצורפים למטלות). כל קובץ מגיע עם סמן [[file:...|שם]] - כדי לשלוח קובץ לסטודנט מעתיקים את הסמן בדיוק לתשובה. אפשר לסנן לפי מילת חיפוש (שם קובץ, פעילות או נושא).",
+    params=[
+        {"name": "course_name", "type": "STRING", "description": "שם הקורס", "required": True},
+        {"name": "search", "type": "STRING", "description": "מילת חיפוש בשם הקובץ/הפעילות/הנושא (למשל 'תרגיל 3'). אופציונלי - בלעדיה מוחזרים כל הקבצים.", "required": False},
+    ],
+)
+async def _exec_get_course_files(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    course_name = args.get("course_name", "")
+    search = (args.get("search") or "").strip().lower()
+    course = await _resolve_course(wstoken, moodle_user_id, course_name)
+    if not course:
+        return None, f"לא נמצא קורס בשם '{course_name}' ברשימת הקורסים."
+
+    content = await _cached_moodle_call(
+        (moodle_user_id, "content", course["id"]), wstoken, "core_course_get_contents", {"courseid": course["id"]},
+    )
+    found: List[Dict[str, Any]] = []
+    seen = set()
+
+    def add(filename, size, mimetype, fileurl, activity, section):
+        key = str(fileurl)
+        if key in seen:
+            return
+        ref = make_file_ref(fileurl)
+        if not ref:
+            return
+        seen.add(key)
+        found.append({"filename": filename or "קובץ", "size": size, "mimetype": mimetype or "", "ref": ref, "activity": activity or "", "section": section or ""})
+
+    for s in (content if isinstance(content, list) else []):
+        for m in (s.get("modules") or []):
+            for c in (m.get("contents") or []):
+                if c.get("type") == "file":
+                    add(c.get("filename"), c.get("filesize"), c.get("mimetype"), c.get("fileurl"), m.get("name"), s.get("name"))
+
+    # קבצים מצורפים לתיאור של מטלות (מסמכי התרגיל עצמם) - לא תמיד מופיעים ב-contents של הקורס
+    try:
+        a_data = await _cached_moodle_call(
+            (moodle_user_id, "assignments", course["id"]), wstoken, "mod_assign_get_assignments", {"courseids[0]": course["id"]},
+        )
+        c0 = ((a_data or {}).get("courses") or [{}])[0]
+        for a in (c0.get("assignments") or []):
+            for att in (a.get("introattachments") or []):
+                add(att.get("filename"), att.get("filesize"), att.get("mimetype"), att.get("fileurl"), a.get("name"), "מטלות")
+    except MoodleTokenInvalid:
+        raise
+    except Exception:
+        pass  # אם הפונקציה הזו חסומה בשרת - עדיין מחזירים את הקבצים שנמצאו בתוכן הקורס
+
+    if search:
+        found = [f for f in found if search in f"{f['filename']} {f['activity']} {f['section']}".lower()]
+    if not found:
+        return found, (f"לא נמצאו קבצים בקורס '{course.get('fullname')}'" + (f" התואמים ל-'{args.get('search')}'." if search else "."))
+
+    total = len(found)
+    shown = found[:MAX_FILES_PER_LISTING]
+    lines = []
+    for i, f in enumerate(shown, 1):
+        label = _clean_label(f["filename"])
+        meta = ", ".join(x for x in (_file_kind(f["filename"], f["mimetype"]), _fmt_size(f["size"])) if x)
+        origin = " · ".join(x for x in (f["activity"], f["section"]) if x)
+        lines.append(f"{i}. [[file:{f['ref']}|{label}]] ({meta})" + (f" - מתוך: {origin}" if origin else ""))
+    head = f"קבצים בקורס '{course.get('fullname')}' ({total}" + (f", מוצגים {len(shown)} הראשונים" if total > len(shown) else "") + "):\n"
+    note = ("\n\nהוראה: כדי לשלוח קובץ לסטודנט העתק את הסמן [[file:...|...]] שלו בדיוק כפי שהוא לתשובה, בשורה משלו. "
+            "אל תכתוב כתובות URL ואל תמציא סמנים.")
+    return shown, head + "\n".join(lines) + note
 
 
 @_register(
