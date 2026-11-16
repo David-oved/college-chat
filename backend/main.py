@@ -31,6 +31,7 @@ from rag_engine import (
     get_embedding,
     categorize_and_summarize,
     stream_gemini_answer,
+    stream_gemini_answer_with_moodle_tools,
     stream_knowledge_draft,
     summarize_conversation,
 )
@@ -129,6 +130,8 @@ class ChatQuestionRequest(BaseModel):
 class ChatQuestionV2Request(BaseModel):
     conversation_id: str
     question: str
+    moodle_token: Optional[str] = None
+    moodle_user_id: Optional[int] = None
 
 
 class AdminLoginRequest(BaseModel):
@@ -624,11 +627,18 @@ SUMMARIZE_AFTER_MESSAGES = 16  # אחרי כמה הודעות בשיחה מתח�
 KEEP_RECENT_MESSAGES = 12  # כמה הודעות אחרונות נשארות מילה-במילה (לא מסוכמות)
 
 
-async def _stream_chat_response(conversation_id: str, question: str) -> StreamingResponse:
+async def _stream_chat_response(
+    conversation_id: str,
+    question: str,
+    moodle_token: Optional[str] = None,
+    moodle_user_id: Optional[int] = None,
+) -> StreamingResponse:
     """
     ליבת הצ'אט המשותפת: שולפת מידע רלוונטי (pgvector), שומרת את שאלת הסטודנט,
     מזרימה תשובה עם הקשר (סיכום + הודעות אחרונות), שומרת אותה, ודוחסת הקשר ישן לסיכום
     כשהשיחה מתארכת. אין יותר הגבלת מכסה יומית - סטודנט יכול לשאול כמה שאלות שהוא רוצה.
+    אם יש חיבור Moodle פעיל (moodle_token+moodle_user_id מגיעים מה-frontend, לא נשמרים
+    אצלנו) - גמיני מקבל גם כלים (function calling) לשלוף קורסים/מטלות/ציונים/יומן אמיתיים.
     """
     api_key = await db.get_api_key()
 
@@ -667,10 +677,18 @@ async def _stream_chat_response(conversation_id: str, question: str) -> Streamin
         # ההודעה האחרונה ברשימה היא השאלה הנוכחית עצמה - לא צריך לשלוח אותה פעמיים
         history_for_prompt = recent_messages[:-1] if recent_messages else []
 
-        async for token in stream_gemini_answer(
-            question, relevant_chunks, api_key, bot_identity, catalog,
-            conversation_summary, history_for_prompt
-        ):
+        if moodle_token and moodle_user_id:
+            answer_stream = stream_gemini_answer_with_moodle_tools(
+                question, relevant_chunks, api_key, moodle_token, moodle_user_id,
+                bot_identity, catalog, conversation_summary, history_for_prompt
+            )
+        else:
+            answer_stream = stream_gemini_answer(
+                question, relevant_chunks, api_key, bot_identity, catalog,
+                conversation_summary, history_for_prompt
+            )
+
+        async for token in answer_stream:
             full_answer += token
             yield token
 
@@ -728,7 +746,10 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
     owner_id = await db.get_conversation_owner(req.conversation_id)
     if owner_id != session["user_id"]:
         raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
-    return await _stream_chat_response(req.conversation_id, question)
+    # אותו פענוח כמו ב-/api/moodle/connect (moodlemobile://token=BASE64(...)) - המשתמש
+    # תמיד שולח את מה שהודבק בפועל, בלי לפענח בצד הלקוח.
+    moodle_wstoken = _extract_moodle_wstoken(req.moodle_token) if req.moodle_token else None
+    return await _stream_chat_response(req.conversation_id, question, moodle_wstoken, req.moodle_user_id)
 
 
 # =====================================================================

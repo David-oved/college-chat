@@ -255,6 +255,10 @@
 
     let TOKEN = safeStorageGet('token') || null;
     let USER_ID = safeStorageGet('user_id') || null;
+    // טוקן Moodle חי רק בדפדפן של הסטודנט - לעולם לא נשמר אצלנו ב-DB או בזיכרון השרת בין בקשות.
+    // מצורף מחדש מכאן בכל קריאת צ'אט שבה יש חיבור פעיל, כדי לאפשר ל-AI לשלוף מידע אישי אמיתי.
+    let MOODLE_TOKEN = safeStorageGet('moodle_token') || null;
+    let MOODLE_USER_ID = safeStorageGet('moodle_user_id') || null;
     let currentConversationId = null;
     let conversationsCache = [];
     let isSending = false;
@@ -394,6 +398,14 @@
       if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
 
       const m = data.moodle || {};
+      // שומרים את הטוקן הגולמי שהודבק (לא מפוענחים כאן בצד הלקוח - השרת כבר יודע לפענח
+      // moodlemobile://token=... בכל קריאה, ב-/api/moodle/connect וגם בכל הודעת צ'אט).
+      // זה חי רק בדפדפן הזה - אף פעם לא נשמר ב-DB שלנו.
+      MOODLE_TOKEN = token;
+      MOODLE_USER_ID = m.userid != null ? String(m.userid) : null;
+      safeStorageSet('moodle_token', MOODLE_TOKEN);
+      if (MOODLE_USER_ID !== null) safeStorageSet('moodle_user_id', MOODLE_USER_ID);
+
       resultEl.innerHTML = `
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 space-y-1">
           <div class="font-bold">✅ הטוקן תקף - מחובר כ: ${escapeHtml(m.fullname || m.username || '')}</div>
@@ -438,8 +450,12 @@
     function handleLogout() {
       safeStorageRemove('token');
       safeStorageRemove('user_id');
+      safeStorageRemove('moodle_token');
+      safeStorageRemove('moodle_user_id');
       TOKEN = null;
       USER_ID = null;
+      MOODLE_TOKEN = null;
+      MOODLE_USER_ID = null;
       currentConversationId = null;
       conversationsCache = [];
       chatMessages.innerHTML = '';
@@ -707,7 +723,12 @@
         const { res, networkError } = await apiFetch('/api/chat/stream/v2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversation_id: currentConversationId, question: question })
+          body: JSON.stringify({
+            conversation_id: currentConversationId,
+            question: question,
+            moodle_token: MOODLE_TOKEN || null,
+            moodle_user_id: MOODLE_USER_ID ? parseInt(MOODLE_USER_ID, 10) : null
+          })
         });
 
         if (networkError) {

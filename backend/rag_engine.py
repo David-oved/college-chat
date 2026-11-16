@@ -128,7 +128,7 @@ DEFAULT_MODELS_TO_TRY = ["gemini-flash-lite-latest", "gemini-flash-latest", "gem
 
 
 async def _stream_from_gemini(
-    full_prompt: str,
+    contents,
     api_key: str,
     models_to_try: List[str] = None,
     max_output_tokens: int = 600,
@@ -138,10 +138,13 @@ async def _stream_from_gemini(
     ליבת ההזרמה מול Gemini: מנגנון תורים (Semaphore) + Retry אוטומטי לשגיאות 429/5xx,
     ומזרים את התשובה טוקן-טוקן בזמן אמת. משותף לכל קריאה שצריכה תשובת AI מוזרמת
     (גם תשובת הצ'אט לסטודנט וגם ניסוח AI למנהל).
+    `contents` יכול להיות מחרוזת (פרומפט שטוח, הדרך הרגילה) או כבר רשימת turns מוכנה
+    (למשל כש-Moodle function calling צריך לשלוח גם את תור ה-functionCall/functionResponse).
     """
     models_to_try = models_to_try or DEFAULT_MODELS_TO_TRY
+    turns = contents if isinstance(contents, list) else [{"role": "user", "parts": [{"text": contents}]}]
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
+        "contents": turns,
         "generationConfig": {
             "temperature": 0.1,  # טמפרטורה נמוכה מאוד למניעת המצאות והזיות!
             "maxOutputTokens": max_output_tokens,
@@ -196,17 +199,52 @@ async def _stream_from_gemini(
         yield "⚠️ המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
 
 
-async def stream_gemini_answer(
+async def _generate_once(
+    contents: List[dict],
+    api_key: str,
+    tools: Optional[List[dict]] = None,
+    max_output_tokens: int = 300,
+    call_type: str = "other",
+) -> Optional[dict]:
+    """
+    קריאה בודדת (לא מוזרמת) ל-Gemini - משמשת לסיבוב ה"החלטה" של function calling
+    (האם ובאיזה כלי Moodle להשתמש). בכוונה בלי ה-retry/backoff המלא של ההזרמה -
+    זו קריאה קצרה וזולה, ואם היא נכשלת פשוט חוזרים לנתיב הרגיל בלי כלים.
+    """
+    payload = {
+        "contents": contents,
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens},
+    }
+    if tools:
+        payload["tools"] = tools
+
+    async with gemini_queue_semaphore:
+        for model_name in DEFAULT_MODELS_TO_TRY:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            try:
+                await db.increment_api_usage(call_type)
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    candidates = resp.json().get("candidates", [])
+                    return candidates[0].get("content") if candidates else None
+                if resp.status_code not in (429, 500, 502, 503, 504):
+                    return None
+            except Exception:
+                continue
+    return None
+
+
+def _build_chat_user_turn(
     question: str,
     context_chunks: List[Dict[str, Any]],
-    api_key: str,
-    bot_identity: str = "",
-    catalog: Optional[List[Dict[str, str]]] = None,
-    conversation_summary: str = "",
-    recent_messages: Optional[List[Dict[str, str]]] = None,
-) -> AsyncGenerator[str, None]:
-    """בונה את הפרומפט לתשובת צ'אט לסטודנט (עם ה-RAG שנשלף + זהות הבוט + מפת הנושאים + הקשר השיחה) ומזרים אותו מ-Gemini."""
-    # הרכבת ההקשר מתוך מסמכי המכללה שנשלפו
+    bot_identity: str,
+    catalog: Optional[List[Dict[str, str]]],
+    conversation_summary: str,
+    recent_messages: Optional[List[Dict[str, str]]],
+    extra_system_instructions: str = "",
+) -> str:
+    """מרכיב את תור הפתיחה (system prompt + הקשר RAG + היסטוריה + השאלה) - משותף לנתיב הרגיל ולנתיב Moodle."""
     if context_chunks:
         context_text = "\n\n---\n\n".join(
             [f"מקור: {c.get('title', 'נהלי מכללה')}\nתוכן: {c['text']}" for c in context_chunks]
@@ -223,7 +261,7 @@ async def stream_gemini_answer(
         )
         history_block += f"\n=== הודעות אחרונות בשיחה ===\n{turns}\n"
 
-    full_prompt = f"""{build_system_prompt(bot_identity, catalog)}
+    return f"""{build_system_prompt(bot_identity, catalog)}{extra_system_instructions}
 {history_block}
 === מידע המכללה הרלוונטי לשאלה הנוכחית ===
 {context_text}
@@ -232,6 +270,90 @@ async def stream_gemini_answer(
 שאלת הסטודנט (הנוכחית): {question}
 תשובה (בהתבסס אך ורק על המידע המצורף למעלה, ותוך המשכיות עם השיחה אם רלוונטי):"""
 
+
+MOODLE_SYSTEM_ADDENDUM = """
+
+=== מידע אישי מ-Moodle (קורסים/מטלות/ציונים/יומן) ===
+לסטודנט הזה יש חיבור פעיל ל-Moodle. אם השאלה נוגעת למידע אישי שלו (הקורסים שלו, מטלות,
+ציונים, או אירועים ביומן) - ואך ורק במקרה הזה - תוכל להשתמש בכלים (functions) שסופקו לך
+כדי לשלוף את המידע האמיתי והעדכני. אל תמציא קורסים/ציונים/מטלות בעצמך; אם הכלי מחזיר
+שאין מידע או שיש שגיאה - העבר את זה לסטודנט בנימוס בדיוק כפי שהתקבל. לשאלות נהלים רגילות
+(לא אישיות) המשך כרגיל על בסיס מידע המכללה בלבד, בלי להשתמש בכלים."""
+
+
+async def stream_gemini_answer_with_moodle_tools(
+    question: str,
+    context_chunks: List[Dict[str, Any]],
+    api_key: str,
+    moodle_token: str,
+    moodle_user_id: Any,
+    bot_identity: str = "",
+    catalog: Optional[List[Dict[str, str]]] = None,
+    conversation_summary: str = "",
+    recent_messages: Optional[List[Dict[str, str]]] = None,
+) -> AsyncGenerator[str, None]:
+    """
+    כמו stream_gemini_answer, אבל עם אפשרות ל-Gemini לבצע function calling מול Moodle
+    (קורסים/מטלות/ציונים/יומן) כשהשאלה אישית. סיבוב ראשון (לא מוזרם) נותן ל-Gemini
+    הזדמנות להחליט אם להשתמש בכלי; אם כן - מבצעים את הקריאה האמיתית ל-Moodle ומזינים
+    את התוצאה בחזרה לסיבוב שני (מוזרם) שמנסח את התשובה הסופית לסטודנט.
+    אם משהו בנתיב הזה נכשל מכל סיבה - נופלים חזרה לנתיב הרגיל (בלי כלים), בלי לשבור את הצ'אט.
+    """
+    from moodle_tools import MOODLE_TOOLS, execute_moodle_function
+
+    user_turn_text = _build_chat_user_turn(
+        question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
+        extra_system_instructions=MOODLE_SYSTEM_ADDENDUM,
+    )
+    contents = [{"role": "user", "parts": [{"text": user_turn_text}]}]
+
+    try:
+        decision_content = await _generate_once(
+            contents, api_key, tools=MOODLE_TOOLS, max_output_tokens=300, call_type="chat_answer"
+        )
+    except Exception:
+        decision_content = None
+
+    parts = (decision_content or {}).get("parts", [])
+    function_call_part = next((p for p in parts if isinstance(p, dict) and "functionCall" in p), None)
+
+    if not function_call_part:
+        # גמיני לא ביקש כלי (שאלה לא אישית, או שלא זיהה צורך) - נתיב רגיל רגיל, בלי לבזבז את הסבב שכבר קרה
+        async for token in stream_gemini_answer(
+            question, context_chunks, api_key, bot_identity, catalog, conversation_summary, recent_messages
+        ):
+            yield token
+        return
+
+    fc = function_call_part["functionCall"]
+    fn_name = fc.get("name", "")
+    fn_args = fc.get("args") or {}
+
+    result_text = await execute_moodle_function(fn_name, fn_args, moodle_token, moodle_user_id)
+
+    contents.append({"role": "model", "parts": [function_call_part]})
+    contents.append({
+        "role": "user",
+        "parts": [{"functionResponse": {"name": fn_name, "response": {"result": result_text}}}],
+    })
+
+    async for token in _stream_from_gemini(contents, api_key, call_type="chat_answer"):
+        yield token
+
+
+async def stream_gemini_answer(
+    question: str,
+    context_chunks: List[Dict[str, Any]],
+    api_key: str,
+    bot_identity: str = "",
+    catalog: Optional[List[Dict[str, str]]] = None,
+    conversation_summary: str = "",
+    recent_messages: Optional[List[Dict[str, str]]] = None,
+) -> AsyncGenerator[str, None]:
+    """בונה את הפרומפט לתשובת צ'אט לסטודנט (עם ה-RAG שנשלף + זהות הבוט + מפת הנושאים + הקשר השיחה) ומזרים אותו מ-Gemini."""
+    full_prompt = _build_chat_user_turn(
+        question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages
+    )
     async for token in _stream_from_gemini(full_prompt, api_key, call_type="chat_answer"):
         yield token
 
