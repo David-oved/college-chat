@@ -445,11 +445,12 @@ async def stream_chat_with_tools(
     זיכרון הסטודנט מוזרם לפרומפט בכל הודעה, וקורסים שעזב מוסתרים מתוצאות Moodle. עם emit_status גם מזרים אירועי סטטוס.
     כל כשל בנתיב הכלים נופל חזרה לתשובה רגילה בלי כלים - הצ'אט לא נשבר.
     """
-    from moodle_tools import get_enabled_tools, execute_moodle_function, set_hidden_courses
+    from moodle_tools import get_enabled_tools, execute_moodle_function, set_hidden_courses, start_cards, get_cards
     from memory import (MEMORY_ADDENDUM, MEMORY_TOOLS, MEMORY_TOOL_NAMES, build_memory_block, left_courses, run_memory_tool)
 
     memories = memories or []
     set_hidden_courses(left_courses(memories))
+    start_cards()
 
     moodle_tools = get_enabled_tools(enabled_functions) if (moodle_token and moodle_user_id) else []
     moodle_names = {d["name"] for grp in moodle_tools for d in grp.get("functionDeclarations", [])}
@@ -544,6 +545,15 @@ async def stream_chat_with_tools(
             for _, event in outcomes:
                 if event:
                     yield status_event(**event)
+
+        card = get_cards()
+        if card and card.get("deadlines") and len(calls) == 1 and calls[0]["functionCall"].get("name") == "get_upcoming_deadlines":
+            import base64, json as _json
+            payload = base64.urlsafe_b64encode(_json.dumps(card["deadlines"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).decode().rstrip("=")
+            if emit_status:
+                yield status_event(s="write")
+            yield f"[[deadlines:{payload}]]"           # the app draws the list as a card: no second model call, so it also arrives sooner
+            return
 
         contents.append({"role": "model", "parts": calls})
         contents.append({

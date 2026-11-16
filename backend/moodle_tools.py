@@ -669,6 +669,26 @@ async def _exec_get_assignment_submission_status(wstoken, moodle_user_id, args) 
     return data, f"סטטוס הגשת '{match.get('name')}' בקורס '{course.get('fullname')}': {status_he}."
 
 
+# נתונים מובנים שהאפליקציה מציירת ככרטיס (במקום שהמודל ינסח רשימה): נשמרים במילון של הבקשה הנוכחית
+_CARDS: contextvars.ContextVar = contextvars.ContextVar("moodle_cards", default=None)
+
+
+def start_cards() -> dict:
+    d: dict = {}
+    _CARDS.set(d)
+    return d
+
+
+def get_cards():
+    return _CARDS.get()
+
+
+def _put_card(kind: str, value) -> None:
+    d = _CARDS.get()
+    if d is not None:
+        d[kind] = value
+
+
 @_register(
     name="get_upcoming_deadlines", moodle_function="core_calendar_get_action_events_by_timesort",
     icon="⏰", label="דברים דחופים (כל הקורסים)",
@@ -687,6 +707,12 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
         events = [e for e in events if not _name_hidden((e.get("course") or {}).get("fullname"))]
     if not events:
         return data, "אין כרגע דברים דחופים ממתינים."
+    items = sorted(
+        ({"n": str(e.get("name") or "")[:90], "c": str((e.get("course") or {}).get("fullname", ""))[:60], "t": int(e.get("timesort") or 0)} for e in events if e.get("timesort")),
+        key=lambda x: x["t"],
+    )
+    if items:
+        _put_card("deadlines", items)
     lines = [f"- {e.get('name')} ({(e.get('course') or {}).get('fullname', '')}) - {_fmt_ts(e.get('timesort'))}" for e in events]
     return data, "דברים דחופים שממתינים (כל הקורסים):\n" + "\n".join(lines)
 
