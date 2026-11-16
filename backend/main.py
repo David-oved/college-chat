@@ -207,6 +207,15 @@ async def list_app_users():
     return {"users": await db.get_all_users_with_counts()}
 
 
+@app.get("/api/admin/users/{user_id}/activity", dependencies=[Depends(require_admin)])
+async def get_user_activity(user_id: str):
+    """כל השיחות וההודעות בפועל של משתמש ספציפי - כדי לדעת בדיוק מה כל משתמש שאל ומתי."""
+    activity = await db.get_user_activity(user_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+    return activity
+
+
 # =====================================================================
 # 0.5 התחברות/הרשמה אמיתית לסטודנטים (שם משתמש + סיסמה, חשבון ב-DB)
 # =====================================================================

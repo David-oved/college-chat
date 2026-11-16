@@ -659,10 +659,11 @@
     }
 
     function setInputLoading(loading) {
-      const input = document.getElementById('questionInput');
       const sendBtn = document.getElementById('sendBtn');
       isSending = loading;
-      input.disabled = loading;
+      // בכוונה לא מנטרלים (disabled) את שדה ההקלדה: שדה מנוטרל מאבד פוקוס מיד,
+      // וזה מה שגרם למקלדת ב-iOS להיסגר ולהיפתח מחדש בכל הודעה - חסימת שליחה כפולה
+      // כבר קיימת למעלה דרך הדגל isSending, אז זה לא פוגע בהגנה מפני לחיצה כפולה.
       sendBtn.disabled = loading;
       sendBtn.innerHTML = loading ? `<span class="spinner"></span>` : 'שלח';
     }
@@ -834,7 +835,12 @@
   </script>
 
   <script>
-  /* התאמת הגובה למקלדת (iOS Safari ודפדפנים שלא תומכים ב-interactive-widget) */
+  /* התאמת הגובה למקלדת - רק עבור דפדפנים שלא תומכים ב-interactive-widget=resizes-content.
+     ברוב המכשירים המודרניים (iOS 17.4+, Chrome עדכני) הדפדפן כבר מכווץ בעצמו את ה-layout
+     viewport כשהמקלדת עולה, ו-100dvh כבר מגיב נכון לבד. הבאגים/הרעידות הקודמים נגרמו כי
+     הסקריפט הזה היה "נלחם" בדפדפן ומעדכן את אותו הגובה פעמיים בו-זמנית. עכשיו, בכל אירוע,
+     קודם בודקים אם הדפדפן כבר טיפל בזה לבד (window.innerHeight כבר תואם ל-visualViewport.height) -
+     ואם כן, לא נוגעים בכלל ומשאירים ל-100dvh לעבוד. */
   (function () {
     const vv = window.visualViewport;
     const root = document.getElementById('appRoot');
@@ -845,19 +851,31 @@
     let lastAppliedTop = null;
     let ticking = false;
 
+    function clearManualOverride() {
+      if (lastAppliedH !== null || lastAppliedTop !== null) {
+        root.style.removeProperty('--app-h');
+        root.style.removeProperty('top');
+        lastAppliedH = null;
+        lastAppliedTop = null;
+      }
+    }
+
     function fit() {
       ticking = false;
-      if (!mq.matches) { root.style.removeProperty('--app-h'); root.style.removeProperty('top'); return; }
+      if (!mq.matches) { clearManualOverride(); return; }
 
-      // מעדכנים רק כשמשהו באמת השתנה - עדכון תמידי של אותם ערכים הוא מה שגרם ל"רעידה"
       const h = vv.height;
       const top = vv.offsetTop;
-      if (h !== lastAppliedH) { root.style.setProperty('--app-h', h + 'px'); lastAppliedH = h; }
-      if (top !== lastAppliedTop) { root.style.top = top + 'px'; lastAppliedTop = top; }
+      const nativeHandled = Math.abs(window.innerHeight - h) < 2;
 
-      // מאפסים גלילה אופקית/אנכית של הדף רק אם היא באמת זזה ממקום 0 - קריאה תמידית ל-scrollTo
-      // גרמה ל"קרב" מתמשך מול ההתאמות הטבעיות של ספארי וזו הייתה הסיבה המרכזית לרעידה
-      if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+      if (nativeHandled) {
+        // הדפדפן כבר כיווץ את ה-viewport בעצמו - לא נוגעים, כדי לא ליצור "קרב" בין שני מנגנונים
+        clearManualOverride();
+      } else {
+        if (h !== lastAppliedH) { root.style.setProperty('--app-h', h + 'px'); lastAppliedH = h; }
+        if (top !== lastAppliedTop) { root.style.top = top + 'px'; lastAppliedTop = top; }
+        if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+      }
 
       if (h < lastH) chatMessages.scrollTop = chatMessages.scrollHeight;
       lastH = h;

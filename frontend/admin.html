@@ -401,9 +401,24 @@
     </div>
   </div>
 
+  <!-- ===================== מודל: מה המשתמש עשה בפועל ===================== -->
+  <div id="userActivityOverlay" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if (event.target === this) closeUserActivity()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 flex items-center justify-between shrink-0">
+        <h3 id="userActivityTitle" class="font-bold text-sm">פעילות משתמש</h3>
+        <button onclick="closeUserActivity()" class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center transition">✕</button>
+      </div>
+      <div id="userActivityBody" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm">טוען...</div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = window.location.origin;
     const TOKEN_KEY = 'admin_token';
+
+    function escapeHtmlAdmin(str) {
+      return String(str ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
 
     const TAB_TITLES = {
       overview: { icon: '🔑', title: 'הגדרות ומכסות' },
@@ -707,13 +722,16 @@
           .join('');
 
         const su = data.student_usage || {};
-        const students = su.students || [];
+        const students = (su.students || []).filter(s => s.questions_today > 0);
         const studentRows = students.length
-          ? students.map(s => `<div class="flex justify-between py-1 text-xs">
-              <span class="text-slate-600">${s.user_id}</span>
-              <span class="font-bold">${s.used_today}/${s.daily_limit} <span class="text-slate-400 font-normal">(נותרו ${s.remaining})</span></span>
+          ? students.map(s => `<div class="flex justify-between items-center py-1.5 text-xs border-b border-slate-100 last:border-0">
+              <span class="text-slate-700 font-bold">${escapeHtmlAdmin(s.username)}</span>
+              <span class="flex items-center gap-2">
+                <span class="font-bold text-indigo-700">${s.questions_today} שאלות</span>
+                <span class="text-slate-400">${s.last_message_at ? new Date(s.last_message_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+              </span>
             </div>`).join('')
-          : '<div class="text-xs text-slate-400">אין עדיין נתוני שימוש היום</div>';
+          : '<div class="text-xs text-slate-400">אף סטודנט עוד לא שאל שאלה היום</div>';
 
         panel.innerHTML = `
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -726,15 +744,15 @@
             </div>
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
               <div class="flex justify-between items-center mb-2">
-                <span class="font-bold text-sm">שאלות סטודנטים היום</span>
+                <span class="font-bold text-sm">שאלות סטודנטים היום (אמיתי, מה-DB)</span>
                 <span class="font-bold text-indigo-700 text-lg">${su.total_questions_today || 0}</span>
               </div>
-              <div class="text-xs text-slate-500 mb-2">סטודנטים פעילים היום: ${su.active_students_today || 0} · מכסה יומית לכל סטודנט: ${su.daily_quota_limit ?? '—'}</div>
+              <div class="text-xs text-slate-500 mb-2">סטודנטים פעילים היום: ${su.active_students_today || 0} מתוך ${(su.students || []).length} רשומים</div>
               ${studentRows}
             </div>
           </div>
           <div class="text-[11px] text-slate-400 mt-3">
-            המספרים האלה הם ספירה אמיתית של קריאות שהמערכת עצמה ביצעה היום - לא מכסת Google בפועל (זו לא נחשפת ע"י גוגל; אפשר לבדוק מגבלות ידועות דרך "בדוק את המפתח" למעלה).
+            כל המספרים כאן נספרים ישירות מההודעות האמיתיות ב-DB - אין כאן מכסה או הגבלה (השאלות ללא הגבלה). לפירוט מלא של מה כל משתמש שאל - ראו בלשונית "משתמשים".
           </div>
         `;
       } catch (err) {
@@ -774,10 +792,13 @@
             if (!isNaN(d.getTime())) created = d.toLocaleString('he-IL');
           }
           return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
-            <td class="px-4 py-2.5 text-sm font-bold text-slate-800">${u.username ?? '—'}</td>
+            <td class="px-4 py-2.5 text-sm font-bold text-slate-800">${escapeHtmlAdmin(u.username ?? '—')}</td>
             <td class="px-4 py-2.5 text-xs text-slate-500">${created}</td>
             <td class="px-4 py-2.5 text-sm text-center">${u.conversation_count ?? 0}</td>
             <td class="px-4 py-2.5 text-sm text-center">${u.message_count ?? 0}</td>
+            <td class="px-4 py-2.5 text-center">
+              <button onclick="openUserActivity('${u.id}')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-2.5 py-1 rounded-lg transition">👁 מה הוא עשה</button>
+            </td>
           </tr>`;
         }).join('');
 
@@ -789,6 +810,7 @@
                 <th class="px-4 py-2">נוצר בתאריך</th>
                 <th class="px-4 py-2 text-center">מספר שיחות</th>
                 <th class="px-4 py-2 text-center">מספר הודעות</th>
+                <th class="px-4 py-2 text-center">פעילות</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -796,6 +818,56 @@
         </div>`;
       } catch (err) {
         panel.innerHTML = '<div class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">⏳ הנתונים עדיין לא זמינים</div>';
+      }
+    }
+
+    function closeUserActivity() {
+      document.getElementById('userActivityOverlay').classList.add('hidden');
+    }
+
+    async function openUserActivity(userId) {
+      const overlay = document.getElementById('userActivityOverlay');
+      const titleEl = document.getElementById('userActivityTitle');
+      const body = document.getElementById('userActivityBody');
+      overlay.classList.remove('hidden');
+      titleEl.textContent = 'פעילות משתמש';
+      body.innerHTML = '<div class="text-slate-400 text-center py-6">טוען...</div>';
+
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/users/${encodeURIComponent(userId)}/activity`);
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+
+        titleEl.textContent = `מה ${data.username} שאל בפועל`;
+        const conversations = data.conversations || [];
+
+        if (!conversations.length) {
+          body.innerHTML = '<div class="text-slate-400 text-center py-6">המשתמש הזה עדיין לא שלח אף הודעה</div>';
+          return;
+        }
+
+        body.innerHTML = conversations.map(c => {
+          const created = c.created_at ? new Date(c.created_at).toLocaleString('he-IL') : '';
+          const msgs = (c.messages || []).map(m => {
+            const isUser = m.role === 'user';
+            const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="flex ${isUser ? 'justify-end' : 'justify-start'} mb-2">
+              <div class="max-w-[85%] rounded-xl px-3 py-2 text-xs whitespace-pre-wrap break-words ${isUser ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
+                ${escapeHtmlAdmin(m.content)}
+                <div class="text-[10px] ${isUser ? 'text-indigo-200' : 'text-slate-400'} mt-1">${time}</div>
+              </div>
+            </div>`;
+          }).join('');
+          return `<div class="border border-slate-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-bold text-xs text-slate-700">💬 ${escapeHtmlAdmin(c.title || 'שיחה')}</span>
+              <span class="text-[11px] text-slate-400">${created}</span>
+            </div>
+            ${msgs}
+          </div>`;
+        }).join('');
+      } catch (err) {
+        body.innerHTML = '<div class="text-rose-600 text-xs text-center py-6">שגיאה בטעינת פעילות המשתמש</div>';
       }
     }
 

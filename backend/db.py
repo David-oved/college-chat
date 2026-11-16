@@ -322,32 +322,41 @@ class Database:
         return by_type
 
     async def get_student_usage_summary(self) -> Dict[str, Any]:
-        today = date.today()
+        """
+        שימוש אמיתי של סטודנטים היום - נספר ישירות מטבלת ה-messages (לא ממנגנון מכסה ישן
+        שכבר לא פעיל מאז שהשאלות היומיות הפכו ללא מוגבלות). כל שורה היא משתמש אמיתי מ-app_users
+        עם כמה שאלות הוא שאל בפועל היום ומתי שלח הודעה אחרונה.
+        """
         async with _get_pool().connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("select daily_quota_limit from system_config where id = 1;")
-                cfg = await cur.fetchone()
-                daily_limit = (cfg or {}).get("daily_quota_limit", 10)
-
                 await cur.execute(
-                    "select user_id, used_today, last_reset_date from user_quotas order by used_today desc;"
+                    """
+                    select u.id as user_id, u.username,
+                           count(m.id) filter (where m.role = 'user') as questions_today,
+                           max(m.created_at) as last_message_at
+                    from app_users u
+                    left join conversations c on c.user_id = u.id
+                    left join messages m
+                      on m.conversation_id = c.id and m.created_at::date = current_date
+                    group by u.id, u.username
+                    order by questions_today desc, u.username;
+                    """
                 )
                 rows = await cur.fetchall()
 
         students = [
             {
-                "user_id": r["user_id"],
-                "used_today": r["used_today"] if r["last_reset_date"] == today else 0,
-                "daily_limit": daily_limit,
-                "remaining": max(0, daily_limit - (r["used_today"] if r["last_reset_date"] == today else 0)),
+                "user_id": str(r["user_id"]),
+                "username": r["username"],
+                "questions_today": r["questions_today"] or 0,
+                "last_message_at": r["last_message_at"],
             }
             for r in rows
         ]
         return {
             "students": students,
-            "active_students_today": sum(1 for s in students if s["used_today"] > 0),
-            "total_questions_today": sum(s["used_today"] for s in students),
-            "daily_quota_limit": daily_limit,
+            "active_students_today": sum(1 for s in students if s["questions_today"] > 0),
+            "total_questions_today": sum(s["questions_today"] for s in students),
         }
 
     async def upsert_catalog_entry(self, category: str, summary: str):
@@ -424,6 +433,58 @@ class Database:
                 )
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def get_user_activity(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        כל השיחות וההודעות בפועל של משתמש ספציפי - בשביל שהמנהל יוכל לראות בדיוק
+        מה כל משתמש שאל ומתי, ולא רק מספרים מצטברים.
+        """
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "select id, username, created_at from app_users where id = %s;", (user_id,)
+                )
+                user = await cur.fetchone()
+                if not user:
+                    return None
+
+                await cur.execute(
+                    """
+                    select c.id as conversation_id, c.title, c.created_at as conversation_created_at,
+                           m.id as message_id, m.role, m.content, m.created_at as message_created_at
+                    from conversations c
+                    join messages m on m.conversation_id = c.id
+                    where c.user_id = %s
+                    order by c.created_at desc, m.created_at asc;
+                    """,
+                    (user_id,),
+                )
+                rows = await cur.fetchall()
+
+        conversations: Dict[str, Dict[str, Any]] = {}
+        order: List[str] = []
+        for r in rows:
+            cid = str(r["conversation_id"])
+            if cid not in conversations:
+                conversations[cid] = {
+                    "conversation_id": cid,
+                    "title": r["title"],
+                    "created_at": r["conversation_created_at"],
+                    "messages": [],
+                }
+                order.append(cid)
+            conversations[cid]["messages"].append({
+                "role": r["role"],
+                "content": r["content"],
+                "created_at": r["message_created_at"],
+            })
+
+        return {
+            "user_id": str(user["id"]),
+            "username": user["username"],
+            "created_at": user["created_at"],
+            "conversations": [conversations[cid] for cid in order],
+        }
 
     # ----------------------------------------------------------------
     # שיחות והודעות (conversations/messages) - היסטוריה אמיתית + הקשר
