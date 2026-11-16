@@ -6,6 +6,8 @@ const CACHE_NAME = 'college-chat-v1';
 const APP_SHELL = [
   '/',
   '/manifest.json',
+  '/admin',
+  '/admin-manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];

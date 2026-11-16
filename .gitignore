@@ -9,3 +9,6 @@ backend/admin_auth.json
 .env
 backend/vapid_private.pem
 backend/vapid*.pem
+
+# קיצורי דפדפן מקומיים (מצביעים לכתובת Render ספציפית, לא שייכים לקוד המקור)
+*.url

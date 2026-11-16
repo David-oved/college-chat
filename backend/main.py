@@ -782,6 +782,11 @@ async def serve_admin_app():
 async def serve_manifest():
     return FileResponse(os.path.join(FRONTEND_DIR, "manifest.json"), media_type="application/manifest+json")
 
+@app.get("/admin-manifest.json")
+async def serve_admin_manifest():
+    """manifest נפרד לפאנל הניהול - כדי שאפשר יהיה להתקין אותו כאפליקציה עצמאית, נפרדת מאפליקציית הסטודנט."""
+    return FileResponse(os.path.join(FRONTEND_DIR, "admin-manifest.json"), media_type="application/manifest+json")
+
 @app.get("/sw.js")
 async def serve_service_worker():
     return FileResponse(os.path.join(FRONTEND_DIR, "sw.js"), media_type="application/javascript")
