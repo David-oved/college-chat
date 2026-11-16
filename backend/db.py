@@ -51,6 +51,14 @@ class Database:
         pool = _get_pool()
         if pool.closed:
             await pool.open()
+        # מיגרציה עדינה ואידמפוטנטית: עמודת שם פרטי למשתמשים (מגיע מ-Moodle בחיבור). אם ההרשאות
+        # ב-DB לא מאפשרות DDL - לא מפילים את השרת, פשוט ממשיכים בלי שם פרטי שמור.
+        try:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("alter table app_users add column if not exists display_name text;")
+        except Exception as e:
+            print(f"[db] could not ensure app_users.display_name: {e}")
 
     async def close(self):
         if _pool is not None and not _pool.closed:
@@ -431,6 +439,37 @@ class Database:
         row = dict(row)
         row["id"] = str(row["id"])
         return row
+
+    async def get_user_display_name(self, user_id: str) -> Optional[str]:
+        """השם הפרטי השמור של המשתמש (או None אם אין / העמודה עוד לא קיימת)."""
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("select display_name from app_users where id = %s;", (user_id,))
+                    row = await cur.fetchone()
+            return row[0] if row and row[0] else None
+        except Exception:
+            return None
+
+    async def set_user_display_name(self, user_id: str, display_name: str):
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "update app_users set display_name = %s where id = %s and display_name is distinct from %s;",
+                        (display_name, user_id, display_name),
+                    )
+        except Exception as e:
+            print(f"[db] could not save display_name: {e}")
+
+    async def set_conversation_title_if_default(self, conversation_id: str, title: str):
+        """נותן לשיחה כותרת מהשאלה הראשונה (רק אם עדיין יש לה את כותרת ברירת המחדל)."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "update conversations set title = %s where id = %s and title = 'שיחה חדשה';",
+                    (title, conversation_id),
+                )
 
     async def get_all_users_with_counts(self) -> List[Dict[str, Any]]:
         """שורה אחת לכל משתמש - לדשבורד הניהול: כמה שיחות וכמה הודעות יש לו בסה"כ (JOIN יחיד, לא לולאת N+1)."""

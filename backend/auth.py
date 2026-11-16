@@ -104,7 +104,7 @@ class StudentAuth:
             return None
         return session
 
-    def create_session_for_user(self, user_id: str, username: str) -> dict:
+    def create_session_for_user(self, user_id: str, username: str, display_name: Optional[str] = None) -> dict:
         """
         מנפיק טוקן התחברות למשתמש קיים בלי צורך בסיסמה - משמש לזרימת Moodle, שבה האימות
         כבר נעשה מול Moodle עצמו (לא מול הסיסמה שלנו).
@@ -113,9 +113,10 @@ class StudentAuth:
         self.sessions[token] = {
             "user_id": user_id,
             "username": username,
+            "display_name": display_name or "",
             "expiry": datetime.utcnow() + timedelta(days=30),
         }
-        return {"token": token, "user_id": user_id, "username": username}
+        return {"token": token, "user_id": user_id, "username": username, "display_name": display_name or ""}
 
 
 student_auth = StudentAuth()

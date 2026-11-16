@@ -1,4 +1,5 @@
 import sys
+import time
 import base64
 from urllib.parse import unquote
 try:
@@ -14,11 +15,11 @@ import asyncio
 import secrets
 import httpx
 from io import BytesIO
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from pypdf import PdfReader
 
@@ -76,14 +77,48 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# הגדרת CORS
+# הגדרת CORS - רק מקורות מוכרים (לא "*"): האפליקציות שמארחות את הצ'אט (MoodlePro בגיטהאב פייג'ס,
+# הפורק, והשרת עצמו) + localhost לפיתוח. האימות הוא בכותרת Authorization (לא עוגיות), לכן אין credentials.
+# אפשר להוסיף מקורות נוספים במשתנה הסביבה CORS_ORIGINS (מופרדים בפסיק) בלי לשנות קוד.
+_DEFAULT_CORS_ORIGINS = [
+    "https://david-oved.github.io",
+    "https://aorizoro.github.io",
+    "https://college-chat-lwdu.onrender.com",
+]
+_extra_origins = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_DEFAULT_CORS_ORIGINS + _extra_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# --- הגבלת קצב פשוטה בזיכרון (חלון נע) - מגינה על Moodle ועל מכסת Gemini מהצפה ---
+_rate_buckets: dict = {}
+
+
+def _client_ip(request: Request) -> str:
+    # מאחורי הפרוקסי של Render: הערך הימני ב-X-Forwarded-For הוא מה שהפרוקסי עצמו ראה (הערכים משמאל ניתנים לזיוף)
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(key: str, limit: int, window_seconds: int):
+    now = time.monotonic()
+    bucket = _rate_buckets.setdefault(key, [])
+    cutoff = now - window_seconds
+    while bucket and bucket[0] < cutoff:
+        bucket.pop(0)
+    if len(bucket) >= limit:
+        raise HTTPException(status_code=429, detail="יותר מדי בקשות בזמן קצר - נסו שוב בעוד רגע")
+    bucket.append(now)
+    if len(_rate_buckets) > 5000:  # ניקוי דליים ריקים כדי שהזיכרון לא יגדל בלי גבול
+        for k in [k for k, v in _rate_buckets.items() if not v or v[-1] < cutoff]:
+            _rate_buckets.pop(k, None)
 
 
 @app.on_event("startup")
@@ -129,7 +164,7 @@ class ChatQuestionRequest(BaseModel):
 
 class ChatQuestionV2Request(BaseModel):
     conversation_id: str
-    question: str
+    question: str = Field(..., min_length=1, max_length=2000)
     moodle_token: Optional[str] = None
     moodle_user_id: Optional[int] = None
 
@@ -373,8 +408,15 @@ def _available_functions_from_site_info(data: dict) -> Optional[List[str]]:
     return sorted({f.get("name") for f in raw_functions if isinstance(f, dict) and f.get("name")})
 
 
+def _clean_first_name(firstname, fullname) -> str:
+    """שם פרטי נקי וקצר מתוך תשובת Moodle (firstname, ואם אין - המילה הראשונה של fullname)."""
+    raw = (firstname or "").strip() or ((fullname or "").strip().split() or [""])[0]
+    raw = "".join(ch for ch in str(raw) if ch.isprintable())
+    return raw.strip()[:40]
+
+
 @app.post("/api/moodle/connect")
-async def moodle_connect(req: MoodleConnectRequest):
+async def moodle_connect(req: MoodleConnectRequest, request: Request):
     """
     מקבל טוקן Moodle אמיתי (מהאפליקציה המארחת, לדוגמה MoodlePro), ומאמת אותו מול Moodle
     עצמו בזמן אמת (core_webservice_get_site_info) כדי לקבל userid/username/fullname אמיתיים.
@@ -382,6 +424,7 @@ async def moodle_connect(req: MoodleConnectRequest):
     לפי ה-userid של Moodle מאתרים/יוצרים משתמש מקביל אצלנו (app_users) ומנפיקים לו
     טוקן התחברות משלנו, כדי שאפשר יהיה להמשיך איתו ישירות לצ'אט (RAG) ו-/api/conversations.
     """
+    _rate_limit("connect:" + _client_ip(request), 60, 300)
     _, data = await _verify_moodle_token(req.token)
     moodle_user_id = data.get("userid")
 
@@ -390,9 +433,19 @@ async def moodle_connect(req: MoodleConnectRequest):
     if not user:
         random_password_hash = hash_password(secrets.token_urlsafe(16))
         new_id = await db.create_user(local_username, random_password_hash)
-        user = await db.get_user_by_id(new_id)
+        # אם שתי בקשות ראשונות הגיעו במקביל, אחת מהן נכשלת על unique - אז פשוט קוראים שוב את המשתמש שכבר נוצר
+        user = await db.get_user_by_id(new_id) if new_id else await db.get_user_by_username(local_username)
+        if not user:
+            raise HTTPException(status_code=500, detail="לא הצלחנו ליצור את החשבון, נסו שוב")
 
-    session = student_auth.create_session_for_user(user["id"], user["username"])
+    # השם הפרטי (מה-Moodle עצמו) נשמר אצלנו ומשמש לברכה "שלום <שם>" ולפנייה של המודל
+    first_name = _clean_first_name(data.get("firstname"), data.get("fullname"))
+    if first_name:
+        await db.set_user_display_name(user["id"], first_name)
+    else:
+        first_name = await db.get_user_display_name(user["id"])
+
+    session = student_auth.create_session_for_user(user["id"], user["username"], first_name)
 
     return {
         **session,
@@ -767,6 +820,8 @@ async def _stream_chat_response(
     relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3)
 
     await db.add_message(conversation_id, "user", question)
+    # כותרת לשיחה (להיסטוריה): השורה הראשונה של השאלה הראשונה, קצרה
+    await db.set_conversation_title_if_default(conversation_id, (question.splitlines() or [question])[0][:48])
 
     async def response_generator():
         full_answer = ""
@@ -865,13 +920,31 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
     question = req.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="נא להזין שאלה")
+    _rate_limit("chat:" + session["user_id"], 15, 60)
     owner_id = await db.get_conversation_owner(req.conversation_id)
     if owner_id != session["user_id"]:
         raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
-    # אותו פענוח כמו ב-/api/moodle/connect (moodlemobile://token=BASE64(...)) - המשתמש
-    # תמיד שולח את מה שהודבק בפועל, בלי לפענח בצד הלקוח.
-    moodle_wstoken = _extract_moodle_wstoken(req.moodle_token) if req.moodle_token else None
-    return await _stream_chat_response(req.conversation_id, question, session["username"], moodle_wstoken, req.moodle_user_id)
+
+    # כלי Moodle: הטוקן מגיע מהמכשיר בכל בקשה ולא נשמר. את ה-userid לא סומכים על הלקוח - מאמתים מול
+    # Moodle עצמו שהטוקן שייך בדיוק למשתמש של הסשן הזה, ורק אז מפעילים את הכלים עבורו.
+    moodle_wstoken = None
+    moodle_uid = None
+    own_moodle_id = session["username"][len("moodle_"):] if session["username"].startswith("moodle_") else None
+    if req.moodle_token and own_moodle_id:
+        try:
+            moodle_wstoken, info = await _verify_moodle_token(req.moodle_token)
+        except HTTPException as e:
+            moodle_wstoken = None
+            if e.status_code == 401:
+                raise HTTPException(status_code=403, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה")
+            # Moodle לא זמין כרגע (502): ממשיכים לענות בלי כלי Moodle במקום להיכשל
+        else:
+            if str(info.get("userid")) != own_moodle_id:
+                raise HTTPException(status_code=403, detail="הטוקן שייך למשתמש אחר")
+            moodle_uid = int(info["userid"])
+    return await _stream_chat_response(
+        req.conversation_id, question, session.get("display_name") or session["username"], moodle_wstoken, moodle_uid
+    )
 
 
 # =====================================================================
