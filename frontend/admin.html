@@ -1006,11 +1006,42 @@
       }
     }
 
+    setInterval(() => { try { if (document.getElementById('usagePanel') && !document.hidden && !document.activeElement?.matches?.('#aiDailyLimitInput')) loadUsage(); } catch (e) {} }, 15000);
+
     async function loadUsage() {
       const panel = document.getElementById('usagePanel');
       try {
-        const res = await adminFetch(`${API_BASE}/api/admin/usage`);
+        const [res, qres] = await Promise.all([adminFetch(`${API_BASE}/api/admin/usage`), adminFetch(`${API_BASE}/api/admin/ai-quota`).catch(() => null)]);
         const data = await res.json();
+        const quota = qres && qres.ok ? await qres.json() : null;
+        let dailyLimit = 1500;
+        try { dailyLimit = parseInt(localStorage.getItem('aiDailyLimit') || '1500', 10) || 1500; } catch (e) {}
+        const live = quota ? quota.live : null;
+        const usedToday = quota && quota.today ? (quota.today.total || 0) : 0;
+        const pct = Math.min(100, Math.round(usedToday / dailyLimit * 100));
+        const healthMap = { ok: ['תקין', 'text-emerald-700'], limited: ['מוגבל - גוגל דוחה בקשות (429)', 'text-rose-700'], degraded: ['תקלות', 'text-amber-700'] };
+        const hm = live ? (healthMap[live.health] || healthMap.ok) : ['לא זמין', 'text-slate-500'];
+        const modelRows = live ? Object.keys(live.per_model || {}).map(m => {
+          const x = live.per_model[m];
+          return `<div class="flex justify-between text-[11px] py-0.5"><span class="text-slate-600" dir="ltr">${escapeHtmlAdmin(m)}</span><span>${x.ok} תקין / <b class="${x.rate_limited ? 'text-rose-600' : ''}">${x.rate_limited}</b> נדחו / ${x.errors} שגיאות</span></div>`;
+        }).join('') : '';
+        const liveCard = `
+          <div class="bg-white rounded-xl p-4 border border-indigo-200 mb-4">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-bold text-sm">מצב AI בזמן אמת <span class="text-[10px] text-slate-400">(מתעדכן כל 15 שניות)</span></span>
+              <span class="font-bold text-xs ${hm[1]}">${hm[0]}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center mb-3">
+              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold text-indigo-700 text-lg">${live ? live.requests_last_minute : '-'}</div><div class="text-[10px] text-slate-500">קריאות בדקה האחרונה</div></div>
+              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold text-indigo-700 text-lg">${live ? live.requests_last_hour : '-'}</div><div class="text-[10px] text-slate-500">קריאות בשעה האחרונה</div></div>
+              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold ${live && live.rate_limited_last_hour ? 'text-rose-600' : 'text-indigo-700'} text-lg">${live ? live.rate_limited_last_hour : '-'}</div><div class="text-[10px] text-slate-500">נדחו (429) בשעה</div></div>
+            </div>
+            <div class="flex justify-between text-xs mb-1"><span>קריאות היום: <b>${usedToday}</b> מתוך תקרה יומית
+              <input id="aiDailyLimitInput" type="number" min="1" value="${dailyLimit}" class="w-20 border border-slate-300 rounded px-1 text-xs mx-1" onchange="try{localStorage.setItem('aiDailyLimit', this.value)}catch(e){};loadUsage()"></span><span class="font-bold">${pct}%</span></div>
+            <div class="bg-slate-100 rounded h-2 mb-3"><div class="${pct > 85 ? 'bg-rose-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500'} h-2 rounded" style="width:${pct}%"></div></div>
+            ${modelRows}
+            <div class="text-[10px] text-slate-400 mt-2">גוגל לא מספקת מספר "מכסה שנותרה". התקרה היומית היא ערך שאתה קובע (לפי התוכנית שלך), והנתונים החיים הם מה ששרת הצ'אט מדד בפועל מאז ההפעלה האחרונה שלו.</div>
+          </div>`;
 
         const api = data.api_usage_today || {};
         const total = api.total || 0;
@@ -1030,7 +1061,7 @@
             </div>`).join('')
           : '<div class="text-xs text-slate-400">אף סטודנט עוד לא שאל שאלה היום</div>';
 
-        panel.innerHTML = `
+        panel.innerHTML = liveCard + `
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
               <div class="flex justify-between items-center mb-2">
