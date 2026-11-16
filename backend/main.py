@@ -16,6 +16,7 @@ import json
 import asyncio
 import secrets
 import httpx
+from http_client import shared_client
 from io import BytesIO
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -430,7 +431,7 @@ async def _verify_moodle_token(raw_token: str) -> tuple:
         raise HTTPException(status_code=400, detail="נדרש טוקן Moodle")
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with shared_client(15) as client:
             resp = await client.get(MOODLE_BASE_URL, params={
                 "wstoken": token,
                 "wsfunction": "core_webservice_get_site_info",
@@ -853,6 +854,14 @@ SUMMARIZE_AFTER_MESSAGES = 16  # אחרי כמה הודעות בשיחה מתח�
 KEEP_RECENT_MESSAGES = 12  # כמה הודעות אחרונות נשארות מילה-במילה (לא מסוכמות)
 
 
+async def _prefetch_courses(wstoken, moodle_user_id):
+    try:
+        from moodle_tools import _get_courses
+        await _get_courses(wstoken, moodle_user_id, include_hidden=True)
+    except Exception:
+        pass
+
+
 async def _none():
     return None
 
@@ -945,6 +954,8 @@ async def _stream_chat_response(
             db.list_memories(user_id) if user_id else _empty(),
             db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else _none(),
         )
+        if moodle_token and moodle_user_id:
+            _spawn(_prefetch_courses(moodle_token, moodle_user_id))      # רוב השאלות צריכות את רשימת הקורסים: מחממים את המטמון במקביל לחיפוש
         # שאלת הסטודנט עוד לא נשמרה (נשמרת עכשיו ברקע), ולכן ההיסטוריה שנשלפה היא רק מה שלפניה
         save_task = _spawn(_save_user_message(conversation_id, question))
 

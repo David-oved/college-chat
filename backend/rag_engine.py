@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
+from http_client import shared_client
 
 from db import db
 
@@ -111,7 +112,7 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
     for attempt in range(3):
         try:
             db.bump_api_usage("embedding")
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with shared_client(15.0) as client:
                 resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 return resp.json().get("embedding", {}).get("values", [])
@@ -164,7 +165,7 @@ async def _stream_from_gemini(
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
                 try:
                     db.bump_api_usage(call_type)
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with shared_client(30.0) as client:
                         async with client.stream("POST", url, json=payload) as response:
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
@@ -222,7 +223,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                 calls = []
                 try:
                     db.bump_api_usage(call_type)
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with shared_client(30.0) as client:
                         async with client.stream("POST", url, json=payload) as response:
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
@@ -289,7 +290,7 @@ async def _generate_once(
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
                 db.bump_api_usage(call_type)
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with shared_client(30.0) as client:
                     resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
                     candidates = resp.json().get("candidates", [])

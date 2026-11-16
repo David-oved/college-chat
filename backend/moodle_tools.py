@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlsplit
 
 import httpx
+from http_client import shared_client
 
 MOODLE_BASE_URL = "https://moodle.jct.ac.il/webservice/rest/server.php"
 
@@ -123,7 +124,7 @@ async def _moodle_call(wstoken: str, wsfunction: str, params: Optional[Dict[str,
     query.update(params or {})
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with shared_client(15) as client:
             resp = await client.get(MOODLE_BASE_URL, params=query)
     except httpx.HTTPError as e:
         raise RuntimeError(f"לא ניתן להתחבר לשרת Moodle כרגע ({type(e).__name__})")
