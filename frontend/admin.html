@@ -479,11 +479,24 @@
         <section id="tabPanel-ai-context" class="tab-panel space-y-6 hidden">
 
           <div class="card-pro p-6">
+            <h2 class="text-lg font-bold mb-1">🔑 בדיקת טוקן Moodle אמיתי</h2>
+            <p class="text-xs text-slate-500 mb-4">הדביקו כאן טוקן Moodle אמיתי (שלכם או של סטודנט לבדיקה) כדי לבדוק כל פונקציה בנפרד למטה מול הנתונים האמיתיים. הטוקן משמש רק לבדיקות האלה ולא נשמר בשום מקום - לא ב-DB ולא בין בקשות.</p>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input id="moodleTestTokenInput" type="text" placeholder="הדביקו כאן טוקן Moodle (או את הקישור המלא moodlemobile://token=...)"
+                class="flex-1 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition" dir="ltr" />
+              <button type="button" id="moodleTestConnectBtn" onclick="connectMoodleTest()" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shrink-0">
+                התחבר לבדיקה
+              </button>
+            </div>
+            <div id="moodleTestConnectResult" class="mt-3 text-xs"></div>
+          </div>
+
+          <div class="card-pro p-6">
             <div class="flex items-center justify-between mb-1">
-              <h2 class="text-lg font-bold">🧩 פונקציות Moodle (קורסים/מטלות/ציונים/יומן)</h2>
+              <h2 class="text-lg font-bold">🧩 פונקציות Moodle (קורסים/מטלות/ציונים/יומן ועוד)</h2>
               <button onclick="loadMoodleFunctions()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
             </div>
-            <p class="text-xs text-slate-500 mb-4">כל פונקציה שדולקת כאן זמינה ל-AI להשתמש בה כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע מה-AI לקרוא לה בכלל - שימושי אם פונקציה מסוימת לא עובדת טוב מול המערכת של המכללה.</p>
+            <p class="text-xs text-slate-500 mb-4">כל פונקציה שדולקת כאן זמינה ל-AI להשתמש בה כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע מה-AI לקרוא לה בכלל - שימושי אם פונקציה מסוימת לא עובדת טוב מול המערכת של המכללה. כפתור "בדוק" בכל פונקציה פעיל אחרי שמתחברים עם טוקן למעלה.</p>
             <div id="moodleFunctionsPanel" class="space-y-2 text-sm text-slate-500">טוען...</div>
             <button onclick="saveMoodleFunctions()" id="saveMoodleFunctionsBtn" class="btn-press mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">
               💾 שמור שינויים
@@ -820,13 +833,44 @@
       embedding: '🧮 יצירת embeddings'
     };
 
-    // ===================== הקשר ל-AI: פונקציות Moodle + תצוגה מקדימה =====================
-    const MOODLE_FUNCTION_LABELS = {
-      get_my_courses: { icon: '📚', label: 'רשימת הקורסים שלי' },
-      get_course_assignments: { icon: '📝', label: 'מטלות ומועדי הגשה' },
-      get_course_grades: { icon: '🎯', label: 'ציונים' },
-      get_calendar_events: { icon: '📅', label: 'יומן ואירועים' }
-    };
+    // ===================== הקשר ל-AI: בדיקת טוקן + פונקציות Moodle + תצוגה מקדימה =====================
+    let moodleTestToken = null;   // חי רק בזיכרון הדפדפן של המנהל, לכל שימוש הדף הזה - לא נשמר בשום מקום
+    let moodleTestUserId = null;
+    let moodleFunctionsCatalog = [];
+
+    async function connectMoodleTest() {
+      const tokenInput = document.getElementById('moodleTestTokenInput');
+      const token = tokenInput.value.trim();
+      const resultEl = document.getElementById('moodleTestConnectResult');
+      const btn = document.getElementById('moodleTestConnectBtn');
+      if (!token) { showToast('הדביקו טוקן קודם', true); return; }
+
+      btn.disabled = true;
+      resultEl.innerHTML = 'בודק...';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/moodle-test-connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        btn.disabled = false;
+        if (!res.ok) {
+          resultEl.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.detail || 'שגיאה בחיבור')}</div>`;
+          moodleTestToken = null;
+          moodleTestUserId = null;
+          document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = true);
+          return;
+        }
+        moodleTestToken = token;
+        moodleTestUserId = data.userid;
+        resultEl.innerHTML = `<div class="text-emerald-700 font-bold">✅ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>`;
+        document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = false);
+      } catch (err) {
+        btn.disabled = false;
+        resultEl.innerHTML = '<div class="text-rose-600">⚠️ שגיאת תקשורת</div>';
+      }
+    }
 
     async function loadMoodleFunctions() {
       const panel = document.getElementById('moodleFunctionsPanel');
@@ -834,26 +878,83 @@
       try {
         const res = await adminFetch(`${API_BASE}/api/admin/moodle-functions`);
         const data = await res.json();
-        const all = data.all_functions || [];
+        const catalog = data.catalog || [];
+        moodleFunctionsCatalog = catalog;
         const enabled = new Set(data.enabled_functions || []);
-        if (!all.length) {
+        if (!catalog.length) {
           panel.innerHTML = '<div class="text-xs text-slate-400">לא נמצאו פונקציות</div>';
           return;
         }
-        panel.innerHTML = all.map(name => {
-          const meta = MOODLE_FUNCTION_LABELS[name] || { icon: '🔧', label: name };
-          const checked = enabled.has(name) ? 'checked' : '';
-          return `<label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
-            <input type="checkbox" data-fn="${escapeHtmlAdmin(name)}" ${checked} class="w-4 h-4 accent-indigo-600" />
-            <span class="text-lg">${meta.icon}</span>
-            <div>
-              <div class="font-bold text-sm text-slate-800">${escapeHtmlAdmin(meta.label)}</div>
-              <div class="text-[11px] text-slate-400 font-mono">${escapeHtmlAdmin(name)}</div>
+        const hasActiveTestToken = !!moodleTestToken;
+        panel.innerHTML = catalog.map(fn => {
+          const checked = enabled.has(fn.name) ? 'checked' : '';
+          const paramsInputs = (fn.params || []).map(p => `
+            <input type="text" data-fn-arg="${escapeHtmlAdmin(fn.name)}" data-arg-name="${escapeHtmlAdmin(p.name)}"
+              placeholder="${escapeHtmlAdmin(p.description)}${p.required ? ' *' : ''}"
+              class="text-xs border border-slate-300 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500" />
+          `).join('');
+          return `<div class="p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" data-fn="${escapeHtmlAdmin(fn.name)}" ${checked} class="w-4 h-4 accent-indigo-600 shrink-0" />
+              <span class="text-lg shrink-0">${fn.icon}</span>
+              <div class="min-w-0">
+                <div class="font-bold text-sm text-slate-800">${escapeHtmlAdmin(fn.label)}</div>
+                <div class="text-[11px] text-slate-400 font-mono">${escapeHtmlAdmin(fn.name)} (${escapeHtmlAdmin(fn.moodle_function)})</div>
+                <div class="text-xs text-slate-500 mt-0.5">${escapeHtmlAdmin(fn.description)}</div>
+              </div>
+            </label>
+            <div class="mt-2 flex flex-wrap gap-2 items-center mr-7">
+              ${paramsInputs}
+              <button type="button" onclick="testMoodleFunction('${fn.name}')"
+                class="moodle-test-btn btn-press text-xs bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white font-bold rounded-lg px-3 py-1.5 transition"
+                ${hasActiveTestToken ? '' : 'disabled'}>
+                🧪 בדוק
+              </button>
             </div>
-          </label>`;
+            <div id="moodleTestResult-${escapeHtmlAdmin(fn.name)}" class="hidden mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 mr-7"></div>
+          </div>`;
         }).join('');
       } catch (err) {
         panel.innerHTML = '<div class="text-xs text-rose-600">שגיאה בטעינת הפונקציות</div>';
+      }
+    }
+
+    async function testMoodleFunction(name) {
+      if (!moodleTestToken) { showToast('התחברו קודם עם טוקן לבדיקה למעלה', true); return; }
+      const box = document.getElementById(`moodleTestResult-${name}`);
+      box.classList.remove('hidden');
+      box.textContent = 'בודק מול Moodle...';
+
+      const args = {};
+      document.querySelectorAll(`[data-fn-arg="${name}"]`).forEach(inp => {
+        if (inp.value.trim()) args[inp.dataset.argName] = inp.value.trim();
+      });
+
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/moodle-test-function`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: moodleTestToken, function_name: name, args })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          box.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.detail || 'שגיאה')}</div>`;
+          return;
+        }
+        if (!data.ok) {
+          box.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.error || 'שגיאה')}</div>`;
+          return;
+        }
+        box.innerHTML = `
+          <div class="text-emerald-700 font-bold mb-1">✅ תוצאה (הניסוח שהסטודנט היה מקבל):</div>
+          <div class="whitespace-pre-wrap mb-2 text-slate-700">${escapeHtmlAdmin(data.formatted)}</div>
+          <details>
+            <summary class="cursor-pointer text-slate-400 hover:text-slate-600">JSON גולמי מ-Moodle (לבדיקה טכנית)</summary>
+            <pre class="overflow-x-auto mt-1 text-[11px] bg-white border border-slate-200 rounded-lg p-2" dir="ltr">${escapeHtmlAdmin(JSON.stringify(data.raw, null, 2))}</pre>
+          </details>
+        `;
+      } catch (err) {
+        box.innerHTML = '<div class="text-rose-600">⚠️ שגיאת תקשורת</div>';
       }
     }
 

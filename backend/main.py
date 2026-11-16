@@ -160,6 +160,12 @@ class MoodleFunctionsUpdateRequest(BaseModel):
     enabled: List[str]
 
 
+class MoodleTestFunctionRequest(BaseModel):
+    token: str
+    function_name: str
+    args: dict = {}
+
+
 class PushSubscriptionKeys(BaseModel):
     p256dh: str
     auth: str
@@ -324,16 +330,13 @@ def _extract_moodle_wstoken(raw: str) -> str:
     return payload
 
 
-@app.post("/api/moodle/connect")
-async def moodle_connect(req: MoodleConnectRequest):
+async def _verify_moodle_token(raw_token: str) -> tuple:
     """
-    מקבל טוקן Moodle אמיתי (מהאפליקציה המארחת, לדוגמה MoodlePro), ומאמת אותו מול Moodle
-    עצמו בזמן אמת (core_webservice_get_site_info) כדי לקבל userid/username/fullname אמיתיים.
-    הטוקן עצמו לעולם לא נשמר אצלנו - משמש רק לקריאה הזו ונזרק.
-    לפי ה-userid של Moodle מאתרים/יוצרים משתמש מקביל אצלנו (app_users) ומנפיקים לו
-    טוקן התחברות משלנו, כדי שאפשר יהיה להמשיך איתו ישירות לצ'אט (RAG) ו-/api/conversations.
+    מפענח ומאמת טוקן Moodle מול core_webservice_get_site_info בזמן אמת. משותף לכל
+    המקומות שצריכים לאמת טוקן (חיבור סטודנט אמיתי, ובדיקת מנהל) - כדי שלא יהיה כפל קוד
+    בטיפול בשגיאות. מחזיר (wstoken המפוענח, data המלא מ-Moodle). לעולם לא שומר את הטוקן.
     """
-    token = _extract_moodle_wstoken(req.token)
+    token = _extract_moodle_wstoken(raw_token)
     if not token:
         raise HTTPException(status_code=400, detail="נדרש טוקן Moodle")
 
@@ -354,12 +357,33 @@ async def moodle_connect(req: MoodleConnectRequest):
 
     if isinstance(data, dict) and data.get("exception"):
         if data.get("errorcode") == "invalidtoken":
-            raise HTTPException(status_code=401, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה הראשית")
+            raise HTTPException(status_code=401, detail="החיבור ל-Moodle פג - יש להתחבר מחדש")
         raise HTTPException(status_code=502, detail=f"שגיאה מ-Moodle: {data.get('message') or data.get('errorcode')}")
 
-    moodle_user_id = data.get("userid")
-    if not moodle_user_id:
+    if not data.get("userid"):
         raise HTTPException(status_code=502, detail="תשובה לא תקינה מ-Moodle (חסר userid)")
+
+    return token, data
+
+
+def _available_functions_from_site_info(data: dict) -> Optional[List[str]]:
+    raw_functions = data.get("functions")
+    if not isinstance(raw_functions, list):
+        return None
+    return sorted({f.get("name") for f in raw_functions if isinstance(f, dict) and f.get("name")})
+
+
+@app.post("/api/moodle/connect")
+async def moodle_connect(req: MoodleConnectRequest):
+    """
+    מקבל טוקן Moodle אמיתי (מהאפליקציה המארחת, לדוגמה MoodlePro), ומאמת אותו מול Moodle
+    עצמו בזמן אמת (core_webservice_get_site_info) כדי לקבל userid/username/fullname אמיתיים.
+    הטוקן עצמו לעולם לא נשמר אצלנו - משמש רק לקריאה הזו ונזרק.
+    לפי ה-userid של Moodle מאתרים/יוצרים משתמש מקביל אצלנו (app_users) ומנפיקים לו
+    טוקן התחברות משלנו, כדי שאפשר יהיה להמשיך איתו ישירות לצ'אט (RAG) ו-/api/conversations.
+    """
+    _, data = await _verify_moodle_token(req.token)
+    moodle_user_id = data.get("userid")
 
     local_username = f"moodle_{moodle_user_id}"
     user = await db.get_user_by_username(local_username)
@@ -370,36 +394,59 @@ async def moodle_connect(req: MoodleConnectRequest):
 
     session = student_auth.create_session_for_user(user["id"], user["username"])
 
-    # core_webservice_get_site_info מחזיר (כשזה מופעל אצל המוסד) רשימת כל הפונקציות
-    # שהטוקן הזה בפועל מורשה לקרוא להן - זו הדרך האמיתית לדעת אילו שמות פונקציה
-    # (ציונים/מטלות/יומן) קיימים אצל JCT, במקום לנחש לפי ה-API הסטנדרטי של Moodle.
-    raw_functions = data.get("functions")
-    available_functions = (
-        sorted({f.get("name") for f in raw_functions if isinstance(f, dict) and f.get("name")})
-        if isinstance(raw_functions, list)
-        else None
-    )
-
     return {
         **session,
         "moodle": {
             "userid": moodle_user_id,
             "username": data.get("username"),
             "fullname": data.get("fullname"),
-            "available_functions": available_functions,
+            # core_webservice_get_site_info מחזיר (כשזה מופעל אצל המוסד) רשימת כל הפונקציות
+            # שהטוקן הזה בפועל מורשה לקרוא להן - זו הדרך האמיתית לדעת אילו שמות פונקציה
+            # קיימות אצל JCT, במקום לנחש לפי ה-API הסטנדרטי של Moodle.
+            "available_functions": _available_functions_from_site_info(data),
         },
     }
 
 
+@app.post("/api/admin/moodle-test-connect", dependencies=[Depends(require_admin)])
+async def admin_moodle_test_connect(req: MoodleConnectRequest):
+    """
+    בדיקת מנהל בלבד: מאמת טוקן Moodle אמיתי מול JCT ומחזיר userid/username/fullname +
+    רשימת הפונקציות שהטוקן הזה מורשה לקרוא להן בפועל. בכוונה לא יוצר משתמש ולא שומר
+    שום דבר - זו קריאת בדיקה חד-פעמית, לא כניסה לאפליקציה.
+    """
+    _, data = await _verify_moodle_token(req.token)
+    return {
+        "userid": data.get("userid"),
+        "username": data.get("username"),
+        "fullname": data.get("fullname"),
+        "available_functions": _available_functions_from_site_info(data),
+    }
+
+
+@app.post("/api/admin/moodle-test-function", dependencies=[Depends(require_admin)])
+async def admin_moodle_test_function(req: MoodleTestFunctionRequest):
+    """
+    בדיקת מנהל: מריץ פונקציית Moodle ספציפית אחת עם טוקן אמיתי שהמנהל הדביק, ומחזיר גם
+    את ה-JSON הגולמי מ-Moodle וגם את הניסוח העברי - כדי לוודא בדיוק מה מתקבל לפני שסומכים
+    על הפונקציה בצ'אט האמיתי. הטוקן משמש רק לקריאה הזו ולא נשמר.
+    """
+    from moodle_tools import test_function
+
+    token, data = await _verify_moodle_token(req.token)
+    return await test_function(req.function_name, req.args, token, data.get("userid"))
+
+
 @app.get("/api/admin/moodle-functions", dependencies=[Depends(require_admin)])
 async def get_moodle_functions_config():
-    """מחזיר את כל הפונקציות (הכלים) הזמינים לגמיני מול Moodle, ואילו מהם דלוקים כרגע."""
-    from moodle_tools import MOODLE_FUNCTION_NAMES
+    """מחזיר את כל הפונקציות (הכלים) הזמינים לגמיני מול Moodle - עם תיאור ופרמטרים - ואילו מהן דלוקות כרגע."""
+    from moodle_tools import MOODLE_FUNCTION_NAMES, get_function_catalog
 
     enabled = await db.get_moodle_enabled_functions()
     return {
         "all_functions": MOODLE_FUNCTION_NAMES,
         "enabled_functions": MOODLE_FUNCTION_NAMES if enabled is None else enabled,
+        "catalog": get_function_catalog(),
     }
 
 
