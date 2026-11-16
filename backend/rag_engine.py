@@ -400,6 +400,7 @@ def status_event(**kw) -> str:
 
 MAX_TOOL_CALLS_PER_TURN = 4
 MAX_FILE_SEARCHES_PER_TURN = 2
+MAX_TOOL_ROUNDS = 3
 
 
 async def stream_chat_with_tools(
@@ -483,48 +484,81 @@ async def stream_chat_with_tools(
     if not calls:
         return
 
-    # לא לתת לבקשה אחת להפוך לשטיפה של Moodle: מגבילים כמה חיפושי קבצים אפשר בתור אחד
-    kept, file_calls = [], 0
-    for p in calls:
-        if p["functionCall"].get("name") == "get_course_files":
-            file_calls += 1
-            if file_calls > MAX_FILE_SEARCHES_PER_TURN:
-                continue
-        kept.append(p)
-    calls = kept
-
-    if emit_status:
+    # עד MAX_TOOL_ROUNDS סבבי כלים: למשל "מה הציונים שלי" דורש get_my_courses ואז כלי הציונים עם מזהה הקורס.
+    # בסבב האחרון לא מציעים כלים, כדי שתמיד תצא תשובה.
+    file_searches = 0
+    round_no = 0
+    while calls:
+        round_no += 1
+        kept = []
         for p in calls:
+            if p["functionCall"].get("name") == "get_course_files":
+                file_searches += 1
+                if file_searches > MAX_FILE_SEARCHES_PER_TURN:
+                    continue
+            kept.append(p)
+        calls = kept or calls[:1]
+
+        if emit_status:
+            for p in calls:
+                fc = p["functionCall"]
+                a = fc.get("args") or {}
+                yield status_event(
+                    s="tool", name=fc.get("name", ""),
+                    arg=str(a.get("course_name") or a.get("quiz_name") or a.get("fact") or "")[:80],
+                    detail=str(a.get("search") or a.get("assignment_name") or a.get("kind") or "")[:80],
+                )
+
+        async def run(p):
             fc = p["functionCall"]
-            a = fc.get("args") or {}
-            yield status_event(
-                s="tool", name=fc.get("name", ""),
-                arg=str(a.get("course_name") or a.get("quiz_name") or a.get("fact") or "")[:80],
-                detail=str(a.get("search") or a.get("assignment_name") or a.get("kind") or "")[:80],
-            )
+            name, args = fc.get("name", ""), fc.get("args") or {}
+            if name in MEMORY_TOOL_NAMES and user_id:
+                return await run_memory_tool(name, args, user_id, memories)
+            if name in moodle_names:
+                return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
+            return f"הכלי {name} לא זמין.", None
 
-    async def run(p):
-        fc = p["functionCall"]
-        name, args = fc.get("name", ""), fc.get("args") or {}
-        if name in MEMORY_TOOL_NAMES and user_id:
-            return await run_memory_tool(name, args, user_id, memories)
-        if name in moodle_names:
-            return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
-        return f"הכלי {name} לא זמין.", None
+        outcomes = await asyncio.gather(*[run(p) for p in calls])
+        if emit_status:
+            for _, event in outcomes:
+                if event:
+                    yield status_event(**event)
 
-    outcomes = await asyncio.gather(*[run(p) for p in calls])
-    if emit_status:
-        for _, event in outcomes:
-            if event:
-                yield status_event(**event)
+        contents.append({"role": "model", "parts": calls})
+        contents.append({
+            "role": "user",
+            "parts": [{"functionResponse": {"name": p["functionCall"].get("name", ""), "response": {"result": text}}} for p, (text, _) in zip(calls, outcomes)],
+        })
 
-    contents.append({"role": "model", "parts": calls})
-    contents.append({
-        "role": "user",
-        "parts": [{"functionResponse": {"name": p["functionCall"].get("name", ""), "response": {"result": text}}} for p, (text, _) in zip(calls, outcomes)],
-    })
+        if round_no >= MAX_TOOL_ROUNDS:
+            break
+        calls = []
+        got_text = False
+        failed = False
+        async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=800):
+            if kind == "text":
+                if emit_status and not got_text:
+                    yield status_event(s="write")
+                got_text = True
+                yield value
+            elif kind == "calls":
+                calls = value[:MAX_TOOL_CALLS_PER_TURN]
+            else:
+                failed = True
+        if got_text:
+            return
+        if not calls and not failed:
+            # המודל החזיר ריק: מבקשים ממנו תשובה סופית בלי כלים
+            break
+        if failed:
+            break
+
+    answered = False
     async for token in final_answer(contents):
+        answered = True
         yield token
+    if not answered:
+        yield "לא הצלחתי להשלים את הבקשה כרגע. נסה שוב בעוד רגע."
 
 
 async def stream_gemini_answer_with_moodle_tools(
