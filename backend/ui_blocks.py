@@ -26,7 +26,10 @@ UI_ADDENDUM = """
 - callout: תיבת הדגשה עם text קצר ו-tone: info/warn/success/tip. מתאים להתראה ("מחר יש לך 3 הגשות") או טיפ.
 - stats: מספרים גדולים, items של {label, value} (עד 4), למשל כמה מטלות, ציון ממוצע.
 - steps: רשימת צעדים או משימות קצרה, items של {label}.
+- progress: פסי התקדמות, items של {label, value} כשהערך הוא מספר 0 עד 100 (למשל התקדמות בקורס, אחוז הגשות).
+- buttons: כפתורים שהסטודנט לוחץ והם שולחים הודעה בשמו: items של {label, value} (value הוא הטקסט שיישלח, ואם חסר נשלח ה-label). מתאים להצעת המשך ("הצג רק את הדחופות", "שלח לי את הקובץ").
 לכל בלוק אפשר title קצר (עד 6 מילים). אפשר לשלב כמה בלוקים: למשל callout אחד ואחריו deadlines.
+מהירות: אם צריך כמה קורסים או כמה כלים - קרא להם כולם באותו צעד, במקביל. הכלים מוצאים קורס לפי שם (גם חלקי), אז אם אתה כבר יודע את שם הקורס אל תקרא קודם ל-get_my_courses.
 אחרי show_ui כתוב לכל היותר משפט קצר אחד (או כלום): אל תחזור על מה שמוצג. בשאלות פשוטות וקצרות ("מה השעה", "תודה") - טקסט רגיל בלי show_ui. אל תשתמש ב-show_ui עם מזהים שלא קיבלת מכלי בשיחה הזו.
 """
 
@@ -50,13 +53,13 @@ UI_TOOLS = [{"functionDeclarations": [{
                 "items": {
                     "type": "OBJECT",
                     "properties": {
-                        "type": {"type": "STRING", "description": "deadlines | grades | courses | callout | stats | steps"},
+                        "type": {"type": "STRING", "description": "deadlines | grades | courses | callout | stats | steps | progress | buttons"},
                         "style": {"type": "STRING", "description": "deadlines: tickets/timeline/focus; grades: gauges/list; courses: chips/list"},
                         "title": {"type": "STRING", "description": "כותרת קצרה (אופציונלי)"},
                         "ids": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "מזהי פריטים כמו d1, g2, c3"},
                         "text": {"type": "STRING", "description": "לבלוק callout"},
                         "tone": {"type": "STRING", "description": "info | warn | success | tip"},
-                        "items": {"type": "ARRAY", "items": _ITEM, "description": "ל-stats ול-steps"},
+                        "items": {"type": "ARRAY", "items": _ITEM, "description": "ל-stats, steps, progress ו-buttons"},
                     },
                     "required": ["type"],
                 },
@@ -104,11 +107,11 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]]) -> Tuple[List[
             if text:
                 tone = _s(b.get("tone"), 10)
                 out.append({"k": "callout", "tone": tone if tone in TONES else "info", "ti": title, "tx": text})
-        elif kind in ("stats", "steps"):
+        elif kind in ("stats", "steps", "progress", "buttons"):
             its = []
-            for x in (b.get("items") or [])[: (4 if kind == "stats" else 8)]:
+            for x in (b.get("items") or [])[: {"stats": 4, "steps": 8, "progress": 8, "buttons": 4}[kind]]:
                 if isinstance(x, dict) and _s(x.get("label"), 60):
-                    its.append({"l": _s(x.get("label"), 60), "v": _s(x.get("value"), 14)})
+                    its.append({"l": _s(x.get("label"), 60), "v": _s(x.get("value"), 120 if kind == "buttons" else 14)})
             if its:
                 out.append({"k": kind, "ti": title, "it": its})
         else:

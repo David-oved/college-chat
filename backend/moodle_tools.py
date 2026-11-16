@@ -285,10 +285,13 @@ async def _exec_get_course_grades(wstoken, moodle_user_id, args) -> Tuple[Any, s
     )
     usergrades = (data or {}).get("usergrades", [])
     items = usergrades[0].get("gradeitems", []) if usergrades else []
-    lines = [
-        f"- {i.get('itemname') or 'ציון קורס כולל'}: {(i.get('gradeformatted') or '').strip() or 'אין עדיין ציון'}"
-        for i in items if i.get("itemname") or i.get("gradeformatted")
-    ]
+    lines = []
+    for i in items:
+        if not (i.get("itemname") or i.get("gradeformatted")):
+            continue
+        gv = (i.get("gradeformatted") or "").strip()
+        ref = f"[{_reg('g', n=str(i.get('itemname') or 'ציון קורס כולל')[:60], v=gv[:14])}] " if gv else ""
+        lines.append(f"- {ref}{i.get('itemname') or 'ציון קורס כולל'}: {gv or 'אין עדיין ציון'}")
     if not lines:
         return data, f"לא נמצאו ציונים זמינים כרגע לקורס '{course.get('fullname')}'."
     return data, f"ציונים בקורס '{course.get('fullname')}':\n" + "\n".join(lines)
@@ -684,7 +687,9 @@ def _clean_event_name(name: str) -> str:
 
 
 def _clean_course_name(name: str) -> str:
-    return re.sub(r"\s*[-–]?\s*\d{4,}(?:\.\d+)*\s*$", "", str(name or "")).strip(" -–")
+    """מסיר את קוד הקורס ("150005.2.5787 - ...") מההתחלה או מהסוף."""
+    n = re.sub(r"^\s*\d{4,}(?:\.\d+)*\s*[-–]\s*", "", str(name or ""))
+    return re.sub(r"\s*[-–]?\s*\d{4,}(?:\.\d+)*\s*$", "", n).strip(" -–")
 
 
 def _deadline_items(events) -> list:
