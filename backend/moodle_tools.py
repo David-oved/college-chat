@@ -231,7 +231,7 @@ async def _exec_get_my_courses(wstoken, moodle_user_id, args) -> Tuple[Any, str]
     courses = await _get_courses(wstoken, moodle_user_id)
     if not courses:
         return courses, "לא נמצאו קורסים רשומים."
-    text = "רשימת הקורסים של הסטודנט:\n" + "\n".join(f"- {c.get('fullname')}" for c in courses)
+    text = "רשימת הקורסים של הסטודנט:\n" + "\n".join(f"- [{_reg('c', n=_clean_course_name(c.get('fullname'))[:60])}] {c.get('fullname')}" for c in courses)
     left = [c.get("fullname") for c in (await _get_courses(wstoken, moodle_user_id, include_hidden=True) or []) if c not in courses]
     if left:
         text += "\n\n(הסטודנט אמר שעזב ולכן לא מוצגים כפעילים: " + "; ".join(str(x) for x in left) + ")"
@@ -258,7 +258,12 @@ async def _exec_get_course_assignments(wstoken, moodle_user_id, args) -> Tuple[A
     assignments = courses_data[0].get("assignments", []) if courses_data else []
     if not assignments:
         return data, f"לא נמצאו מטלות פתוחות בקורס '{course.get('fullname')}'."
-    lines = [f"- {a.get('name')} (מועד הגשה: {_fmt_ts(a.get('duedate'))})" for a in assignments]
+    cname = _clean_course_name(course.get("fullname"))
+    lines = []
+    for a in assignments:
+        due = int(a.get("duedate") or 0)
+        ref = f"[{_reg('d', n=_clean_event_name(a.get('name'))[:90], c=cname[:60], t=due)}] " if due else ""
+        lines.append(f"- {ref}{a.get('name')} (מועד הגשה: {_fmt_ts(due)})")
     return data, f"מטלות בקורס '{course.get('fullname')}':\n" + "\n".join(lines)
 
 
@@ -729,10 +734,16 @@ def get_cards():
     return _CARDS.get()
 
 
-def _put_card(kind: str, value) -> None:
+def _reg(kind: str, **fields) -> str:
+    """רושם פריט שהמודל יוכל להציג בכרטיס (show_ui) ומחזיר את המזהה שלו (d1, g2, c3...). הנתונים נשארים בשרת - המודל רק מצביע."""
     d = _CARDS.get()
-    if d is not None:
-        d[kind] = value
+    if d is None:
+        return ""
+    n = d.setdefault("_n", {})
+    n[kind] = n.get(kind, 0) + 1
+    i = f"{kind}{n[kind]}"
+    d.setdefault("items", {})[i] = {"k": kind, **fields}
+    return i
 
 
 @_register(
@@ -754,9 +765,7 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
     if not events:
         return data, "אין כרגע דברים דחופים ממתינים."
     items = _deadline_items(events)
-    if items:
-        _put_card("deadlines", items)
-    lines = [f"- {e.get('name')} ({(e.get('course') or {}).get('fullname', '')}) - {_fmt_ts(e.get('timesort'))}" for e in events]
+    lines = [f"- [{_reg('d', **it)}] {it['n']} ({it['c']}) - {_fmt_ts(it['t'])}" for it in items]
     return data, "דברים דחופים שממתינים (כל הקורסים):\n" + "\n".join(lines)
 
 
@@ -780,7 +789,12 @@ async def _exec_get_overall_grades(wstoken, moodle_user_id, args) -> Tuple[Any, 
         grades = [g for g in grades if g.get("courseid") not in hidden_ids]
     if not grades:
         return data, "לא נמצאו ציונים כוללים זמינים."
-    lines = [f"- {course_names.get(g.get('courseid'), g.get('courseid'))}: {(g.get('grade') or 'אין עדיין ציון')}" for g in grades]
+    lines = []
+    for g in grades:
+        cn = _clean_course_name(course_names.get(g.get("courseid"), g.get("courseid")))
+        gv = g.get("grade") or ""
+        ref = f"[{_reg('g', n=str(cn)[:60], v=str(gv)[:14])}] " if gv else ""
+        lines.append(f"- {ref}{cn}: {gv or 'אין עדיין ציון'}")
     return data, "סקירת ציונים כללית בכל הקורסים:\n" + "\n".join(lines)
 
 

@@ -7,6 +7,7 @@ from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
 from http_client import shared_client
 import gemini_stats
+from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks
 
 from db import db
 
@@ -421,7 +422,7 @@ def status_event(**kw) -> str:
 
 MAX_TOOL_CALLS_PER_TURN = 4
 MAX_FILE_SEARCHES_PER_TURN = 2
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 4
 
 
 async def stream_chat_with_tools(
@@ -457,11 +458,13 @@ async def stream_chat_with_tools(
     declarations = [d for grp in moodle_tools for d in grp.get("functionDeclarations", [])]
     if user_id:
         declarations = declarations + MEMORY_TOOLS[0]["functionDeclarations"]
+    if moodle_names:
+        declarations = declarations + UI_TOOLS[0]["functionDeclarations"]
     tools = [{"functionDeclarations": declarations}] if declarations else []
 
     extra = RICH_ADDENDUM
     if moodle_names:
-        extra += MOODLE_SYSTEM_ADDENDUM
+        extra += MOODLE_SYSTEM_ADDENDUM + UI_ADDENDUM
     if user_id:
         extra += MEMORY_ADDENDUM + build_memory_block(memories)
 
@@ -536,6 +539,11 @@ async def stream_chat_with_tools(
             name, args = fc.get("name", ""), fc.get("args") or {}
             if name in MEMORY_TOOL_NAMES and user_id:
                 return await run_memory_tool(name, args, user_id, memories)
+            if name == "show_ui" and moodle_names:
+                blocks, msg = resolve_blocks(args.get("blocks"), (get_cards() or {}).get("items", {}))
+                if blocks:
+                    (get_cards() or {})["ui"] = blocks
+                return msg, None
             if name in moodle_names:
                 return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
             return f"הכלי {name} לא זמין.", None
@@ -546,15 +554,10 @@ async def stream_chat_with_tools(
                 if event:
                     yield status_event(**event)
 
-        card = get_cards()
-        if card and card.get("deadlines") and len(calls) == 1 and calls[0]["functionCall"].get("name") == "get_upcoming_deadlines":
-            import base64, json as _json
-            payload = base64.urlsafe_b64encode(_json.dumps(card["deadlines"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).decode().rstrip("=")
-            if emit_status:
-                yield status_event(s="write")
-            yield f"[[deadlines:{payload}]]"           # the app draws the list as a card: no second model call, so it also arrives sooner
-            return
-
+        card = get_cards() or {}
+        ui_blocks_out = card.pop("ui", None)
+        if ui_blocks_out:
+            yield f"[[ui:{encode_blocks(ui_blocks_out)}]]"          # the cards the model chose to show (validated by the server)
         contents.append({"role": "model", "parts": calls})
         contents.append({
             "role": "user",
