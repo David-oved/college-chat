@@ -312,6 +312,15 @@ async def get_usage_metrics():
     }
 
 
+@app.get("/api/admin/ai-quota", dependencies=[Depends(require_admin)])
+async def ai_quota_live():
+    """מצב ה-AI בזמן אמת: קצב קריאות, דחיות 429 בשעה האחרונה, סטטוס לכל מודל, וקריאות להיום מה-DB.
+    (Google לא מספקת API ל"מכסה שנותרה" - לכן מציגים קצב ודחיות בפועל, ומול תקרה יומית שהמנהל קובע.)"""
+    import gemini_stats
+    today = await db.get_today_usage()
+    return {"live": gemini_stats.snapshot(), "today": today, "server_time": time.time()}
+
+
 @app.get("/api/admin/users", dependencies=[Depends(require_admin)])
 async def list_app_users():
     """רשימת כל המשתמשים הרשומים (שם משתמש אמיתי) + כמה הודעות כל אחד שלח."""

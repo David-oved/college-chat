@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
 from http_client import shared_client
+import gemini_stats
 
 from db import db
 
@@ -115,6 +116,7 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
             db.bump_api_usage("embedding")
             async with shared_client(15.0) as client:
                 resp = await client.post(url, json=payload)
+            gemini_stats.record("embedding", resp.status_code)
             if resp.status_code == 200:
                 return resp.json().get("embedding", {}).get("values", [])
             if resp.status_code not in (429, 500, 502, 503, 504):
@@ -168,6 +170,7 @@ async def _stream_from_gemini(
                     db.bump_api_usage(call_type)
                     async with shared_client(30.0) as client:
                         async with client.stream("POST", url, json=payload) as response:
+                            gemini_stats.record(model_name, response.status_code)
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
                                     if line.startswith("data: "):
@@ -226,6 +229,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                     db.bump_api_usage(call_type)
                     async with shared_client(30.0) as client:
                         async with client.stream("POST", url, json=payload) as response:
+                            gemini_stats.record(model_name, response.status_code)
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
                                     if not line.startswith("data: "):
