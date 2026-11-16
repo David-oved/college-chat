@@ -14,13 +14,34 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap');
-    body { font-family: 'Heebo', sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&display=swap');
+
+    :root {
+      --brand-50: #eef2ff;
+      --brand-100: #e0e7ff;
+      --brand-500: #6366f1;
+      --brand-600: #4f46e5;
+      --brand-700: #4338ca;
+      --ink-900: #0f172a;
+      --surface: #f4f6fb;
+      --card-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 10px 28px -10px rgba(15, 23, 42, .10);
+      --card-shadow-hover: 0 1px 2px rgba(15, 23, 42, .05), 0 18px 36px -12px rgba(79, 70, 229, .18);
+    }
+
+    body { font-family: 'Heebo', sans-serif; background: var(--surface); }
+    #appContent { background: var(--surface); }
+
+    /* מיקוד נגיש בלוח המקשים, בלי טבעת מכוערת בלחיצת עכבר */
+    button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+      outline: 2px solid var(--brand-500);
+      outline-offset: 2px;
+    }
+
     .typing-cursor::after {
       content: '▋';
       display: inline-block;
       animation: blink 0.8s infinite;
-      color: #4f46e5;
+      color: var(--brand-600);
       margin-right: 2px;
     }
     @keyframes blink {
@@ -28,7 +49,33 @@
       50% { opacity: 0; }
     }
 
+    .btn-press { transition: transform .12s ease, box-shadow .15s ease, background-color .15s ease; }
+    .btn-press:active { transform: scale(.97); }
+
+    /* כרטיסים מרכזיים - גרסה "מקצועית" של bg-white rounded-2xl shadow-sm: הצללה עדינה
+       ורב-שכבתית במקום shadow-sm שטוחה, עם הרמה קלה ב-hover לתחושת עומק */
+    .card-pro {
+      background: #ffffff;
+      border-radius: 1.1rem;
+      border: 1px solid #e7eaf3;
+      box-shadow: var(--card-shadow);
+      transition: box-shadow .25s ease, transform .25s ease;
+    }
+    .card-pro:hover { box-shadow: var(--card-shadow-hover); }
+
+    /* כפתורי Tailwind קיימים (bg-indigo-600) מקבלים מעבר/הרמה עדינה בלי לגעת בכל תג בנפרד */
+    button[class*="bg-indigo-600"], a[class*="bg-indigo-600"] {
+      transition: background-color .15s ease, box-shadow .2s ease, transform .12s ease;
+    }
+    button[class*="bg-indigo-600"]:hover, a[class*="bg-indigo-600"]:hover {
+      box-shadow: 0 8px 20px -6px rgba(79, 70, 229, .45);
+    }
+
     /* ===== ניווט (סיידבר + פס עליון למובייל) ===== */
+    aside.bg-slate-900 {
+      background: linear-gradient(180deg, #0f172a 0%, #151e36 100%);
+    }
+
     .navbtn {
       display: flex;
       align-items: center;
@@ -37,17 +84,33 @@
       border-radius: .75rem;
       font-size: .8125rem;
       font-weight: 700;
-      color: #cbd5e1;
-      transition: background .15s ease, color .15s ease;
+      color: #94a3b8;
+      transition: background .15s ease, color .15s ease, transform .12s ease;
       cursor: pointer;
       white-space: nowrap;
       border: none;
       background: transparent;
       width: 100%;
       text-align: right;
+      position: relative;
     }
-    .navbtn:hover { background: rgba(255,255,255,.08); color: #ffffff; }
-    .navbtn.active { background: #4f46e5; color: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+    .navbtn:hover { background: rgba(255,255,255,.07); color: #ffffff; }
+    .navbtn.active {
+      background: linear-gradient(90deg, var(--brand-600), var(--brand-500));
+      color: #ffffff;
+      box-shadow: 0 4px 14px -4px rgba(79, 70, 229, .55);
+    }
+    .navbtn.active::before {
+      content: '';
+      position: absolute;
+      right: -.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 60%;
+      background: #ffffff;
+      border-radius: 3px;
+    }
     .navbtn .navbtn-icon { font-size: 1rem; line-height: 1; }
 
     .navbtn-mobile {
@@ -58,26 +121,28 @@
       border-radius: .65rem;
       font-size: .78rem;
       font-weight: 700;
-      color: #cbd5e1;
+      color: #94a3b8;
       white-space: nowrap;
       border: none;
       background: transparent;
       cursor: pointer;
+      transition: background .15s ease, color .15s ease;
     }
-    .navbtn-mobile.active { background: #4f46e5; color: #fff; }
+    .navbtn-mobile.active { background: linear-gradient(90deg, var(--brand-600), var(--brand-500)); color: #fff; }
 
     /* גלילה דקה ונעימה בתוך האזורים הפנימיים */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     ::-webkit-scrollbar-track { background: transparent; }
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800">
 
   <!-- מסך התחברות -->
-  <div id="loginGate" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900">
-    <div class="max-w-sm w-full bg-white rounded-2xl p-7 shadow-xl border border-slate-200">
-      <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-2xl mb-4">🔐</div>
+  <div id="loginGate" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950" style="background-image: radial-gradient(circle at 20% 15%, rgba(99,102,241,.25), transparent 40%), radial-gradient(circle at 85% 85%, rgba(79,70,229,.2), transparent 45%);">
+    <div class="max-w-sm w-full bg-white rounded-2xl p-7 border border-slate-200" style="box-shadow: 0 30px 60px -15px rgba(0,0,0,.45);">
+      <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4" style="background: linear-gradient(135deg, var(--brand-100), var(--brand-50));">🔐</div>
       <h1 class="text-xl font-extrabold mb-1">התחברות לפאנל הניהול</h1>
       <p class="text-xs text-slate-500 mb-5">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה שלו.</p>
       <form onsubmit="doLogin(event)" class="space-y-3">
@@ -102,11 +167,11 @@
     <!-- סיידבר (דסקטופ) -->
     <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 h-screen overflow-y-auto bg-slate-900">
       <div class="px-5 py-5 border-b border-white/10">
-        <div class="text-white font-extrabold text-base flex items-center gap-2">
-          <span class="text-xl">⚙️</span>
+        <div class="text-white font-extrabold text-base flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style="background: linear-gradient(135deg, var(--brand-600), var(--brand-500)); box-shadow: 0 4px 14px -2px rgba(79,70,229,.6);">⚙️</span>
           <span>פאנל ניהול</span>
         </div>
-        <div class="text-[11px] text-slate-400 mt-0.5">צ'אטבוט המכללה · AI</div>
+        <div class="text-[11px] text-slate-400 mt-1.5 mr-0.5">צ'אטבוט המכללה · AI</div>
       </div>
 
       <nav class="flex-1 px-3 py-4 space-y-1">
@@ -153,11 +218,11 @@
       </div>
 
       <!-- כותרת עליונה -->
-      <header class="bg-white border-b border-slate-200 px-5 sm:px-7 py-4 shrink-0">
+      <header class="bg-white px-5 sm:px-7 py-4 shrink-0" style="box-shadow: 0 1px 0 rgba(15,23,42,.06), 0 4px 16px -8px rgba(15,23,42,.08);">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 id="pageTitle" class="text-xl font-extrabold text-slate-900">🔑 הגדרות ומכסות</h1>
-            <p class="text-xs text-slate-500 mt-0.5">ניהול מפתח Gemini API, מכסות יומיות, מאגר הידע, משתמשים ומדדי שימוש</p>
+            <h1 id="pageTitle" class="text-xl font-extrabold text-slate-900 tracking-tight">🔑 הגדרות ומכסות</h1>
+            <p class="text-xs text-slate-500 mt-0.5">ניהול מפתח Gemini API, מכסות יומיות, מאגר הידע, משתמשים, מדדי שימוש והקשר ל-AI</p>
           </div>
           <span id="keyStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shrink-0">טוען...</span>
         </div>
@@ -184,7 +249,7 @@
         <!-- ===================== טאב 1: הגדרות ומכסות ===================== -->
         <section id="tabPanel-overview" class="tab-panel space-y-6">
 
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
               <span>🔑 הגדרות מפתח AI ומכסת שאלות יומית</span>
             </h2>
@@ -283,7 +348,7 @@
         <section id="tabPanel-knowledge" class="tab-panel space-y-6 hidden">
 
           <!-- ניסוח מידע עם AI -->
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <h2 class="text-lg font-bold mb-1">✨ ניסוח מידע עם AI (שפה חופשית)</h2>
             <p class="text-xs text-slate-500 mb-3">
               כתוב בשפה חופשית מה לעדכן, ה-AI ינסח מזה טיוטת "נוהל" מסודרת (כותרת + תוכן) ויזרים אותה למטה.
@@ -306,7 +371,7 @@
           <!-- הוספת מידע -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- הוספת טקסט ישיר -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div class="card-pro p-6">
               <h2 class="text-lg font-bold mb-3">📝 הוספת נוהל / מידע בטקסט</h2>
               <form onsubmit="addTextKnowledge(event)" class="space-y-3">
                 <div>
@@ -336,7 +401,7 @@
             </div>
 
             <!-- העלאת קובץ PDF / TXT -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
+            <div class="card-pro p-6 flex flex-col justify-between">
               <div>
                 <h2 class="text-lg font-bold mb-3">📄 העלאת קובץ PDF / TXT (שנתון / תקנון)</h2>
                 <form onsubmit="uploadFileKnowledge(event)" class="space-y-3">
@@ -372,7 +437,7 @@
           </div>
 
           <!-- רשימת מקטעי הידע -->
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
               <button id="reindexBtn" onclick="reindexMissing()" class="hidden text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition"></button>
@@ -390,7 +455,7 @@
 
         <!-- ===================== טאב 3: משתמשים ===================== -->
         <section id="tabPanel-users" class="tab-panel space-y-6 hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-bold">👥 משתמשים (<span id="usersCount">0</span>)</h2>
               <button onclick="loadUsers()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
@@ -401,7 +466,7 @@
 
         <!-- ===================== טאב 4: מדדי שימוש ===================== -->
         <section id="tabPanel-usage" class="tab-panel space-y-6 hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <div class="flex items-center justify-between mb-3">
               <h2 class="text-lg font-bold">📊 מדדי שימוש</h2>
               <button onclick="loadUsage()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
@@ -413,7 +478,7 @@
         <!-- ===================== טאב 5: הקשר ל-AI (שקיפות + שליטה) ===================== -->
         <section id="tabPanel-ai-context" class="tab-panel space-y-6 hidden">
 
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <div class="flex items-center justify-between mb-1">
               <h2 class="text-lg font-bold">🧩 פונקציות Moodle (קורסים/מטלות/ציונים/יומן)</h2>
               <button onclick="loadMoodleFunctions()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
@@ -425,7 +490,7 @@
             </button>
           </div>
 
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <div class="card-pro p-6">
             <h2 class="text-lg font-bold mb-1">🔍 תצוגה מקדימה - בדיוק מה שנשלח ל-AI</h2>
             <p class="text-xs text-slate-500 mb-4">כתבו שאלת דוגמה, ותראו את כל הפרומפט המלא (זהות הבוט, קטלוג הנושאים, מידע בזמן אמת, מקטעי הידע הרלוונטיים) כפי שהוא נשלח בפועל ל-Gemini לשאלה הזו - בלי לשלוח אותה בפועל לסטודנט.</p>
             <form onsubmit="previewPrompt(event)" class="flex flex-col sm:flex-row gap-2 mb-4">
