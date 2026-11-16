@@ -669,6 +669,52 @@ async def _exec_get_assignment_submission_status(wstoken, moodle_user_id, args) 
     return data, f"סטטוס הגשת '{match.get('name')}' בקורס '{course.get('fullname')}': {status_he}."
 
 
+def _clean_event_name(name: str) -> str:
+    """שמות אירועי היומן של Moodle מלאים ברעש ("... submission is due", "יש להגיש את '...'") - מנקים כדי שהכרטיס יהיה קריא."""
+    n = str(name or "")
+    n = re.sub(r"\s*[-–]?\s*(submission\s+)?is due\s*$", "", n, flags=re.I)
+    n = re.sub(r"^\s*(יש להגיש את|תאריך הגשה)\s*", "", n)
+    n = re.sub(r"\s*[-–]\s*בודק אוטומטי\s*$", "", n)
+    return n.strip(" '\"‘’-–")
+
+
+def _clean_course_name(name: str) -> str:
+    return re.sub(r"\s*[-–]?\s*\d{4,}(?:\.\d+)*\s*$", "", str(name or "")).strip(" -–")
+
+
+def _deadline_items(events) -> list:
+    rows = []
+    for e in events:
+        t = int(e.get("timesort") or 0)
+        if t:
+            rows.append((_clean_event_name(e.get("name")), _clean_course_name((e.get("course") or {}).get("fullname", "")), t))
+    # אותו תרגיל עם כמה שאלות באותו מועד -> שורה אחת ("תרגיל 4 - שאלות 3, 4, 5")
+    merged: dict = {}
+    order: list = []
+    for name, course, t in rows:
+        m = re.match(r"^(.*?)\s*שאלה(?:\s+מספר)?\s*(\d+)\s*$", name)
+        key = (m.group(1).strip(" -–") if m else name, course, t, bool(m))
+        if key not in merged:
+            merged[key] = []
+            order.append(key)
+        if m:
+            merged[key].append(int(m.group(2)))
+    out = []
+    for key in order:
+        base, course, t, is_q = key
+        qs = sorted(set(merged[key]))
+        label = base if not is_q else (f"{base} - שאלה {qs[0]}" if len(qs) == 1 else f"{base} - שאלות {', '.join(str(q) for q in qs)}")
+        out.append({"n": label[:90], "c": course[:60], "t": t})
+    seen = set()
+    uniq = []
+    for it in sorted(out, key=lambda x: x["t"]):
+        k = (it["n"], it["c"], it["t"])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(it)
+    return uniq
+
+
 # נתונים מובנים שהאפליקציה מציירת ככרטיס (במקום שהמודל ינסח רשימה): נשמרים במילון של הבקשה הנוכחית
 _CARDS: contextvars.ContextVar = contextvars.ContextVar("moodle_cards", default=None)
 
@@ -707,10 +753,7 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
         events = [e for e in events if not _name_hidden((e.get("course") or {}).get("fullname"))]
     if not events:
         return data, "אין כרגע דברים דחופים ממתינים."
-    items = sorted(
-        ({"n": str(e.get("name") or "")[:90], "c": str((e.get("course") or {}).get("fullname", ""))[:60], "t": int(e.get("timesort") or 0)} for e in events if e.get("timesort")),
-        key=lambda x: x["t"],
-    )
+    items = _deadline_items(events)
     if items:
         _put_card("deadlines", items)
     lines = [f"- {e.get('name')} ({(e.get('course') or {}).get('fullname', '')}) - {_fmt_ts(e.get('timesort'))}" for e in events]
