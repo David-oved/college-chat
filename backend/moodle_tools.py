@@ -98,15 +98,18 @@ MOODLE_TOOLS = [{
         {
             "name": "get_my_courses",
             "description": "מחזיר את רשימת הקורסים שהסטודנט רשום אליהם ב-Moodle השנה.",
-            "parameters": {"type": "object", "properties": {}},
+            # ה-type הוא enum מסוג proto (Schema.Type) שמתבטא ב-REST JSON כמחרוזת רישיות
+            # גדולות ("OBJECT"/"STRING") - לא "object"/"string" בסגנון JSON Schema רגיל.
+            # זו כנראה הייתה הסיבה שהקריאה נדחתה (400) ונפלנו בשקט לנתיב בלי כלים.
+            "parameters": {"type": "OBJECT", "properties": {}},
         },
         {
             "name": "get_course_assignments",
             "description": "מחזיר את המטלות ומועדי ההגשה בקורס מסוים של הסטודנט.",
             "parameters": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "course_name": {"type": "string", "description": "שם הקורס, בדיוק כפי שהסטודנט כתב אותו"},
+                    "course_name": {"type": "STRING", "description": "שם הקורס, בדיוק כפי שהסטודנט כתב אותו"},
                 },
                 "required": ["course_name"],
             },
@@ -115,9 +118,9 @@ MOODLE_TOOLS = [{
             "name": "get_course_grades",
             "description": "מחזיר את הציונים של הסטודנט בקורס מסוים.",
             "parameters": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "course_name": {"type": "string", "description": "שם הקורס"},
+                    "course_name": {"type": "STRING", "description": "שם הקורס"},
                 },
                 "required": ["course_name"],
             },
@@ -126,10 +129,10 @@ MOODLE_TOOLS = [{
             "name": "get_calendar_events",
             "description": "מחזיר אירועים ומועדים קרובים מהיומן האישי של הסטודנט ב-Moodle.",
             "parameters": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "from_date": {"type": "string", "description": "תאריך התחלה, פורמט YYYY-MM-DD (אופציונלי)"},
-                    "to_date": {"type": "string", "description": "תאריך סיום, פורמט YYYY-MM-DD (אופציונלי)"},
+                    "from_date": {"type": "STRING", "description": "תאריך התחלה, פורמט YYYY-MM-DD (אופציונלי)"},
+                    "to_date": {"type": "STRING", "description": "תאריך סיום, פורמט YYYY-MM-DD (אופציונלי)"},
                 },
                 "required": [],
             },
