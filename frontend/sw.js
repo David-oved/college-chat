@@ -30,6 +30,40 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// מקבל Push אמיתי מהשרת (כשversion.json ב-GitHub משתנה) ומציג התראת מערכת -
+// זה רץ גם כשהאפליקציה סגורה לגמרי, כי ה-service worker מתעורר ברקע ע"י הדפדפן/מערכת ההפעלה.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = {};
+  }
+  const title = data.title || '🔄 גרסה חדשה זמינה';
+  const body = data.body || 'עדכן עכשיו';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      dir: 'rtl',
+      data: { url: '/' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('/');
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 

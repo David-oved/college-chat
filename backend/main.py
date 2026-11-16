@@ -7,6 +7,9 @@ except Exception:
     pass
 
 import os
+import json
+import asyncio
+import httpx
 from io import BytesIO
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +22,7 @@ from pypdf import PdfReader
 from db import db
 from auth import admin_auth, require_admin, hash_password, student_auth, require_student
 from gemini_diagnostics import run_full_diagnostics, test_connectivity
+from push import send_push_to_subscription, VAPID_PUBLIC_KEY
 from rag_engine import (
     chunk_text,
     get_embedding,
@@ -27,6 +31,40 @@ from rag_engine import (
     stream_knowledge_draft,
     summarize_conversation,
 )
+
+VERSION_JSON_URL = "https://raw.githubusercontent.com/David-oved/college-chat/main/version.json"
+VERSION_CHECK_INTERVAL_SECONDS = 300  # כל 5 דקות
+
+
+async def version_watch_loop():
+    """
+    בודק כל כמה דקות את version.json בגיטהאב (בלי שום מעורבות של המנהל בשרת -
+    מספיק לערוך את הקובץ ולדחוף ל-main). אם הגרסה השתנתה - שולח התראת Push
+    אמיתית לכל המשתמשים שנרשמו להתראות.
+    """
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(VERSION_JSON_URL, headers={"Cache-Control": "no-cache"})
+            if resp.status_code == 200:
+                current_version = str(resp.json().get("version", "")).strip()
+                last_seen = await db.get_last_seen_version()
+                if current_version and last_seen and current_version != last_seen:
+                    subs = await db.get_all_push_subscriptions()
+                    payload = {
+                        "title": "🎓 עדכון חדש זמין!",
+                        "body": "גרסה חדשה של האפליקציה מוכנה - לחצו לעדכון.",
+                        "version": current_version,
+                    }
+                    for sub in subs:
+                        ok = send_push_to_subscription(sub, payload)
+                        if not ok:
+                            await db.remove_push_subscription(sub["endpoint"])
+                if current_version:
+                    await db.set_last_seen_version(current_version)
+        except Exception:
+            pass
+        await asyncio.sleep(VERSION_CHECK_INTERVAL_SECONDS)
 
 app = FastAPI(
     title="College AI Assistant (RAG) - Full Stack Server",
@@ -55,6 +93,7 @@ async def on_startup():
         print(f"    {generated_password}")
         print("    שמור אותה במקום בטוח - היא לא תוצג שוב!")
         print("=" * 64 + "\n")
+    asyncio.create_task(version_watch_loop())
 
 
 @app.on_event("shutdown")
@@ -101,6 +140,20 @@ class StudentSignupRequest(BaseModel):
 class StudentLoginRequest(BaseModel):
     username: str
     password: str
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
 
 
 class ChangePasswordRequest(BaseModel):
@@ -177,6 +230,28 @@ async def student_login(req: StudentLoginRequest):
 
 
 # =====================================================================
+# 0.6 התראות Push (עדכון גרסה אוטומטי מ-version.json ב-GitHub)
+# =====================================================================
+@app.get("/api/push/vapid-public-key")
+async def get_vapid_public_key():
+    """המפתח הציבורי (לא סודי) שהלקוח צריך כדי להירשם ל-Push דרך ה-Service Worker."""
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(req: PushSubscribeRequest, session=Depends(require_student)):
+    """שומר מנוי Push של המשתמש - כשתהיה גרסה חדשה ב-GitHub הוא יקבל התראה אמיתית בטלפון."""
+    await db.save_push_subscription(session["user_id"], req.endpoint, req.keys.p256dh, req.keys.auth)
+    return {"message": "נרשמת בהצלחה להתראות עדכון"}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(req: PushUnsubscribeRequest, session=Depends(require_student)):
+    await db.remove_push_subscription(req.endpoint)
+    return {"message": "בוטלה ההרשמה להתראות"}
+
+
+# =====================================================================
 # 1. נתיבי מנהל (Admin Endpoints) - כולם מוגנים בהתחברות
 # =====================================================================
 @app.get("/api/admin/config", dependencies=[Depends(require_admin)])
@@ -217,7 +292,7 @@ async def test_key_connectivity(req: TestConnectivityRequest):
 @app.get("/api/admin/knowledge", dependencies=[Depends(require_admin)])
 async def list_knowledge():
     """מחזיר את כל קטעי המידע של המכללה השמורים במאגר"""
-    return {"chunks": await db.get_all_chunks()}
+    return {"chunks": await db.get_all_chunks(), "catalog": await db.get_catalog()}
 
 
 @app.post("/api/admin/knowledge/ai-draft", dependencies=[Depends(require_admin)])
@@ -244,48 +319,93 @@ async def draft_knowledge_with_ai(req: AiDraftKnowledgeRequest):
     return StreamingResponse(response_generator(), media_type="text/plain; charset=utf-8")
 
 
-async def _save_chunks_with_ai_categorization(chunks: list, api_key: str) -> int:
+def _upload_summary(saved: int, skipped: int, without_vector: int) -> str:
+    """משפט סיכום מפורט להעלאה: כמה נשמרו, כמה דולגו ככפילות, וכמה נשמרו בלי וקטור."""
+    parts = [f"נשמרו {saved} מקטעים"]
+    if skipped:
+        parts.append(f"{skipped} דולגו (כבר קיימים במאגר)")
+    msg = ", ".join(parts) + "."
+    if without_vector:
+        msg += (f" ⚠️ {without_vector} מקטעים נשמרו בלי וקטור (חיפוש חכם לא ימצא אותם) - "
+                "לחץ \"השלם וקטורים חסרים\" במאגר הידע כשהמכסה/המפתח תקינים.")
+    return msg
+
+
+def _ndjson(obj: dict) -> bytes:
+    return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _progress_response(gen) -> StreamingResponse:
     """
-    עבור כל chunk: יוצר embedding, מסווג אותו לקטגוריה (ע"י AI, מול רשימת הקטגוריות
-    הקיימות), שומר אותו ב-DB, ומעדכן את הקטלוג (ה"מפה") שתמיד מוצגת למודל הצ'אט.
+    מחזיר תגובת סטרימינג (שורת JSON לכל אירוע) כדי שהפאנל יציג סרגל התקדמות אמיתי.
+    אירועים: start / progress / done, ובמקרה של תקלה באמצע - error.
     """
+    async def body():
+        try:
+            async for event in gen:
+                yield _ndjson(event)
+        except Exception as e:
+            yield _ndjson({"type": "error", "detail": f"{type(e).__name__}: {e}"})
+    return StreamingResponse(body(), media_type="application/x-ndjson")
+
+
+async def _save_chunks_stream(chunks: list, api_key: str, message_prefix: str = ""):
+    """
+    עבור כל chunk: מדלג אם כבר קיים, יוצר embedding, מסווג אותו לקטגוריה (ע"י AI, מול רשימת
+    הקטגוריות הקיימות), שומר אותו ב-DB, ומעדכן את הקטלוג (ה"מפה") שתמיד מוצגת למודל הצ'אט.
+    מפיק אירועי התקדמות אחרי כל מקטע (done/total) ואירוע סיום עם הסיכום.
+    """
+    total = len(chunks)
     existing_categories = await db.get_categories()
-    saved = 0
-    for c in chunks:
-        embedding = await get_embedding(f"{c['title']}: {c['text']}", api_key) if api_key else []
+    saved = skipped = without_vector = 0
+    yield {"type": "start", "total": total}
 
-        if api_key:
-            classification = await categorize_and_summarize(c["title"], c["text"], api_key, existing_categories)
-            category, summary = classification["category"], classification["summary"]
-            if category not in existing_categories:
-                existing_categories.append(category)
+    for i, c in enumerate(chunks, start=1):
+        if await db.chunk_text_exists(c["text"]):
+            skipped += 1
         else:
-            category, summary = "כללי", "מידע כללי (טרם סווג - נדרש מפתח Gemini API)"
+            embedding = await get_embedding(f"{c['title']}: {c['text']}", api_key) if api_key else []
+            if api_key and not embedding:
+                without_vector += 1
 
-        await db.add_knowledge_chunk(c["title"], c["text"], category, embedding or None)
-        await db.upsert_catalog_entry(category, summary)
-        saved += 1
-    return saved
+            if api_key:
+                classification = await categorize_and_summarize(c["title"], c["text"], api_key, existing_categories)
+                category, summary = classification["category"], classification["summary"]
+                if category not in existing_categories:
+                    existing_categories.append(category)
+            else:
+                category, summary = "כללי", "מידע כללי (טרם סווג - נדרש מפתח Gemini API)"
+
+            await db.add_knowledge_chunk(c["title"], c["text"], category, embedding or None)
+            await db.upsert_catalog_entry(category, summary)
+            saved += 1
+
+        yield {"type": "progress", "done": i, "total": total,
+               "saved": saved, "skipped": skipped, "without_vector": without_vector}
+
+    yield {
+        "type": "done",
+        "message": message_prefix + _upload_summary(saved, skipped, without_vector),
+        "added_chunks": saved,
+        "skipped_duplicates": skipped,
+        "without_vector": without_vector,
+    }
 
 
 @app.post("/api/admin/knowledge/text", dependencies=[Depends(require_admin)])
 async def upload_knowledge_text(req: AddKnowledgeTextRequest):
-    """העלאת טקסט חופשי על ידי המנהל: חיתוך ל-Chunks, יצירת וקטורים (Embeddings) וסיווג ע"י AI"""
+    """העלאת טקסט חופשי על ידי המנהל: חיתוך ל-Chunks, יצירת וקטורים וסיווג ע"י AI (עם התקדמות בסטרימינג)"""
     chunks = chunk_text(req.text, title=req.title)
     if not chunks:
         raise HTTPException(status_code=400, detail="הטקסט שהוזן ריק")
 
     api_key = await db.get_api_key()
-    saved = await _save_chunks_with_ai_categorization(chunks, api_key)
-    return {
-        "message": f"המידע עובד בהצלחה ונשמר ב-{saved} מקטעים (Chunks)!",
-        "added_chunks": saved
-    }
+    return _progress_response(_save_chunks_stream(chunks, api_key, "המידע עובד. "))
 
 
 @app.post("/api/admin/knowledge/pdf", dependencies=[Depends(require_admin)])
 async def upload_knowledge_pdf(title: str = Form(...), file: UploadFile = File(...)):
-    """העלאת קובץ PDF או TXT על ידי המנהל, חילוץ הטקסט, חיתוך ויצירת וקטורים"""
+    """העלאת קובץ PDF או TXT על ידי המנהל: חילוץ טקסט, חיתוך, וקטורים וסיווג (עם התקדמות בסטרימינג)"""
     content = await file.read()
     extracted_text = ""
 
@@ -304,12 +424,36 @@ async def upload_knowledge_pdf(title: str = Form(...), file: UploadFile = File(.
         raise HTTPException(status_code=400, detail="לא נמצא טקסט קריא בקובץ")
 
     api_key = await db.get_api_key()
-    saved = await _save_chunks_with_ai_categorization(chunks, api_key)
-    return {
-        "message": f"הקובץ '{file.filename}' עובד ונחתך ל-{saved} מקטעים!",
-        "added_chunks": saved
-    }
+    prefix = f"הקובץ '{file.filename}' עובד ונחתך ל-{len(chunks)} מקטעים. "
+    return _progress_response(_save_chunks_stream(chunks, api_key, prefix))
 
+
+async def _reindex_stream(missing: list, api_key: str):
+    total = len(missing)
+    fixed = 0
+    yield {"type": "start", "total": total}
+    for i, c in enumerate(missing, start=1):
+        embedding = await get_embedding(f"{c['title']}: {c['text']}", api_key)
+        if embedding:
+            await db.set_chunk_embedding(c["id"], embedding)
+            fixed += 1
+        yield {"type": "progress", "done": i, "total": total, "fixed": fixed}
+    still_missing = total - fixed
+    msg = f"הושלמו וקטורים ל-{fixed} מתוך {total} מקטעים."
+    if still_missing:
+        msg += f" ⚠️ {still_missing} עדיין נכשלו - נסה שוב בעוד כמה דקות (ייתכן עומס/מכסה)."
+    yield {"type": "done", "message": msg, "fixed": fixed, "still_missing": still_missing,
+           "without_vector": still_missing}
+
+
+@app.post("/api/admin/knowledge/reindex", dependencies=[Depends(require_admin)])
+async def reindex_missing_embeddings():
+    """משלים וקטורים למקטעים שנשמרו בלי וקטור (למשל אחרי שגיאת 429), עם התקדמות בסטרימינג."""
+    api_key = await db.get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="לא הוזן מפתח Gemini API")
+    missing = await db.get_chunks_without_embedding()
+    return _progress_response(_reindex_stream(missing, api_key))
 
 @app.delete("/api/admin/knowledge/{chunk_id}", dependencies=[Depends(require_admin)])
 async def delete_knowledge_chunk(chunk_id: str):

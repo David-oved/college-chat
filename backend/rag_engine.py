@@ -101,15 +101,21 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
         "content": {"parts": [{"text": text}]},
         "outputDimensionality": 768,
     }
-    try:
-        await db.increment_api_usage("embedding")
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, json=payload)
+    # עד 3 ניסיונות: שגיאות זמניות (429 = עומס/מכסה, 5xx = תקלה בצד גוגל) מנוסות שוב
+    # עם השהיה גדלה, במקום להיכשל בשקט ולשמור מקטע בלי וקטור.
+    for attempt in range(3):
+        try:
+            await db.increment_api_usage("embedding")
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload)
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("embedding", {}).get("values", [])
-    except Exception:
-        pass
+                return resp.json().get("embedding", {}).get("values", [])
+            if resp.status_code not in (429, 500, 502, 503, 504):
+                break  # שגיאה קבועה (מפתח לא תקין וכד') - אין טעם לנסות שוב
+        except Exception:
+            pass
+        if attempt < 2:
+            await asyncio.sleep(2 * (attempt + 1))
     return []
 
 

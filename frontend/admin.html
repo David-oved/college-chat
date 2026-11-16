@@ -157,6 +157,18 @@
         <!-- הודעת חיווי -->
         <div id="statusToast" class="hidden rounded-xl p-4 text-sm font-medium"></div>
 
+    <!-- סרגל התקדמות להעלאת מידע / השלמת וקטורים -->
+    <div id="progressBox" class="hidden bg-white border border-indigo-200 rounded-2xl p-4 shadow-sm">
+      <div class="flex items-center justify-between mb-2">
+        <span id="progressLabel" class="text-sm font-bold text-indigo-900"></span>
+        <span id="progressCount" class="text-xs font-bold text-slate-500"></span>
+      </div>
+      <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+        <div id="progressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+      <div id="progressDetails" class="text-[11px] text-slate-500 mt-2"></div>
+    </div>
+
         <!-- ===================== טאב 1: הגדרות ומכסות ===================== -->
         <section id="tabPanel-overview" class="tab-panel space-y-6">
 
@@ -350,7 +362,14 @@
           <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
+              <button id="reindexBtn" onclick="reindexMissing()" class="hidden text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition"></button>
               <button onclick="loadKnowledge()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן רשימה</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-4">
+              <input id="knowledgeSearch" type="search" oninput="renderKnowledge()" placeholder="🔍 חיפוש בכל המאגר (כותרת, תוכן או נושא)..."
+                class="flex-1 min-w-[200px] border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              <button type="button" onclick="setAllFolders(true)" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2">📂 פתח הכל</button>
+              <button type="button" onclick="setAllFolders(false)" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2">📁 סגור הכל</button>
             </div>
             <div id="chunksList" class="space-y-3"></div>
           </div>
@@ -410,7 +429,7 @@
       const el = document.getElementById('statusToast');
       el.textContent = msg;
       el.className = `rounded-xl p-4 text-sm font-bold ${isError ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`;
-      setTimeout(() => { el.className = 'hidden'; }, 4000);
+      setTimeout(() => { el.className = 'hidden'; }, (isError || msg.includes('⚠️')) ? 12000 : 4000);
     }
 
     // ===================== התחברות (Auth) =====================
@@ -837,50 +856,250 @@
       }
     }
 
+    // ===================== מאגר הידע: תיקיות לפי נושא =====================
+    let knowledgeData = { chunks: [], catalog: [] };
+    const openFolders = new Set();
+    const openDocs = new Set();
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    // "תקנון אינטרנט (חלק 3)" -> "תקנון אינטרנט" (כדי לקבץ את כל חלקי אותו מסמך יחד)
+    function docBaseTitle(title) {
+      return (title || 'ללא כותרת').replace(/\s*\(חלק \d+\)\s*$/, '');
+    }
+
     async function loadKnowledge() {
       const res = await adminFetch(`${API_BASE}/api/admin/knowledge`);
       const data = await res.json();
-      const list = document.getElementById('chunksList');
-      document.getElementById('chunksCount').textContent = data.chunks.length;
-      list.innerHTML = '';
+      knowledgeData = { chunks: data.chunks || [], catalog: data.catalog || [] };
+      document.getElementById('chunksCount').textContent = knowledgeData.chunks.length;
+      const missingCount = knowledgeData.chunks.filter(c => !c.has_embedding).length;
+      const reindexBtn = document.getElementById('reindexBtn');
+      if (reindexBtn) {
+        reindexBtn.classList.toggle('hidden', missingCount === 0);
+        reindexBtn.textContent = `🧮 השלם וקטורים חסרים (${missingCount})`;
+      }
+      renderKnowledge();
+    }
 
-      data.chunks.forEach(c => {
-        const item = document.createElement('div');
-        item.className = 'p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4';
-        item.innerHTML = `
-          <div>
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">${c.category || 'כללי'}</span>
-              <div class="font-bold text-sm text-indigo-900">${c.title}</div>
-            </div>
-            <div class="text-xs text-slate-600 leading-relaxed">${c.text}</div>
-          </div>
-          <button onclick="deleteChunk('${c.id}')" class="text-xs text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200 shrink-0">
-            🗑️ מחק
-          </button>
-        `;
-        list.appendChild(item);
+    function renderKnowledge() {
+      const list = document.getElementById('chunksList');
+      const q = (document.getElementById('knowledgeSearch').value || '').trim().toLowerCase();
+      const summaries = {};
+      knowledgeData.catalog.forEach(c => { summaries[c.category] = c.summary; });
+
+      const chunks = knowledgeData.chunks.filter(c =>
+        !q || `${c.title} ${c.text} ${c.category}`.toLowerCase().includes(q));
+
+      if (!chunks.length) {
+        list.innerHTML = `<div class="text-sm text-slate-400 text-center py-8">${q ? 'לא נמצאו תוצאות לחיפוש' : 'המאגר ריק - הוסף מידע בטפסים למעלה'}</div>`;
+        return;
+      }
+
+      // נושא (קטגוריה) -> מסמך -> מקטעים
+      const folders = new Map();
+      chunks.forEach(c => {
+        const cat = c.category || 'כללי';
+        if (!folders.has(cat)) folders.set(cat, new Map());
+        const docs = folders.get(cat);
+        const doc = docBaseTitle(c.title);
+        if (!docs.has(doc)) docs.set(doc, []);
+        docs.get(doc).push(c);
       });
+
+      const sorted = [...folders.entries()].sort((a, b) => {
+        const na = [...a[1].values()].reduce((n, x) => n + x.length, 0);
+        const nb = [...b[1].values()].reduce((n, x) => n + x.length, 0);
+        return nb - na;
+      });
+
+      list.innerHTML = sorted.map(([cat, docs]) => {
+        const allChunks = [...docs.values()].flat();
+        const missing = allChunks.filter(c => !c.has_embedding).length;
+        const folderOpen = q || openFolders.has(cat);
+        const docsHtml = [...docs.entries()].map(([doc, items]) => {
+          const docKey = `${cat}||${doc}`;
+          const docMissing = items.filter(c => !c.has_embedding).length;
+          const itemsHtml = items.map(c => `
+            <div class="flex items-start justify-between gap-3 py-2 border-t border-slate-100 first:border-t-0">
+              <div class="min-w-0">
+                <div class="text-[11px] font-bold text-slate-500 mb-0.5">${esc(c.title)}
+                  ${c.has_embedding ? '' : '<span class="text-amber-700">⚠️ ללא וקטור</span>'}</div>
+                <div class="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">${esc(c.text)}</div>
+              </div>
+              <button onclick="deleteChunk('${esc(c.id)}')" class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">🗑️</button>
+            </div>`).join('');
+          return `
+            <details data-kind="doc" data-key="${esc(docKey)}" ${(q || openDocs.has(docKey)) ? 'open' : ''} ontoggle="onFolderToggle(this)"
+                     class="bg-white border border-slate-200 rounded-xl">
+              <summary class="cursor-pointer select-none px-3 py-2 flex items-center justify-between gap-2 text-sm">
+                <span class="font-bold text-slate-800 min-w-0 truncate">📄 ${esc(doc)}
+                  <span class="text-xs font-normal text-slate-400">· ${items.length} מקטעים</span>
+                  ${docMissing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ ${docMissing} ללא וקטור</span>` : ''}</span>
+                <button onclick="event.preventDefault(); event.stopPropagation(); deleteChunks(this)" data-ids="${items.map(c => esc(c.id)).join(',')}" data-label="המסמך '${esc(doc)}'"
+                  class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">🗑️ מחק מסמך</button>
+              </summary>
+              <div class="px-3 pb-2">${itemsHtml}</div>
+            </details>`;
+        }).join('');
+
+        return `
+          <details data-kind="folder" data-key="${esc(cat)}" ${folderOpen ? 'open' : ''} ontoggle="onFolderToggle(this)"
+                   class="bg-slate-50 border border-slate-200 rounded-2xl">
+            <summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-bold text-indigo-900 text-sm">📁 ${esc(cat)}
+                  <span class="text-xs font-normal text-slate-500">· ${docs.size} מסמכים · ${allChunks.length} מקטעים</span>
+                  ${missing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ ${missing} ללא וקטור</span>` : ''}</div>
+                ${summaries[cat] ? `<div class="text-[11px] text-slate-500 mt-0.5 truncate">${esc(summaries[cat])}</div>` : ''}
+              </div>
+              <button onclick="event.preventDefault(); event.stopPropagation(); deleteChunks(this)" data-ids="${allChunks.map(c => esc(c.id)).join(',')}" data-label="כל התיקייה '${esc(cat)}'"
+                class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">🗑️ מחק תיקייה</button>
+            </summary>
+            <div class="px-3 pb-3 space-y-2">${docsHtml}</div>
+          </details>`;
+      }).join('');
+    }
+
+    function onFolderToggle(el) {
+      if ((document.getElementById('knowledgeSearch').value || '').trim()) return; // בזמן חיפוש הכל פתוח אוטומטית
+      const set = el.dataset.kind === 'folder' ? openFolders : openDocs;
+      if (el.open) set.add(el.dataset.key); else set.delete(el.dataset.key);
+    }
+
+    function setAllFolders(open) {
+      document.querySelectorAll('#chunksList details[data-kind="folder"]').forEach(d => {
+        d.open = open;
+        if (open) openFolders.add(d.dataset.key); else openFolders.delete(d.dataset.key);
+      });
+      if (!open) openDocs.clear();
+      document.querySelectorAll('#chunksList details[data-kind="doc"]').forEach(d => { d.open = false; });
+    }
+
+    async function deleteChunks(btn) {
+      const ids = (btn.dataset.ids || '').split(',').filter(Boolean);
+      if (!ids.length) return;
+      if (!confirm(`למחוק את ${btn.dataset.label} (${ids.length} מקטעים)? אי אפשר לשחזר.`)) return;
+      btn.disabled = true;
+      for (const id of ids) {
+        await adminFetch(`${API_BASE}/api/admin/knowledge/${id}`, { method: 'DELETE' });
+      }
+      showToast(`נמחקו ${ids.length} מקטעים`);
+      await loadKnowledge();
+    }
+
+    // ===================== סרגל התקדמות (סטרימינג מהשרת) =====================
+    // השרת שולח שורת JSON לכל אירוע (start/progress/done/error); כאן קוראים אותם ומעדכנים את הסרגל.
+    async function streamWithProgress(url, options, label) {
+      const box = document.getElementById('progressBox');
+      const bar = document.getElementById('progressBar');
+      const labelEl = document.getElementById('progressLabel');
+      const countEl = document.getElementById('progressCount');
+      const detailsEl = document.getElementById('progressDetails');
+
+      box.classList.remove('hidden');
+      labelEl.textContent = label;
+      countEl.textContent = '';
+      detailsEl.textContent = 'מעלה ומכין את הקובץ (חילוץ טקסט וחיתוך)...';
+      bar.style.width = '8%';
+      bar.classList.add('animate-pulse');
+
+      let final = null;
+      let failure = null;
+      try {
+        const res = await adminFetch(url, options);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          failure = err.detail || 'שגיאה בעיבוד';
+          return { error: failure };
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        const handle = (line) => {
+          if (!line.trim()) return;
+          const ev = JSON.parse(line);
+          if (ev.type === 'start') {
+            detailsEl.textContent = ev.total ? `נמצאו ${ev.total} מקטעים לעיבוד` : '';
+            if (!ev.total) bar.style.width = '100%';
+          } else if (ev.type === 'progress') {
+            bar.classList.remove('animate-pulse');
+            const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 100;
+            bar.style.width = `${pct}%`;
+            countEl.textContent = `${ev.done} / ${ev.total} (${pct}%)`;
+            const bits = [];
+            if (ev.saved !== undefined) bits.push(`נשמרו ${ev.saved}`);
+            if (ev.skipped) bits.push(`דולגו ככפילות ${ev.skipped}`);
+            if (ev.without_vector) bits.push(`⚠️ ללא וקטור ${ev.without_vector}`);
+            if (ev.fixed !== undefined) bits.push(`הושלמו ${ev.fixed}`);
+            detailsEl.textContent = bits.join(' · ');
+          } else if (ev.type === 'done') {
+            final = ev;
+          } else if (ev.type === 'error') {
+            failure = ev.detail || 'שגיאה בעיבוד';
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          lines.forEach(handle);
+        }
+        if (buffer.trim()) handle(buffer);
+      } catch (err) {
+        if (err.message !== 'Unauthorized') failure = `שגיאת תקשורת: ${err.message}`;
+      } finally {
+        bar.classList.remove('animate-pulse');
+        if (final) { bar.style.width = '100%'; }
+        setTimeout(() => box.classList.add('hidden'), final ? 1500 : 6000);
+      }
+
+      if (failure) return { error: failure };
+      return final || { error: 'העיבוד הופסק לפני שהסתיים' };
+    }
+
+    // כפתור שליחה: מושבת בזמן העיבוד כדי למנוע שליחה כפולה
+    async function withButtonLoading(btn, loadingText, fn) {
+      const original = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = loadingText; btn.classList.add('opacity-60', 'cursor-wait'); }
+      try {
+        return await fn();
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = original; btn.classList.remove('opacity-60', 'cursor-wait'); }
+      }
+    }
+
+    function reportStreamResult(result) {
+      if (result.error) {
+        showToast(result.error, true);
+        return false;
+      }
+      showToast(result.message);
+      return true;
     }
 
     async function addTextKnowledge(e) {
       e.preventDefault();
       const title = document.getElementById('docTitleInput').value;
       const text = document.getElementById('docTextInput').value;
-      const res = await adminFetch(`${API_BASE}/api/admin/knowledge/text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, text })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message);
-        document.getElementById('docTitleInput').value = '';
-        document.getElementById('docTextInput').value = '';
+      await withButtonLoading(e.submitter, '⏳ מעבד...', async () => {
+        const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, text })
+        }, `מעבד את "${title}"`);
+        if (reportStreamResult(result)) {
+          document.getElementById('docTitleInput').value = '';
+          document.getElementById('docTextInput').value = '';
+        }
         await loadKnowledge();
-      } else {
-        showToast(data.detail || 'שגיאה', true);
-      }
+      });
     }
 
     async function uploadFileKnowledge(e) {
@@ -893,21 +1112,27 @@
       formData.append('title', title);
       formData.append('file', fileInput.files[0]);
 
-      const res = await adminFetch(`${API_BASE}/api/admin/knowledge/pdf`, {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message);
-        document.getElementById('fileTitleInput').value = '';
-        fileInput.value = '';
+      await withButtonLoading(e.submitter, '⏳ מעבד את הקובץ...', async () => {
+        const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/pdf`, {
+          method: 'POST',
+          body: formData
+        }, `מעבד את הקובץ "${fileInput.files[0].name}"`);
+        if (reportStreamResult(result)) {
+          document.getElementById('fileTitleInput').value = '';
+          fileInput.value = '';
+        }
         await loadKnowledge();
-      } else {
-        showToast(data.detail || 'שגיאה בהעלאת הקובץ', true);
-      }
+      });
     }
 
+    async function reindexMissing() {
+      const btn = document.getElementById('reindexBtn');
+      await withButtonLoading(btn, '⏳ משלים וקטורים...', async () => {
+        const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/reindex`, { method: 'POST' }, 'משלים וקטורים חסרים');
+        if (result.error) showToast(result.error, true); else showToast(result.message, result.still_missing > 0);
+        await loadKnowledge();
+      });
+    }
     async function deleteChunk(id) {
       await adminFetch(`${API_BASE}/api/admin/knowledge/${id}`, { method: 'DELETE' });
       await loadKnowledge();

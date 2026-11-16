@@ -228,6 +228,30 @@ class Database:
             for r in rows
         ]
 
+    async def chunk_text_exists(self, text: str) -> bool:
+        """האם מקטע עם בדיוק אותו טקסט כבר קיים במאגר (למניעת כפילויות בהעלאה חוזרת)."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select 1 from knowledge_chunks where text = %s limit 1;", (text,))
+                return await cur.fetchone() is not None
+
+    async def get_chunks_without_embedding(self) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "select id, title, text from knowledge_chunks where embedding is null order by created_at;"
+                )
+                rows = await cur.fetchall()
+        return [{"id": str(r["id"]), "title": r["title"], "text": r["text"]} for r in rows]
+
+    async def set_chunk_embedding(self, chunk_id: str, embedding: List[float]):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "update knowledge_chunks set embedding = %s::vector where id = %s;",
+                    (_vector_literal(embedding), chunk_id),
+                )
+
     async def delete_chunk(self, chunk_id: str):
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
@@ -535,6 +559,45 @@ class Database:
                 )
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ----------------------------------------------------------------
+    # התראות Push (עדכון גרסה דרך version.json ב-GitHub)
+    # ----------------------------------------------------------------
+    async def save_push_subscription(self, user_id: str, endpoint: str, p256dh: str, auth: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+                    values (%s, %s, %s, %s)
+                    on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth;
+                    """,
+                    (user_id, endpoint, p256dh, auth),
+                )
+
+    async def remove_push_subscription(self, endpoint: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("delete from push_subscriptions where endpoint = %s;", (endpoint,))
+
+    async def get_all_push_subscriptions(self) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("select endpoint, p256dh, auth from push_subscriptions;")
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_last_seen_version(self) -> str:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select last_seen_version from system_config where id = 1;")
+                row = await cur.fetchone()
+        return (row[0] if row else "") or ""
+
+    async def set_last_seen_version(self, version: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("update system_config set last_seen_version = %s where id = 1;", (version,))
 
 
 db = Database()

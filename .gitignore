@@ -7,3 +7,5 @@ venv/
 backend/mock_data.json
 backend/admin_auth.json
 .env
+backend/vapid_private.pem
+backend/vapid*.pem

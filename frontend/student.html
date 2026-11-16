@@ -175,20 +175,32 @@
 
       <!-- Header -->
       <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 shadow-md shrink-0">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2.5">
+            <button onclick="openDrawer()" class="btn-press w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition" aria-label="שיחות">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
             <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl shadow-inner shrink-0">
               🎓
             </div>
             <div>
               <h1 class="font-bold text-base leading-tight">העוזר החכם של המכללה</h1>
-              <p class="text-[11px] text-indigo-100">מענה מיידי מבוסס נהלי המכללה - שאלות ללא הגבלה</p>
+              <p class="text-[11px] text-indigo-100">שאלות ללא הגבלה</p>
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <a href="/admin" target="_blank" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">⚙️</a>
             <button onclick="handleLogout()" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">יציאה</button>
           </div>
+        </div>
+        <div class="bg-black/20 rounded-xl px-3 py-2 backdrop-blur-sm flex items-center justify-between">
+          <div class="flex items-center gap-1.5 text-xs min-w-0">
+            <span class="shrink-0">💬</span>
+            <span id="activeConvTitle" class="font-bold truncate">שיחה חדשה</span>
+          </div>
+          <button onclick="startNewConversation()" class="btn-press shrink-0 text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition font-bold">
+            + שיחה חדשה
+          </button>
         </div>
       </div>
 
@@ -217,6 +229,21 @@
       </form>
     </div>
 
+    <!-- ===================== מגש שיחות (Drawer) ===================== -->
+    <div id="drawerOverlay" class="drawer-overlay hidden absolute inset-0 z-30 bg-black/40 opacity-0" onclick="closeDrawer()"></div>
+    <div id="drawerPanel" class="drawer-panel absolute inset-y-0 right-0 z-30 w-[82%] max-w-[320px] bg-white shadow-2xl translate-x-full flex flex-col">
+      <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 flex items-center justify-between shrink-0">
+        <h2 class="font-bold text-sm">השיחות שלי</h2>
+        <button onclick="closeDrawer()" class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center transition">✕</button>
+      </div>
+      <div class="p-3 shrink-0">
+        <button onclick="startNewConversation()" class="btn-press w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-sm py-2.5 rounded-xl transition">
+          + שיחה חדשה
+        </button>
+      </div>
+      <div id="conversationsList" class="flex-1 overflow-y-auto scroll-area px-3 pb-3 space-y-1.5"></div>
+    </div>
+
   </div>
 
   <script>
@@ -234,6 +261,8 @@
 
     let TOKEN = safeStorageGet('token') || null;
     let USER_ID = safeStorageGet('user_id') || null;
+    let currentConversationId = null;
+    let conversationsCache = [];
     let isSending = false;
 
     // ---------- DOM refs ----------
@@ -396,6 +425,8 @@
       safeStorageRemove('user_id');
       TOKEN = null;
       USER_ID = null;
+      currentConversationId = null;
+      conversationsCache = [];
       chatMessages.innerHTML = '';
       clearSystemNotice();
       chatScreen.classList.add('hidden');
@@ -405,12 +436,137 @@
     }
 
     // ---------- App entry ----------
-    // השרת מנהל "שיחה" (conversation) אחת פר-משתמש פר-יום אוטומטית, כולל הקשר/סיכום -
-    // הלקוח לא צריך לנהל רשימת שיחות או היסטוריה בעצמו, רק לשלוח שאלה ולהציג תשובה.
     async function enterApp() {
       authScreen.classList.add('hidden');
       chatScreen.classList.remove('hidden');
       clearSystemNotice();
+      await initConversations();
+      subscribeToPushNotifications();
+    }
+
+    // ---------- Drawer ----------
+    function openDrawer() {
+      document.getElementById('drawerOverlay').classList.remove('hidden');
+      requestAnimationFrame(() => {
+        document.getElementById('drawerOverlay').classList.remove('opacity-0');
+        document.getElementById('drawerPanel').classList.remove('translate-x-full');
+      });
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawerOverlay').classList.add('opacity-0');
+      document.getElementById('drawerPanel').classList.add('translate-x-full');
+      setTimeout(() => document.getElementById('drawerOverlay').classList.add('hidden'), 250);
+    }
+
+    function formatDate(iso) {
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
+          ' · ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+      } catch { return ''; }
+    }
+
+    function renderConversationsList() {
+      const list = document.getElementById('conversationsList');
+      if (!conversationsCache.length) {
+        list.innerHTML = `<div class="text-center text-xs text-slate-400 py-8">עדיין אין שיחות.<br>התחילו שיחה חדשה כדי לשאול שאלה 💬</div>`;
+        return;
+      }
+      list.innerHTML = conversationsCache.map(c => {
+        const active = c.id === currentConversationId;
+        return `
+          <button onclick="openConversation('${c.id}')" class="btn-press w-full text-right p-3 rounded-xl border transition ${active ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-200 hover:bg-slate-50'}">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-semibold text-sm truncate ${active ? 'text-indigo-700' : 'text-slate-800'}">${escapeHtml(c.title || 'שיחה')}</span>
+              ${active ? '<span class="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full shrink-0">פעיל</span>' : ''}
+            </div>
+            <div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(formatDate(c.created_at))}</div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function updateConversationIndicator() {
+      const conv = conversationsCache.find(c => c.id === currentConversationId);
+      document.getElementById('activeConvTitle').textContent = conv ? (conv.title || 'שיחה חדשה') : 'שיחה חדשה';
+    }
+
+    async function initConversations() {
+      renderWelcomeLoading();
+      const { res, networkError } = await apiFetch('/api/conversations');
+
+      if (networkError || !res.ok) {
+        conversationsCache = [];
+        renderConversationsList();
+        if (networkError) showSystemNotice('⚠️ לא ניתן להתחבר לשרת כרגע. ניתן לנסות לשלוח הודעה כשהחיבור יתחדש.', 'error');
+        showWelcomeMessage();
+        return;
+      }
+
+      const data = await safeJson(res);
+      conversationsCache = Array.isArray(data.conversations) ? data.conversations : [];
+      renderConversationsList();
+
+      if (conversationsCache.length > 0) {
+        await openConversation(conversationsCache[0].id);
+      } else {
+        currentConversationId = null;
+        updateConversationIndicator();
+        showWelcomeMessage();
+      }
+    }
+
+    async function openConversation(id) {
+      currentConversationId = id;
+      closeDrawer();
+      updateConversationIndicator();
+      renderConversationsList();
+      renderWelcomeLoading();
+
+      const { res, networkError } = await apiFetch(`/api/conversations/${id}/messages`);
+      if (networkError || !res.ok) {
+        clearChatMessages();
+        showChatError('⚠️ לא ניתן לטעון את היסטוריית השיחה כרגע.');
+        return;
+      }
+      const data = await safeJson(res);
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      clearChatMessages();
+      if (messages.length === 0) {
+        showWelcomeMessage();
+        return;
+      }
+      messages.forEach(m => {
+        if (m.role === 'user') appendUserBubble(m.content);
+        else appendStaticBotBubble(m.content);
+      });
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function createConversation() {
+      const { res, networkError } = await apiFetch('/api/conversations', { method: 'POST' });
+      if (networkError || !res.ok) return false;
+      const data = await safeJson(res);
+      if (!data.id) return false;
+      currentConversationId = data.id;
+      conversationsCache.unshift({ id: currentConversationId, title: data.title || 'שיחה חדשה', created_at: data.created_at || new Date().toISOString() });
+      renderConversationsList();
+      updateConversationIndicator();
+      return true;
+    }
+
+    async function startNewConversation() {
+      closeDrawer();
+      clearSystemNotice();
+      renderWelcomeLoading();
+      const ok = await createConversation();
+      if (!ok) {
+        clearChatMessages();
+        showChatError('⚠️ לא ניתן ליצור שיחה חדשה כרגע. נסו שוב בעוד רגע.');
+        return;
+      }
       showWelcomeMessage();
     }
 
@@ -520,12 +676,23 @@
       setInputLoading(true);
 
       try {
+        if (!currentConversationId) {
+          const ok = await createConversation();
+          if (!ok) {
+            const botBubble = createBotBubble();
+            botBubble.textContent = '⚠️ לא ניתן ליצור שיחה חדשה כרגע. נסו שוב בעוד רגע.';
+            botBubble.classList.remove('typing-cursor');
+            botBubble.classList.add('text-rose-600', 'border-rose-200', 'bg-rose-50');
+            return;
+          }
+        }
+
         const botBubble = createBotBubble();
 
-        const { res, networkError } = await apiFetch('/api/chat/stream', {
+        const { res, networkError } = await apiFetch('/api/chat/stream/v2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: question })
+          body: JSON.stringify({ conversation_id: currentConversationId, question: question })
         });
 
         if (networkError) {
@@ -567,6 +734,13 @@
           botBubble.textContent = 'לא התקבלה תשובה מהשרת. נסו לשאול שוב.';
         }
         botBubble.classList.remove('typing-cursor');
+
+        const conv = conversationsCache.find(c => c.id === currentConversationId);
+        if (conv && (!conv.title || conv.title === 'שיחה חדשה')) {
+          conv.title = question.length > 28 ? question.slice(0, 28) + '…' : question;
+          renderConversationsList();
+          updateConversationIndicator();
+        }
       } catch (err) {
         const existing = chatMessages.lastElementChild;
         if (existing) {
@@ -582,8 +756,63 @@
     }
 
     // ---------- Service worker ----------
+    let swRegistration = null;
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => { swRegistration = reg; })
+        .catch(() => {});
+    }
+
+    // ---------- Push notifications אמיתיות (OS-level) ----------
+    // כשversion.json ב-GitHub משתנה, השרת שולח Push אמיתי דרך ה-service worker -
+    // זה מגיע גם כשהאפליקציה סגורה לגמרי (לא רק כש-הטאב פתוח, בניגוד ל-update-check.js).
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    async function subscribeToPushNotifications() {
+      try {
+        if (!TOKEN) return;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!swRegistration) {
+          swRegistration = await navigator.serviceWorker.ready;
+        }
+        if (Notification.permission === 'denied') return;
+
+        let existing = await swRegistration.pushManager.getSubscription();
+        if (!existing) {
+          if (Notification.permission === 'default') {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+          } else if (Notification.permission !== 'granted') {
+            return;
+          }
+
+          const { res: keyRes, networkError: keyErr } = await apiFetch('/api/push/vapid-public-key');
+          if (keyErr || !keyRes.ok) return;
+          const { publicKey } = await safeJson(keyRes);
+          if (!publicKey) return;
+
+          existing = await swRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey)
+          });
+        }
+
+        const sub = existing.toJSON();
+        await apiFetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.keys })
+        });
+      } catch (err) {
+        /* הרשמה ל-push היא תוספת נחמדה-ליש, אסור שתכשיל את האפליקציה אם היא נכשלת */
+      }
     }
 
     // ---------- Boot ----------
@@ -591,7 +820,8 @@
       if (TOKEN) {
         authScreen.classList.add('hidden');
         chatScreen.classList.remove('hidden');
-        showWelcomeMessage();
+        await initConversations();
+        subscribeToPushNotifications();
       } else {
         chatScreen.classList.add('hidden');
         authScreen.classList.remove('hidden');
