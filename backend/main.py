@@ -1,4 +1,6 @@
 import sys
+import base64
+from urllib.parse import unquote
 try:
     # מונע קריסה בהדפסת עברית/אימוג'י לקונסול של Windows (cp1255/cp1252 לא תומכים ב-UTF-8)
     sys.stdout.reconfigure(encoding="utf-8")
@@ -287,6 +289,34 @@ async def get_my_profile(session=Depends(require_student)):
 MOODLE_BASE_URL = "https://moodle.jct.ac.il/webservice/rest/server.php"
 
 
+def _extract_moodle_wstoken(raw: str) -> str:
+    """
+    מה שהמשתמש מדביק זה בד"כ הקישור המלא שה-SSO של Moodle מחזיר:
+    moodlemobile://token=BASE64(passport:::wstoken:::privatetoken) - כפי שההוראות
+    באתר MoodlePro מנחות להעתיק ("העתקת כתובת הקישור"), לא רק את הטוקן עצמו.
+    ה-wstoken האמיתי קבור באמצע ה-base64, אחרי הפירוק הזה - לא ניתן להשתמש
+    במחרוזת הגולמית כמו שהיא מול ה-webservice.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+
+    marker = "token="
+    idx = raw.find(marker)
+    payload = raw[idx + len(marker):] if idx != -1 else raw
+    payload = unquote(payload.strip())
+
+    try:
+        decoded = base64.b64decode(payload + "=" * (-len(payload) % 4)).decode("utf-8", errors="ignore")
+    except Exception:
+        return payload  # לא base64 תקין - כנראה הודבק הטוקן הגולמי עצמו, בלי העטיפה
+
+    parts = decoded.split(":::")
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]  # הפורמט הסטנדרטי: passport:::wstoken:::privatetoken
+    return payload
+
+
 @app.post("/api/moodle/connect")
 async def moodle_connect(req: MoodleConnectRequest):
     """
@@ -296,7 +326,7 @@ async def moodle_connect(req: MoodleConnectRequest):
     לפי ה-userid של Moodle מאתרים/יוצרים משתמש מקביל אצלנו (app_users) ומנפיקים לו
     טוקן התחברות משלנו, כדי שאפשר יהיה להמשיך איתו ישירות לצ'אט (RAG) ו-/api/conversations.
     """
-    token = (req.token or "").strip()
+    token = _extract_moodle_wstoken(req.token)
     if not token:
         raise HTTPException(status_code=400, detail="נדרש טוקן Moodle")
 
