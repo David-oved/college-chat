@@ -1,6 +1,7 @@
 import sys
 import time
 import base64
+import hashlib
 import uuid
 from urllib.parse import quote, unquote
 try:
@@ -126,6 +127,44 @@ def _rate_limit(key: str, limit: int, window_seconds: int):
             _rate_buckets.pop(k, None)
 
 
+@app.get("/api/health")
+async def health():
+    """בלי DB ובלי עבודה: רק כדי שהאפליקציה תוכל להעיר את השרת (Render נרדם) לפני שהסטודנט פותח את הצ'אט."""
+    return {"ok": True}
+
+
+# אימות טוקן Moodle: מזהה המשתמש שאומת נשמר בזיכרון לכמה דקות (לפי גיבוב של הטוקן, לא הטוקן עצמו) - חוסך סבב מול Moodle בכל הודעה
+_verify_cache: dict = {}
+_VERIFY_TTL = 300.0
+
+
+async def _moodle_userid_cached(raw_token: str):
+    """מחזיר (wstoken, userid). הטוקן עצמו לא נשמר; רק זהות משתמש שאומתה, לכמה דקות."""
+    token = _extract_moodle_wstoken(raw_token)
+    key = hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+    hit = _verify_cache.get(key)
+    if token and hit and hit[0] > time.monotonic():
+        return token, hit[1]
+    token, info = await _verify_moodle_token(raw_token)
+    _verify_cache[key] = (time.monotonic() + _VERIFY_TTL, info.get("userid"))
+    if len(_verify_cache) > 2000:
+        now = time.monotonic()
+        for k in [k for k, v in _verify_cache.items() if v[0] < now]:
+            _verify_cache.pop(k, None)
+    return token, info.get("userid")
+
+
+_bg_tasks: set = set()
+
+
+def _spawn(coro):
+    """משימת רקע שלא נאספת ע"י ה-garbage collector באמצע."""
+    t = asyncio.create_task(coro)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
+
+
 @app.on_event("startup")
 async def on_startup():
     """מתחבר ל-DB ומייצר (בפעם הראשונה בלבד) סיסמת מנהל אקראית, מודפסת לקונסול."""
@@ -243,8 +282,9 @@ class TestConnectivityRequest(BaseModel):
 # 0. התחברות מנהל (Admin Login)
 # =====================================================================
 @app.post("/api/admin/login")
-async def admin_login(req: AdminLoginRequest):
+async def admin_login(req: AdminLoginRequest, request: Request):
     """התחברות לפאנל הניהול. הסיסמה נוצרת אוטומטית בהפעלה הראשונה של השרת ומוצגת בקונסול."""
+    _rate_limit("admin-login:" + _client_ip(request), 8, 300)       # בלי זה אפשר לנחש סיסמה בלי הגבלה
     if not await admin_auth.verify_password(db, req.password):
         raise HTTPException(status_code=401, detail="סיסמה שגויה")
     token = admin_auth.create_session()
@@ -254,8 +294,8 @@ async def admin_login(req: AdminLoginRequest):
 @app.post("/api/admin/change-password", dependencies=[Depends(require_admin)])
 async def change_admin_password(req: ChangePasswordRequest):
     """מאפשר למנהל המחובר לשנות את סיסמת הכניסה לפאנל (נשמר כ-hash ב-DB)."""
-    if not req.new_password or len(req.new_password) < 3:
-        raise HTTPException(status_code=400, detail="הסיסמה חייבת להכיל לפחות 3 תווים")
+    if not req.new_password or len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="הסיסמה חייבת להכיל לפחות 8 תווים")
     await db.set_admin_password_hash(hash_password(req.new_password))
     return {"message": "הסיסמה עודכנה בהצלחה"}
 
@@ -290,7 +330,8 @@ async def get_user_activity(user_id: str):
 # 0.5 התחברות/הרשמה אמיתית לסטודנטים (שם משתמש + סיסמה, חשבון ב-DB)
 # =====================================================================
 @app.post("/api/signup")
-async def student_signup(req: StudentSignupRequest):
+async def student_signup(req: StudentSignupRequest, request: Request):
+    _rate_limit("signup:" + _client_ip(request), 6, 3600)
     """יצירת חשבון סטודנט חדש - שם משתמש + סיסמה, נשמר ב-DB (app_users)."""
     user_id = await student_auth.signup(db, req.username, req.password)
     if not user_id:
@@ -300,7 +341,8 @@ async def student_signup(req: StudentSignupRequest):
 
 
 @app.post("/api/login")
-async def student_login(req: StudentLoginRequest):
+async def student_login(req: StudentLoginRequest, request: Request):
+    _rate_limit("login:" + _client_ip(request), 30, 300)
     """התחברות לחשבון סטודנט קיים."""
     result = await student_auth.login(db, req.username, req.password)
     if not result:
@@ -313,7 +355,8 @@ TEST_LOGIN_USERNAME = "test_user"
 
 
 @app.post("/api/test-login")
-async def test_login(req: TestLoginRequest):
+async def test_login(req: TestLoginRequest, request: Request):
+    _rate_limit("test-login:" + _client_ip(request), 12, 600)
     """
     כניסת בדיקה זמנית בלבד (עד שהכניסה האמיתית תגיע מה-SSO של Moodle): סיסמה אחידה,
     בלי שם משתמש, תמיד אותו משתמש-בדיקה יחיד (לא יוצר חשבון חדש בכל פעם).
@@ -810,6 +853,37 @@ SUMMARIZE_AFTER_MESSAGES = 16  # אחרי כמה הודעות בשיחה מתח�
 KEEP_RECENT_MESSAGES = 12  # כמה הודעות אחרונות נשארות מילה-במילה (לא מסוכמות)
 
 
+async def _none():
+    return None
+
+
+async def _empty():
+    return []
+
+
+async def _save_user_message(conversation_id: str, question: str):
+    await db.add_message(conversation_id, "user", question)
+    # כותרת לשיחה (להיסטוריה): השורה הראשונה של השאלה הראשונה, קצרה
+    await db.set_conversation_title_if_default(conversation_id, (question.splitlines() or [question])[0][:48])
+
+
+async def _finish_chat(conversation_id: str, answer: str, save_task, api_key: str):
+    """מה שקורה אחרי שהתשובה כבר אצל הסטודנט: שמירה, וסיכום שיחה ארוכה - ברקע, כדי שהזרם ייסגר מיד."""
+    try:
+        if save_task:
+            await save_task
+        await db.add_message(conversation_id, "assistant", answer)
+        total_messages = await db.count_messages(conversation_id)
+        if total_messages > SUMMARIZE_AFTER_MESSAGES:
+            old_messages = await db.get_old_messages_to_summarize(conversation_id, keep_recent=KEEP_RECENT_MESSAGES)
+            if old_messages:
+                old_summary = await db.get_conversation_summary(conversation_id)
+                new_summary = await summarize_conversation(old_summary, old_messages, api_key)
+                await db.update_conversation_summary(conversation_id, new_summary)
+    except Exception as e:
+        print(f"[chat] post-processing failed: {type(e).__name__}: {e}")
+
+
 async def _stream_chat_response(
     conversation_id: str,
     question: str,
@@ -820,60 +894,62 @@ async def _stream_chat_response(
     emit_status: bool = False,
 ) -> StreamingResponse:
     """
-    ליבת הצ'אט המשותפת: שומרת את שאלת הסטודנט, שולפת מידע רלוונטי (pgvector), טוענת את הזיכרון של הסטודנט, ומזרימה תשובה
-    עם הקשר (סיכום + הודעות אחרונות); שומרת אותה, ודוחסת הקשר ישן לסיכום כשהשיחה מתארכת. אין הגבלת מכסה יומית.
-    אם יש חיבור Moodle פעיל (moodle_token+moodle_user_id מגיעים מה-frontend, לא נשמרים אצלנו) - גמיני מקבל כלי Moodle,
-    ואם יש user_id - גם כלי זיכרון. עם emit_status הזרם כולל אירועי סטטוס (\x01{json}\x02) שלא נשמרים ב-DB.
+    ליבת הצ'אט המשותפת. מהירות: כל מה שהתשובה צריכה נשלף במקביל (כל סבב ל-DB עולה ~300ms), ההגדרות הקבועות במטמון, שמירת שאלת הסטודנט
+    והסיכום אחרי התשובה רצים ברקע. אם יש חיבור Moodle (הטוקן מגיע מהמכשיר ולא נשמר) - כלי Moodle; אם יש user_id - גם כלי זיכרון.
+    עם emit_status הזרם כולל אירועי סטטוס (\x01{json}\x02) שלא נשמרים ב-DB.
     """
-    api_key = await db.get_api_key()
-
-    await db.add_message(conversation_id, "user", question)
-    # כותרת לשיחה (להיסטוריה): השורה הראשונה של השאלה הראשונה, קצרה
-    await db.set_conversation_title_if_default(conversation_id, (question.splitlines() or [question])[0][:48])
+    api_key = await db.get_api_key()          # (במטמון)
 
     async def response_generator():
         full_answer = ""
 
-        if emit_status:
-            yield status_event(s="kb")
-        # שליפת המידע הרלוונטי ממאגר הידע של המכללה - חיפוש וקטורי שרץ בתוך ה-DB עצמו (pgvector)
-        try:
-            question_embedding = await get_embedding(question, api_key) if api_key else []
-            relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3)
-        except Exception as e:
-            print(f"[chat] knowledge search failed: {type(e).__name__}: {e}")
-            relevant_chunks = []
-
         if not api_key:
-            import asyncio
+            import asyncio as _aio
+            await _save_user_message(conversation_id, question)
+            try:
+                relevant_chunks = await db.search_similar_chunks([], top_k=3)
+            except Exception:
+                relevant_chunks = []
             demo_intro = "**[מצב הדגמה - טרם הוזן מפתח Gemini API במסך המנהל]**\n\nחיפשתי במאגר הידע של המכללה ומצאתי עבורך את הנהלים הרלוונטיים ביותר לשאלתך:\n\n"
             for word in demo_intro.split(" "):
                 yield word + " "
-                await asyncio.sleep(0.03)
-
+                await _aio.sleep(0.03)
             if relevant_chunks:
                 top = relevant_chunks[0]
                 text_out = f"**{top.get('title', 'נוהל מכללה')}:**\n{top['text']}\n\n*(הזן מפתח Gemini API בפאנל המנהל כדי לקבל ניסוח AI חכם ומלא!)*"
             else:
                 text_out = "לא נמצא מידע תואם במאגר המכללה."
-
             for word in text_out.split(" "):
                 yield word + " "
-                await asyncio.sleep(0.03)
+                await _aio.sleep(0.03)
             await db.add_message(conversation_id, "assistant", text_out)
             return
 
-        bot_identity = await db.get_bot_identity()
-        catalog = await db.get_catalog()
-        conversation_summary = await db.get_conversation_summary(conversation_id)
-        recent_messages = await db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES)
-        # ההודעה האחרונה ברשימה היא השאלה הנוכחית עצמה - לא צריך לשלוח אותה פעמיים
-        history_for_prompt = recent_messages[:-1] if recent_messages else []
-        memories = await db.list_memories(user_id) if user_id else []
-        enabled_functions = await db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else None
+        if emit_status:
+            yield status_event(s="kb")
+
+        async def search():
+            try:
+                embedding = await get_embedding(question, api_key)
+                return await db.search_similar_chunks(embedding, top_k=3)
+            except Exception as e:
+                print(f"[chat] knowledge search failed: {type(e).__name__}: {e}")
+                return []
+
+        (relevant_chunks, bot_identity, catalog, conversation_summary, recent_messages, memories, enabled_functions) = await asyncio.gather(
+            search(),
+            db.get_bot_identity(),
+            db.get_catalog(),
+            db.get_conversation_summary(conversation_id),
+            db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES),
+            db.list_memories(user_id) if user_id else _empty(),
+            db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else _none(),
+        )
+        # שאלת הסטודנט עוד לא נשמרה (נשמרת עכשיו ברקע), ולכן ההיסטוריה שנשלפה היא רק מה שלפניה
+        save_task = _spawn(_save_user_message(conversation_id, question))
 
         answer_stream = stream_chat_with_tools(
-            question, relevant_chunks, api_key, bot_identity, catalog, conversation_summary, history_for_prompt,
+            question, relevant_chunks, api_key, bot_identity, catalog, conversation_summary, recent_messages or [],
             username=username, moodle_token=moodle_token, moodle_user_id=moodle_user_id,
             enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
             memories=memories, user_id=user_id, emit_status=emit_status,
@@ -887,16 +963,7 @@ async def _stream_chat_response(
             full_answer += token
             yield token
 
-        await db.add_message(conversation_id, "assistant", full_answer)
-
-        # דחיסת הקשר: אם השיחה התארכה, נסכם את ההודעות הישנות כדי שלא יישלח טקסט ענק למודל בהמשך
-        total_messages = await db.count_messages(conversation_id)
-        if total_messages > SUMMARIZE_AFTER_MESSAGES:
-            old_messages = await db.get_old_messages_to_summarize(conversation_id, keep_recent=KEEP_RECENT_MESSAGES)
-            if old_messages:
-                old_summary = await db.get_conversation_summary(conversation_id)
-                new_summary = await summarize_conversation(old_summary, old_messages, api_key)
-                await db.update_conversation_summary(conversation_id, new_summary)
+        _spawn(_finish_chat(conversation_id, full_answer, save_task, api_key))     # הזרם נסגר עכשיו; השמירה והסיכום ברקע
 
     return StreamingResponse(response_generator(), media_type="text/plain; charset=utf-8")
 
@@ -1072,27 +1139,35 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
     if not question:
         raise HTTPException(status_code=400, detail="נא להזין שאלה")
     _rate_limit("chat:" + session["user_id"], 15, 60)
-    owner_id = await db.get_conversation_owner(req.conversation_id)
+    _rate_limit("chat:all", 150, 60)            # תקרה כוללת: שום שילוב של חשבונות לא יכול לשרוף את מכסת Gemini של כולם
+
+    own_moodle_id = session["username"][len("moodle_"):] if session["username"].startswith("moodle_") else None
+
+    async def verify():
+        if not (req.moodle_token and own_moodle_id):
+            return None
+        return await _moodle_userid_cached(req.moodle_token)
+
+    # כלי Moodle: הטוקן מגיע מהמכשיר בכל בקשה ולא נשמר. את ה-userid לא סומכים על הלקוח - מאמתים (במקביל לבדיקת הבעלות על השיחה)
+    owner_id, vres = await asyncio.gather(db.get_conversation_owner(req.conversation_id), verify(), return_exceptions=True)
+    if isinstance(owner_id, Exception):
+        raise owner_id
     if owner_id != session["user_id"]:
         raise HTTPException(status_code=404, detail="השיחה לא נמצאה")
 
-    # כלי Moodle: הטוקן מגיע מהמכשיר בכל בקשה ולא נשמר. את ה-userid לא סומכים על הלקוח - מאמתים מול
-    # Moodle עצמו שהטוקן שייך בדיוק למשתמש של הסשן הזה, ורק אז מפעילים את הכלים עבורו.
     moodle_wstoken = None
     moodle_uid = None
-    own_moodle_id = session["username"][len("moodle_"):] if session["username"].startswith("moodle_") else None
-    if req.moodle_token and own_moodle_id:
-        try:
-            moodle_wstoken, info = await _verify_moodle_token(req.moodle_token)
-        except HTTPException as e:
-            moodle_wstoken = None
-            if e.status_code == 401:
-                raise HTTPException(status_code=403, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה")
-            # Moodle לא זמין כרגע (502): ממשיכים לענות בלי כלי Moodle במקום להיכשל
-        else:
-            if str(info.get("userid")) != own_moodle_id:
-                raise HTTPException(status_code=403, detail="הטוקן שייך למשתמש אחר")
-            moodle_uid = int(info["userid"])
+    if isinstance(vres, HTTPException):
+        if vres.status_code == 401:
+            raise HTTPException(status_code=403, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה")
+        # Moodle לא זמין כרגע (502): ממשיכים לענות בלי כלי Moodle במקום להיכשל
+    elif isinstance(vres, Exception):
+        pass
+    elif vres:
+        token_value, uid_value = vres
+        if str(uid_value) != own_moodle_id:
+            raise HTTPException(status_code=403, detail="הטוקן שייך למשתמש אחר")
+        moodle_wstoken, moodle_uid = token_value, int(uid_value)
     return await _stream_chat_response(
         req.conversation_id, question, session.get("display_name") or session["username"], moodle_wstoken, moodle_uid,
         user_id=session["user_id"], emit_status=bool(req.status),

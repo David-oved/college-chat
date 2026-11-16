@@ -110,7 +110,7 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
     # עם השהיה גדלה, במקום להיכשל בשקט ולשמור מקטע בלי וקטור.
     for attempt in range(3):
         try:
-            await db.increment_api_usage("embedding")
+            db.bump_api_usage("embedding")
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(url, json=payload)
             if resp.status_code == 200:
@@ -163,7 +163,7 @@ async def _stream_from_gemini(
             for model_name in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
                 try:
-                    await db.increment_api_usage(call_type)
+                    db.bump_api_usage(call_type)
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         async with client.stream("POST", url, json=payload) as response:
                             if response.status_code == 200:
@@ -204,6 +204,67 @@ async def _stream_from_gemini(
         yield "המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
 
 
+async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer"):
+    """
+    קריאה מוזרמת אחת ל-Gemini, עם כלים אם ביקשו: מזרים ("text", קטע) ברגע שמגיע, ובסוף ("calls", [functionCall...]) אם המודל ביקש כלים,
+    או ("failed", None) אם כל הניסיונות נכשלו בלי שיצא כלום. זה מחליף את הסבב "החלטה" הנפרד: שאלה רגילה מתחילה להיענות מיד,
+    ורק כשצריך כלי יש סבב שני. כמו ההזרמה הרגילה: ניסיון חוזר על 429/5xx והחלפת מודל, אבל בלי כפילות אחרי שכבר יצא טקסט.
+    """
+    turns = contents if isinstance(contents, list) else [{"role": "user", "parts": [{"text": contents}]}]
+    payload = {"contents": turns, "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens}}
+    if tools:
+        payload["tools"] = tools
+    async with gemini_queue_semaphore:
+        for attempt in range(3):
+            for model_name in DEFAULT_MODELS_TO_TRY:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
+                emitted = False
+                calls = []
+                try:
+                    db.bump_api_usage(call_type)
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        async with client.stream("POST", url, json=payload) as response:
+                            if response.status_code == 200:
+                                async for line in response.aiter_lines():
+                                    if not line.startswith("data: "):
+                                        continue
+                                    data_str = line[6:].strip()
+                                    if not data_str or data_str == "[DONE]":
+                                        continue
+                                    try:
+                                        cand = json.loads(data_str).get("candidates", [])
+                                    except Exception:
+                                        continue
+                                    if not cand:
+                                        continue
+                                    for part in cand[0].get("content", {}).get("parts", []):
+                                        if not isinstance(part, dict):
+                                            continue
+                                        if part.get("functionCall"):
+                                            calls.append(part)
+                                        elif part.get("text"):
+                                            emitted = True
+                                            yield ("text", part["text"])
+                                if calls:
+                                    yield ("calls", calls)
+                                return
+                            if response.status_code in (400, 403):
+                                err = (await response.aread()).decode("utf-8", errors="ignore")
+                                if "API_KEY_INVALID" in err or response.status_code == 403:
+                                    yield ("text", "שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל.")
+                                    return
+                                print(f"[chat] Gemini {response.status_code} with {model_name}: {err[:300]}")
+                            # 429 / 5xx / שגיאת סכמה: מנסים את המודל הבא מיד
+                except Exception as e:
+                    print(f"[chat] Gemini stream error with {model_name}: {type(e).__name__}: {e}")
+                    if emitted:
+                        return                      # כבר יצא טקסט - לא מתחילים מחדש על מודל אחר (היה כפול)
+                    continue
+            if attempt < 2:
+                await asyncio.sleep(1.2 * (attempt + 1))
+    yield ("failed", None)
+
+
 async def _generate_once(
     contents: List[dict],
     api_key: str,
@@ -227,7 +288,7 @@ async def _generate_once(
         for model_name in DEFAULT_MODELS_TO_TRY:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
-                await db.increment_api_usage(call_type)
+                db.bump_api_usage(call_type)
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
@@ -300,6 +361,8 @@ def _build_chat_user_turn(
 
 
 MOODLE_SYSTEM_ADDENDUM = """
+
+כלל קריטי: אם אתה קורא לכלי, אל תכתוב שום טקסט לפני הקריאה (בלי "רגע אבדוק", בלי הקדמה) - קרא לכלי מיד. את התשובה כותבים רק אחרי שהתוצאה חזרה.
 
 === מידע אישי מ-Moodle (קורסים/מטלות/ציונים/יומן) ===
 לסטודנט הזה יש חיבור פעיל ל-Moodle. אם השאלה נוגעת למידע אישי שלו (הקורסים שלו, מטלות,
@@ -396,18 +459,28 @@ async def stream_chat_with_tools(
             yield token
         return
 
+    # קריאה מוזרמת אחת עם הכלים: שאלה רגילה מתחילה להיענות מיד; רק אם המודל מבקש כלי יש סבב שני אחרי ביצוע הכלים
+    calls: List[Dict[str, Any]] = []
+    emitted_text = False
+    failed = False
     if emit_status:
         yield status_event(s="think")
-    try:
-        decision_content = await _generate_once(contents, api_key, tools=tools, max_output_tokens=400, call_type="chat_answer")
-    except Exception:
-        decision_content = None
-
-    parts = (decision_content or {}).get("parts", [])
-    calls = [p for p in parts if isinstance(p, dict) and "functionCall" in p][:MAX_TOOL_CALLS_PER_TURN]
-    if not calls:
+    async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=800):
+        if kind == "text":
+            if emit_status and not emitted_text:
+                yield status_event(s="write")
+            emitted_text = True
+            yield value
+        elif kind == "calls":
+            calls = value[:MAX_TOOL_CALLS_PER_TURN]
+        else:
+            failed = True
+    if failed and not emitted_text:
+        # נתיב הכלים נכשל (למשל סכמה) - עונים בלי כלים במקום להיכשל
         async for token in final_answer(user_turn_text):
             yield token
+        return
+    if not calls:
         return
 
     # לא לתת לבקשה אחת להפוך לשטיפה של Moodle: מגבילים כמה חיפושי קבצים אפשר בתור אחד

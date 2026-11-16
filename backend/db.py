@@ -26,7 +26,7 @@ def _get_pool() -> AsyncConnectionPool:
             raise RuntimeError(
                 "DATABASE_URL לא מוגדר. צור קובץ backend/.env עם שורה: DATABASE_URL=postgresql://..."
             )
-        _pool = AsyncConnectionPool(DATABASE_URL, min_size=1, max_size=5, open=False)
+        _pool = AsyncConnectionPool(DATABASE_URL, min_size=4, max_size=8, open=False)
     return _pool
 
 
@@ -106,14 +106,14 @@ class Database:
             "bot_identity_info": row.get("bot_identity_info") or "",
         }
 
-    async def get_api_key(self) -> str:
+    async def _get_api_key_raw(self) -> str:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("select gemini_api_key from system_config where id = 1;")
                 row = await cur.fetchone()
         return (row[0] if row else "") or ""
 
-    async def get_bot_identity(self) -> str:
+    async def _get_bot_identity_raw(self) -> str:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("select bot_identity_info from system_config where id = 1;")
@@ -155,7 +155,7 @@ class Database:
             async with conn.cursor() as cur:
                 await cur.execute("update system_config set admin_password_hash = %s where id = 1;", (password_hash,))
 
-    async def get_moodle_enabled_functions(self) -> Optional[List[str]]:
+    async def _get_moodle_enabled_functions_raw(self) -> Optional[List[str]]:
         """None = כל הפונקציות דלוקות (ברירת מחדל). רשימה (אפילו ריקה) = בדיוק מה שהמנהל בחר."""
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
@@ -325,7 +325,7 @@ class Database:
     # ----------------------------------------------------------------
     # קטלוג/מפת נושאים (knowledge_catalog) - מתעדכן ע"י AI בכל הוספה
     # ----------------------------------------------------------------
-    async def get_catalog(self) -> List[Dict[str, Any]]:
+    async def _get_catalog_raw(self) -> List[Dict[str, Any]]:
         async with _get_pool().connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("select category, summary, chunk_count from knowledge_catalog order by category;")
@@ -342,6 +342,52 @@ class Database:
     # ----------------------------------------------------------------
     # מדדי שימוש (api_usage_daily) - כמה פעמים קראנו בפועל ל-Gemini היום
     # ----------------------------------------------------------------
+    # ----------------------------------------------------------------
+    # מטמון קצר להגדרות שכמעט לא משתנות (מפתח, זהות הבוט, קטלוג, כלים דלוקים): כל שליפה כזו עלתה סבב מלא ל-DB (~300ms)
+    # בכל הודעה. שינוי של המנהל מתעדכן תוך _CFG_TTL שניות.
+    # ----------------------------------------------------------------
+    _CFG_TTL = 45.0
+    _cfg_cache: Dict[str, Any] = {}
+
+    async def _cfg(self, name: str):
+        import time as _t
+        hit = self._cfg_cache.get(name)
+        if hit and hit[0] > _t.monotonic():
+            return hit[1]
+        value = await getattr(self, f"_{name}_raw")()
+        self._cfg_cache[name] = (_t.monotonic() + self._CFG_TTL, value)
+        return value
+
+    def invalidate_config_cache(self):
+        self._cfg_cache.clear()
+
+    async def get_api_key(self) -> str:
+        return await self._cfg("get_api_key")
+
+    async def get_bot_identity(self) -> str:
+        return await self._cfg("get_bot_identity")
+
+    async def get_moodle_enabled_functions(self) -> Optional[List[str]]:
+        return await self._cfg("get_moodle_enabled_functions")
+
+    async def get_catalog(self) -> List[Dict[str, Any]]:
+        return await self._cfg("get_catalog")
+
+    def bump_api_usage(self, call_type: str):
+        """סופר קריאה ל-Gemini ברקע - לא מחכים לזה ולא מעכבים את התשובה בסבב DB."""
+        import asyncio as _a
+
+        async def _run():
+            try:
+                await self.increment_api_usage(call_type)
+            except Exception:
+                pass
+
+        try:
+            _a.get_running_loop().create_task(_run())
+        except RuntimeError:
+            pass
+
     async def increment_api_usage(self, call_type: str):
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
