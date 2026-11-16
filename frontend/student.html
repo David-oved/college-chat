@@ -406,11 +406,27 @@
       safeStorageSet('moodle_token', MOODLE_TOKEN);
       if (MOODLE_USER_ID !== null) safeStorageSet('moodle_user_id', MOODLE_USER_ID);
 
+      const fnList = Array.isArray(m.available_functions) ? m.available_functions : null;
+      const relevantNames = ['assign', 'grade', 'calendar', 'enrol_get_users_courses', 'course_get_contents'];
+      const fnBlock = fnList
+        ? `<div class="mt-2 pt-2 border-t border-emerald-200">
+             <div class="font-bold mb-1">🔍 פונקציות webservice שהטוקן הזה מורשה לקרוא (${fnList.length} סה"כ):</div>
+             <div class="max-h-32 overflow-y-auto text-[11px] font-mono bg-white/60 rounded-lg p-2">
+               ${fnList.map(n => {
+                 const relevant = relevantNames.some(r => n.includes(r));
+                 return `<div class="${relevant ? 'font-bold text-emerald-900' : 'text-emerald-700'}">${escapeHtml(n)}</div>`;
+               }).join('')}
+             </div>
+             <div class="text-[11px] text-emerald-700 mt-1">המודגשות למעלה הן אלה שרלוונטיות לקורסים/ציונים/מטלות/יומן - השוו לשמות שכתובים כרגע ב-rag_engine.py.</div>
+           </div>`
+        : `<div class="mt-2 pt-2 border-t border-emerald-200 text-[11px] text-amber-700">⚠️ Moodle לא החזיר רשימת פונקציות זמינות (ייתכן שזה מושבת אצל המוסד) - אי אפשר לדעת מכאן בוודאות אילו שמות פונקציה פעילים.</div>`;
+
       resultEl.innerHTML = `
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 space-y-1">
           <div class="font-bold">✅ הטוקן תקף - מחובר כ: ${escapeHtml(m.fullname || m.username || '')}</div>
           <div>Moodle userid: <b>${escapeHtml(m.userid ?? '—')}</b> · Moodle username: <b>${escapeHtml(m.username ?? '—')}</b></div>
           <div>ה-ID שהוקצה לו אצלנו (app_users.id): <b class="break-all">${escapeHtml(data.user_id)}</b></div>
+          ${fnBlock}
         </div>
         <button onclick="enterApp()" class="btn-press w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">המשך לצ'אט ←</button>
       `;

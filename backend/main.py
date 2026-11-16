@@ -365,12 +365,24 @@ async def moodle_connect(req: MoodleConnectRequest):
         user = await db.get_user_by_id(new_id)
 
     session = student_auth.create_session_for_user(user["id"], user["username"])
+
+    # core_webservice_get_site_info מחזיר (כשזה מופעל אצל המוסד) רשימת כל הפונקציות
+    # שהטוקן הזה בפועל מורשה לקרוא להן - זו הדרך האמיתית לדעת אילו שמות פונקציה
+    # (ציונים/מטלות/יומן) קיימים אצל JCT, במקום לנחש לפי ה-API הסטנדרטי של Moodle.
+    raw_functions = data.get("functions")
+    available_functions = (
+        sorted({f.get("name") for f in raw_functions if isinstance(f, dict) and f.get("name")})
+        if isinstance(raw_functions, list)
+        else None
+    )
+
     return {
         **session,
         "moodle": {
             "userid": moodle_user_id,
             "username": data.get("username"),
             "fullname": data.get("fullname"),
+            "available_functions": available_functions,
         },
     }
 
