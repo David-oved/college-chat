@@ -434,6 +434,34 @@ class Database:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_user_profile_summary(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        'פאנל שקיפות' למשתמש עצמו - בדיוק מה שמור עליו אצלנו ב-DB כרגע (לא יותר מזה):
+        שורת app_users שלו + כמה שיחות/הודעות יש לו בפועל.
+        """
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    select u.id, u.username, u.created_at,
+                           count(distinct c.id) as conversation_count,
+                           count(m.id) as message_count,
+                           max(m.created_at) as last_message_at
+                    from app_users u
+                    left join conversations c on c.user_id = u.id
+                    left join messages m on m.conversation_id = c.id
+                    where u.id = %s
+                    group by u.id, u.username, u.created_at;
+                    """,
+                    (user_id,),
+                )
+                row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        row["id"] = str(row["id"])
+        return row
+
     async def get_user_activity(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         כל השיחות וההודעות בפועל של משתמש ספציפי - בשביל שהמנהל יוכל לראות בדיוק

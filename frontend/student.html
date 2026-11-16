@@ -167,9 +167,37 @@
           </button>
         </form>
 
+        <button type="button" onclick="toggleMoodlePanel()" class="text-[11px] text-indigo-500 hover:text-indigo-700 underline text-center mt-5">
+          🔗 בדיקת חיבור Moodle (למפתחים בלבד)
+        </button>
+
+        <div id="moodlePanel" class="hidden mt-3 border-t border-slate-200 pt-4">
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">טוקן Moodle לבדיקה</label>
+          <textarea id="moodleTokenInput" rows="2" placeholder="הדביקו כאן טוקן Moodle אמיתי שהתקבל מהאפליקציה המארחת"
+            class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition"></textarea>
+          <button id="moodleConnectBtn" onclick="connectMoodle()" class="btn-press mt-2 w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-2">
+            <span id="moodleConnectText">חבר עם טוקן Moodle</span>
+          </button>
+          <div id="moodleResult" class="mt-3 text-xs"></div>
+        </div>
+
         <p class="text-[11px] text-slate-400 text-center mt-6">
           בהתחברות או ברישום הנתונים נשמרים במכשיר זה כדי לשמור אתכם מחוברים 🔒
         </p>
+      </div>
+    </div>
+
+    <!-- ===================== מודל: מה שמור עלי ב-DB (שקיפות, לבדיקות) ===================== -->
+    <div id="myDataOverlay" class="hidden absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if (event.target === this) closeMyDataPanel()">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80%] flex flex-col overflow-hidden">
+        <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 flex items-center justify-between shrink-0">
+          <h3 class="font-bold text-sm">🔍 מה שמור עלי ב-DB</h3>
+          <button onclick="closeMyDataPanel()" class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center transition">✕</button>
+        </div>
+        <div id="myDataBody" class="flex-1 overflow-y-auto p-4 text-xs text-slate-700 space-y-1.5">טוען...</div>
+        <div class="p-3 border-t border-slate-200 shrink-0">
+          <button onclick="loadMyData()" class="btn-press w-full text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-2 rounded-lg transition">🔄 רענן</button>
+        </div>
       </div>
     </div>
 
@@ -192,7 +220,7 @@
             </div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <a href="/admin" target="_blank" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">⚙️</a>
+            <button onclick="openMyDataPanel()" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition" title="מה שמור עלי ב-DB (לבדיקות)">🔍</button>
             <button onclick="handleLogout()" class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-1.5 rounded-lg transition">יציאה</button>
           </div>
         </div>
@@ -421,6 +449,89 @@
       safeStorageSet('token', TOKEN);
       if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
       await enterApp();
+    }
+
+    // ---------- בדיקת חיבור Moodle (תשתית ראשונית, למפתחים) ----------
+    function toggleMoodlePanel() {
+      document.getElementById('moodlePanel').classList.toggle('hidden');
+    }
+
+    async function connectMoodle() {
+      const token = document.getElementById('moodleTokenInput').value.trim();
+      const resultEl = document.getElementById('moodleResult');
+      const btn = document.getElementById('moodleConnectBtn');
+      const text = document.getElementById('moodleConnectText');
+      if (!token) {
+        resultEl.innerHTML = '<div class="text-rose-600">נא להדביק טוקן Moodle</div>';
+        return;
+      }
+      btn.disabled = true;
+      text.innerHTML = '<span class="spinner"></span>';
+      resultEl.innerHTML = '';
+
+      const { res, networkError } = await apiFetch('/api/moodle/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      btn.disabled = false;
+      text.textContent = 'חבר עם טוקן Moodle';
+
+      if (networkError) {
+        resultEl.innerHTML = '<div class="text-rose-600">⚠️ לא ניתן להתחבר לשרת כרגע.</div>';
+        return;
+      }
+      const data = await safeJson(res);
+      if (!res.ok) {
+        resultEl.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtml(data.detail || 'שגיאה בחיבור ל-Moodle')}</div>`;
+        return;
+      }
+
+      TOKEN = data.token;
+      USER_ID = data.user_id || null;
+      safeStorageSet('token', TOKEN);
+      if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
+
+      const m = data.moodle || {};
+      resultEl.innerHTML = `
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 space-y-1">
+          <div class="font-bold">✅ הטוקן תקף - מחובר כ: ${escapeHtml(m.fullname || m.username || '')}</div>
+          <div>Moodle userid: <b>${escapeHtml(m.userid ?? '—')}</b> · Moodle username: <b>${escapeHtml(m.username ?? '—')}</b></div>
+          <div>ה-ID שהוקצה לו אצלנו (app_users.id): <b class="break-all">${escapeHtml(data.user_id)}</b></div>
+        </div>
+        <button onclick="enterApp()" class="btn-press w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">המשך לצ'אט ←</button>
+      `;
+    }
+
+    // ---------- פאנל שקיפות: מה שמור עלי ב-DB כרגע (לבדיקות) ----------
+    function closeMyDataPanel() {
+      document.getElementById('myDataOverlay').classList.add('hidden');
+    }
+
+    function openMyDataPanel() {
+      document.getElementById('myDataOverlay').classList.remove('hidden');
+      loadMyData();
+    }
+
+    async function loadMyData() {
+      const body = document.getElementById('myDataBody');
+      body.textContent = 'טוען...';
+      const { res, networkError } = await apiFetch('/api/me');
+      if (networkError) { body.innerHTML = '<div class="text-rose-600">⚠️ שגיאת תקשורת</div>'; return; }
+      const data = await safeJson(res);
+      if (!res.ok) { body.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtml(data.detail || 'שגיאה')}</div>`; return; }
+
+      const created = data.created_at ? new Date(data.created_at).toLocaleString('he-IL') : '—';
+      const last = data.last_message_at ? new Date(data.last_message_at).toLocaleString('he-IL') : '—';
+      body.innerHTML = `
+        <div class="flex justify-between"><span class="text-slate-500">שם משתמש</span><span class="font-bold">${escapeHtml(data.username)}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">app_users.id</span><span class="font-bold break-all">${escapeHtml(data.id)}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">נוצר בתאריך</span><span class="font-bold">${created}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">מספר שיחות</span><span class="font-bold">${data.conversation_count ?? 0}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">מספר הודעות</span><span class="font-bold">${data.message_count ?? 0}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">הודעה אחרונה</span><span class="font-bold">${last}</span></div>
+        <div class="text-[10px] text-slate-400 pt-2 border-t border-slate-100 mt-2">זה בדיוק מה ששמור עלינו ב-DB כרגע - שום דבר מעבר לזה (לא טוקן Moodle, לא ציונים/קורסים).</div>
+      `;
     }
 
     function handleLogout() {

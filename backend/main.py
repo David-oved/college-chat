@@ -9,6 +9,7 @@ except Exception:
 import os
 import json
 import asyncio
+import secrets
 import httpx
 from io import BytesIO
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
@@ -142,6 +143,10 @@ class StudentLoginRequest(BaseModel):
     password: str
 
 
+class MoodleConnectRequest(BaseModel):
+    token: str
+
+
 class PushSubscriptionKeys(BaseModel):
     p256dh: str
     auth: str
@@ -236,6 +241,79 @@ async def student_login(req: StudentLoginRequest):
     if not result:
         raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
     return result
+
+
+@app.get("/api/me")
+async def get_my_profile(session=Depends(require_student)):
+    """
+    'פאנל שקיפות' - בדיוק מה שמור עלינו כרגע ב-DB (לא יותר מזה): שורת app_users
+    שלי + כמה שיחות/הודעות יש לי בפועל. משמש את מסך הבדיקה של חיבור Moodle.
+    """
+    profile = await db.get_user_profile_summary(session["user_id"])
+    if profile is None:
+        raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+    return profile
+
+
+# =====================================================================
+# 0.55 תשתית לחיבור Moodle (JCT) - אימות טוקן בזמן אמת, בלי לשמור אותו אצלנו
+# =====================================================================
+MOODLE_BASE_URL = "https://moodle.jct.ac.il/webservice/rest/server.php"
+
+
+@app.post("/api/moodle/connect")
+async def moodle_connect(req: MoodleConnectRequest):
+    """
+    מקבל טוקן Moodle אמיתי (מהאפליקציה המארחת, לדוגמה MoodlePro), ומאמת אותו מול Moodle
+    עצמו בזמן אמת (core_webservice_get_site_info) כדי לקבל userid/username/fullname אמיתיים.
+    הטוקן עצמו לעולם לא נשמר אצלנו - משמש רק לקריאה הזו ונזרק.
+    לפי ה-userid של Moodle מאתרים/יוצרים משתמש מקביל אצלנו (app_users) ומנפיקים לו
+    טוקן התחברות משלנו, כדי שאפשר יהיה להמשיך איתו ישירות לצ'אט (RAG) ו-/api/conversations.
+    """
+    token = (req.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="נדרש טוקן Moodle")
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(MOODLE_BASE_URL, params={
+                "wstoken": token,
+                "wsfunction": "core_webservice_get_site_info",
+                "moodlewsrestformat": "json",
+            })
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="לא ניתן להתחבר לשרת Moodle כרגע")
+
+    try:
+        data = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="תשובה לא תקינה מ-Moodle")
+
+    if isinstance(data, dict) and data.get("exception"):
+        if data.get("errorcode") == "invalidtoken":
+            raise HTTPException(status_code=401, detail="החיבור ל-Moodle פג - יש להתחבר מחדש באפליקציה הראשית")
+        raise HTTPException(status_code=502, detail=f"שגיאה מ-Moodle: {data.get('message') or data.get('errorcode')}")
+
+    moodle_user_id = data.get("userid")
+    if not moodle_user_id:
+        raise HTTPException(status_code=502, detail="תשובה לא תקינה מ-Moodle (חסר userid)")
+
+    local_username = f"moodle_{moodle_user_id}"
+    user = await db.get_user_by_username(local_username)
+    if not user:
+        random_password_hash = hash_password(secrets.token_urlsafe(16))
+        new_id = await db.create_user(local_username, random_password_hash)
+        user = await db.get_user_by_id(new_id)
+
+    session = student_auth.create_session_for_user(user["id"], user["username"])
+    return {
+        **session,
+        "moodle": {
+            "userid": moodle_user_id,
+            "username": data.get("username"),
+            "fullname": data.get("fullname"),
+        },
+    }
 
 
 # =====================================================================
