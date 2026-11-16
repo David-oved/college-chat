@@ -966,13 +966,32 @@ async def _stream_chat_response(
             memories=memories, user_id=user_id, emit_status=emit_status,
         )
 
-        async for token in answer_stream:
+        # הגנה מתקיעות: אם שום דבר לא יוצא 45 שניות (Gemini/Moodle תקועים) - לא משאירים את הסטודנט מול ספינר לנצח
+        it = answer_stream.__aiter__()
+        stalled = False
+        while True:
+            try:
+                token = await asyncio.wait_for(it.__anext__(), timeout=45)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError:
+                stalled = True
+                print(f"[chat] stream stalled for conversation {conversation_id}")
+                break
             if token.startswith(STATUS_OPEN):      # אירוע סטטוס: עובר ללקוח, אבל לא חלק מהתשובה שנשמרת
                 if emit_status:
                     yield token
                 continue
             full_answer += token
             yield token
+        if stalled:
+            try:
+                await it.aclose()
+            except Exception:
+                pass
+            if not full_answer.strip():
+                full_answer = "התשובה התעכבה יותר מדי ולא הצלחתי להשלים אותה. נסה לשלוח שוב."
+                yield full_answer
 
         _spawn(_finish_chat(conversation_id, full_answer, save_task, api_key))     # הזרם נסגר עכשיו; השמירה והסיכום ברקע
 
