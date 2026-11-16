@@ -1135,34 +1135,21 @@
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = await res.json();
 
-        titleEl.textContent = `מה ${data.username} שאל בפועל`;
-        const conversations = data.conversations || [];
-
-        if (!conversations.length) {
-          body.innerHTML = '<div class="text-slate-400 text-center py-6">המשתמש הזה עדיין לא שלח אף הודעה</div>';
-          return;
-        }
-
-        body.innerHTML = conversations.map(c => {
-          const created = c.created_at ? new Date(c.created_at).toLocaleString('he-IL') : '';
-          const msgs = (c.messages || []).map(m => {
-            const isUser = m.role === 'user';
-            const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '';
-            return `<div class="flex ${isUser ? 'justify-end' : 'justify-start'} mb-2">
-              <div class="max-w-[85%] rounded-xl px-3 py-2 text-xs whitespace-pre-wrap break-words ${isUser ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
-                ${escapeHtmlAdmin(m.content)}
-                <div class="text-[10px] ${isUser ? 'text-indigo-200' : 'text-slate-400'} mt-1">${time}</div>
-              </div>
-            </div>`;
-          }).join('');
-          return `<div class="border border-slate-200 rounded-xl p-3">
-            <div class="flex items-center justify-between mb-2">
-              <span class="font-bold text-xs text-slate-700">💬 ${escapeHtmlAdmin(c.title || 'שיחה')}</span>
-              <span class="text-[11px] text-slate-400">${created}</span>
-            </div>
-            ${msgs}
-          </div>`;
-        }).join('');
+        titleEl.textContent = `שימוש: ${data.username}`;
+        const days = data.questions_by_day || [];
+        const max = Math.max(1, ...days.map(d => d.questions));
+        const bars = days.length
+          ? days.map(d => `<div class="flex items-center gap-2 text-[11px] py-0.5"><span class="w-20 text-slate-500">${escapeHtmlAdmin(d.day)}</span><div class="flex-1 bg-slate-100 rounded h-2"><div class="bg-indigo-500 h-2 rounded" style="width:${Math.round(d.questions / max * 100)}%"></div></div><span class="w-6 text-left font-bold">${d.questions}</span></div>`).join('')
+          : '<div class="text-slate-400 text-center py-3 text-xs">אין פעילות ב-30 הימים האחרונים</div>';
+        body.innerHTML = `
+          <div class="grid grid-cols-3 gap-2 mb-3 text-center">
+            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-lg">${data.questions_total || 0}</div><div class="text-[10px] text-slate-500">שאלות סה"כ</div></div>
+            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-lg">${data.conversations || 0}</div><div class="text-[10px] text-slate-500">שיחות</div></div>
+            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-xs pt-2">${data.last_active ? new Date(data.last_active).toLocaleString('he-IL') : '-'}</div><div class="text-[10px] text-slate-500">פעילות אחרונה</div></div>
+          </div>
+          <div class="text-xs font-bold text-slate-600 mb-1">שאלות לפי יום (30 ימים)</div>
+          ${bars}
+          <div class="text-[11px] text-slate-400 mt-3">מטעמי פרטיות, תוכן השיחות נשאר רק אצל המשתמש - כאן מוצג שימוש בלבד.</div>`;
       } catch (err) {
         body.innerHTML = '<div class="text-rose-600 text-xs text-center py-6">שגיאה בטעינת פעילות המשתמש</div>';
       }

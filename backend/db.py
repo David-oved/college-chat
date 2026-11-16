@@ -586,54 +586,43 @@ class Database:
 
     async def get_user_activity(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
-        כל השיחות וההודעות בפועל של משתמש ספציפי - בשביל שהמנהל יוכל לראות בדיוק
-        מה כל משתמש שאל ומתי, ולא רק מספרים מצטברים.
+        שימוש של משתמש - מספרים בלבד. פרטיות: תוכן ההודעות והכותרות (שנגזרות מהשאלה הראשונה) שייכים למשתמש בלבד ולא נשלפים למנהל.
         """
         async with _get_pool().connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(
-                    "select id, username, created_at from app_users where id = %s;", (user_id,)
-                )
+                await cur.execute("select id, username, created_at from app_users where id = %s;", (user_id,))
                 user = await cur.fetchone()
                 if not user:
                     return None
-
                 await cur.execute(
                     """
-                    select c.id as conversation_id, c.title, c.created_at as conversation_created_at,
-                           m.id as message_id, m.role, m.content, m.created_at as message_created_at
-                    from conversations c
-                    join messages m on m.conversation_id = c.id
-                    where c.user_id = %s
-                    order by c.created_at desc, m.created_at asc;
+                    select count(distinct c.id) as conversations,
+                           count(*) filter (where m.role = 'user') as questions,
+                           max(m.created_at) as last_active
+                    from conversations c join messages m on m.conversation_id = c.id
+                    where c.user_id = %s;
                     """,
                     (user_id,),
                 )
-                rows = await cur.fetchall()
-
-        conversations: Dict[str, Dict[str, Any]] = {}
-        order: List[str] = []
-        for r in rows:
-            cid = str(r["conversation_id"])
-            if cid not in conversations:
-                conversations[cid] = {
-                    "conversation_id": cid,
-                    "title": r["title"],
-                    "created_at": r["conversation_created_at"],
-                    "messages": [],
-                }
-                order.append(cid)
-            conversations[cid]["messages"].append({
-                "role": r["role"],
-                "content": r["content"],
-                "created_at": r["message_created_at"],
-            })
-
+                tot = await cur.fetchone()
+                await cur.execute(
+                    """
+                    select (m.created_at at time zone 'Asia/Jerusalem')::date as day, count(*) as questions
+                    from conversations c join messages m on m.conversation_id = c.id
+                    where c.user_id = %s and m.role = 'user' and m.created_at > now() - interval '30 days'
+                    group by 1 order by 1 desc;
+                    """,
+                    (user_id,),
+                )
+                days = await cur.fetchall()
         return {
             "user_id": str(user["id"]),
             "username": user["username"],
             "created_at": user["created_at"],
-            "conversations": [conversations[cid] for cid in order],
+            "conversations": tot["conversations"] or 0,
+            "questions_total": tot["questions"] or 0,
+            "last_active": tot["last_active"],
+            "questions_by_day": [{"day": str(d["day"]), "questions": d["questions"]} for d in days],
         }
 
     # ----------------------------------------------------------------
