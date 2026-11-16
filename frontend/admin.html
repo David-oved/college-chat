@@ -122,6 +122,9 @@
         <button type="button" class="navbtn" data-tab="usage" onclick="switchTab('usage')">
           <span class="navbtn-icon">📊</span><span>מדדי שימוש</span>
         </button>
+        <button type="button" class="navbtn" data-tab="ai-context" onclick="switchTab('ai-context')">
+          <span class="navbtn-icon">🧠</span><span>הקשר ל-AI</span>
+        </button>
       </nav>
 
       <div class="px-3 py-4 border-t border-white/10 space-y-1">
@@ -144,6 +147,7 @@
           <button type="button" class="navbtn-mobile" data-tab="knowledge" onclick="switchTab('knowledge')">📚 מאגר ידע</button>
           <button type="button" class="navbtn-mobile" data-tab="users" onclick="switchTab('users')">👥 משתמשים</button>
           <button type="button" class="navbtn-mobile" data-tab="usage" onclick="switchTab('usage')">📊 שימוש</button>
+          <button type="button" class="navbtn-mobile" data-tab="ai-context" onclick="switchTab('ai-context')">🧠 הקשר ל-AI</button>
           <a href="/" class="navbtn-mobile">📱 לצ'אט</a>
         </div>
       </div>
@@ -211,19 +215,20 @@
 
               <div class="md:col-span-3">
                 <label class="block text-xs font-bold text-slate-600 mb-1">
-                  מידע בסיסי על הבוט (מי הוא, בשם איזו מכללה הוא פועל, מה הוא יודע לעשות) - תמיד זמין לבוט, גם בלי RAG:
+                  זהות הבוט, מצב רוח / טון דיבור, והוראות מיוחדות (מי הוא, איך הוא מדבר, מה מותר/אסור לו) - תמיד זמין לבוט, גם בלי RAG:
                 </label>
                 <textarea
                   id="botIdentityInput"
-                  rows="2"
-                  placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות."
+                  rows="3"
+                  placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות. דבר בטון ידידותי וקליל, עם קצת הומור עדין. אם סטודנט שואל על מטלה שעבר מועד ההגשה שלה - הדגש זאת בעדינות ותציע לפנות למרצה."
                   class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
                 ></textarea>
+                <p class="text-[11px] text-slate-400 mt-1">כאן שולטים על "האישיות" של הבוט - טון, מצב רוח, הדגשים מיוחדים - רק מגזרת המנהל, הסטודנטים לא יכולים לשנות את זה.</p>
               </div>
 
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">
-                  מכסת שאלות לסטודנט ביום:
+                  מכסת שאלות לסטודנט ביום (לא פעיל כרגע - שאלות ללא הגבלה):
                 </label>
                 <input
                   id="quotaLimitInput"
@@ -405,6 +410,37 @@
           </div>
         </section>
 
+        <!-- ===================== טאב 5: הקשר ל-AI (שקיפות + שליטה) ===================== -->
+        <section id="tabPanel-ai-context" class="tab-panel space-y-6 hidden">
+
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-1">
+              <h2 class="text-lg font-bold">🧩 פונקציות Moodle (קורסים/מטלות/ציונים/יומן)</h2>
+              <button onclick="loadMoodleFunctions()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">כל פונקציה שדולקת כאן זמינה ל-AI להשתמש בה כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע מה-AI לקרוא לה בכלל - שימושי אם פונקציה מסוימת לא עובדת טוב מול המערכת של המכללה.</p>
+            <div id="moodleFunctionsPanel" class="space-y-2 text-sm text-slate-500">טוען...</div>
+            <button onclick="saveMoodleFunctions()" id="saveMoodleFunctionsBtn" class="btn-press mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">
+              💾 שמור שינויים
+            </button>
+          </div>
+
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold mb-1">🔍 תצוגה מקדימה - בדיוק מה שנשלח ל-AI</h2>
+            <p class="text-xs text-slate-500 mb-4">כתבו שאלת דוגמה, ותראו את כל הפרומפט המלא (זהות הבוט, קטלוג הנושאים, מידע בזמן אמת, מקטעי הידע הרלוונטיים) כפי שהוא נשלח בפועל ל-Gemini לשאלה הזו - בלי לשלוח אותה בפועל לסטודנט.</p>
+            <form onsubmit="previewPrompt(event)" class="flex flex-col sm:flex-row gap-2 mb-4">
+              <input id="promptPreviewQuestion" type="text" placeholder="לדוגמה: מתי הבחינה במבוא לתכנות?"
+                class="flex-1 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition" />
+              <button type="submit" id="promptPreviewBtn" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shrink-0">
+                הצג תצוגה מקדימה
+              </button>
+            </form>
+            <div id="promptPreviewStats" class="hidden text-xs text-slate-500 mb-2"></div>
+            <pre id="promptPreviewBox" class="hidden bg-slate-900 text-slate-100 rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[500px] overflow-y-auto" dir="rtl"></pre>
+          </div>
+
+        </section>
+
       </main>
     </div>
   </div>
@@ -432,7 +468,8 @@
       overview: { icon: '🔑', title: 'הגדרות ומכסות' },
       knowledge: { icon: '📚', title: 'מאגר ידע (RAG)' },
       users: { icon: '👥', title: 'משתמשים' },
-      usage: { icon: '📊', title: 'מדדי שימוש' }
+      usage: { icon: '📊', title: 'מדדי שימוש' },
+      'ai-context': { icon: '🧠', title: 'הקשר ל-AI' }
     };
 
     function switchTab(name) {
@@ -446,6 +483,7 @@
       const titleEl = document.getElementById('pageTitle');
       if (meta && titleEl) titleEl.textContent = `${meta.icon} ${meta.title}`;
       if (name === 'users') loadUsers();
+      if (name === 'ai-context') loadMoodleFunctions();
     }
 
     function showToast(msg, isError = false) {
@@ -716,6 +754,91 @@
       categorize: '🗂️ סיווגי קטגוריה אוטומטיים',
       embedding: '🧮 יצירת embeddings'
     };
+
+    // ===================== הקשר ל-AI: פונקציות Moodle + תצוגה מקדימה =====================
+    const MOODLE_FUNCTION_LABELS = {
+      get_my_courses: { icon: '📚', label: 'רשימת הקורסים שלי' },
+      get_course_assignments: { icon: '📝', label: 'מטלות ומועדי הגשה' },
+      get_course_grades: { icon: '🎯', label: 'ציונים' },
+      get_calendar_events: { icon: '📅', label: 'יומן ואירועים' }
+    };
+
+    async function loadMoodleFunctions() {
+      const panel = document.getElementById('moodleFunctionsPanel');
+      panel.innerHTML = 'טוען...';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/moodle-functions`);
+        const data = await res.json();
+        const all = data.all_functions || [];
+        const enabled = new Set(data.enabled_functions || []);
+        if (!all.length) {
+          panel.innerHTML = '<div class="text-xs text-slate-400">לא נמצאו פונקציות</div>';
+          return;
+        }
+        panel.innerHTML = all.map(name => {
+          const meta = MOODLE_FUNCTION_LABELS[name] || { icon: '🔧', label: name };
+          const checked = enabled.has(name) ? 'checked' : '';
+          return `<label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+            <input type="checkbox" data-fn="${escapeHtmlAdmin(name)}" ${checked} class="w-4 h-4 accent-indigo-600" />
+            <span class="text-lg">${meta.icon}</span>
+            <div>
+              <div class="font-bold text-sm text-slate-800">${escapeHtmlAdmin(meta.label)}</div>
+              <div class="text-[11px] text-slate-400 font-mono">${escapeHtmlAdmin(name)}</div>
+            </div>
+          </label>`;
+        }).join('');
+      } catch (err) {
+        panel.innerHTML = '<div class="text-xs text-rose-600">שגיאה בטעינת הפונקציות</div>';
+      }
+    }
+
+    async function saveMoodleFunctions() {
+      const checkboxes = document.querySelectorAll('#moodleFunctionsPanel input[type="checkbox"]');
+      const enabled = Array.from(checkboxes).filter(c => c.checked).map(c => c.dataset.fn);
+      const btn = document.getElementById('saveMoodleFunctionsBtn');
+      btn.disabled = true;
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/moodle-functions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+        const data = await res.json();
+        showToast(res.ok ? (data.message || 'נשמר בהצלחה') : (data.detail || 'שגיאה בשמירה'), !res.ok);
+      } catch (err) {
+        showToast('שגיאת תקשורת בשמירה', true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function previewPrompt(e) {
+      e.preventDefault();
+      const question = document.getElementById('promptPreviewQuestion').value.trim() || 'מתי הבחינה במבוא לתכנות?';
+      const btn = document.getElementById('promptPreviewBtn');
+      const statsEl = document.getElementById('promptPreviewStats');
+      const box = document.getElementById('promptPreviewBox');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'טוען...';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/prompt-preview?question=${encodeURIComponent(question)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail || 'שגיאה בהצגת התצוגה המקדימה', true);
+          return;
+        }
+        statsEl.classList.remove('hidden');
+        statsEl.innerHTML = `נמצאו <b>${data.relevant_chunks_found}</b> מקטעי ידע רלוונטיים · <b>${data.catalog_categories}</b> קטגוריות בקטלוג · כלי Moodle זמינים לשאלה זו: <b>${escapeHtmlAdmin((data.moodle_tools_declared || []).join(', ') || 'אין')}</b>`;
+        box.classList.remove('hidden');
+        box.textContent = data.composed_prompt;
+      } catch (err) {
+        showToast('שגיאת תקשורת', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
 
     async function loadUsage() {
       const panel = document.getElementById('usagePanel');

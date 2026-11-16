@@ -1,10 +1,14 @@
 import asyncio
 import json
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
 
 from db import db
+
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 # =====================================================================
 # מנגנון תורים (Queue) למניעת חסימות Rate-Limit ב-API החינמי של גוגל
@@ -239,6 +243,15 @@ async def _generate_once(
     return None
 
 
+_HEBREW_WEEKDAYS = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+
+
+def _current_israel_time_block() -> str:
+    now = datetime.now(ISRAEL_TZ)
+    day_name = _HEBREW_WEEKDAYS[now.weekday()]
+    return f"יום {day_name}, {now.strftime('%d/%m/%Y %H:%M')} (שעון ישראל)"
+
+
 def _build_chat_user_turn(
     question: str,
     context_chunks: List[Dict[str, Any]],
@@ -246,6 +259,7 @@ def _build_chat_user_turn(
     catalog: Optional[List[Dict[str, str]]],
     conversation_summary: str,
     recent_messages: Optional[List[Dict[str, str]]],
+    username: str = "",
     extra_system_instructions: str = "",
 ) -> str:
     """מרכיב את תור הפתיחה (system prompt + הקשר RAG + היסטוריה + השאלה) - משותף לנתיב הרגיל ולנתיב Moodle."""
@@ -255,6 +269,15 @@ def _build_chat_user_turn(
         )
     else:
         context_text = "לא נמצאו מסמכים במאגר המכללה."
+
+    # מידע בסיסי אמיתי שתמיד זמין למודל - לא תלוי בשליפת RAG - כדי שיוכל לחשב בעצמו
+    # דברים כמו "האם המטלה הזו באיחור" (צריך גם תאריך נוכחי וגם תאריך הגשה, לא רק אחד מהם).
+    basic_info_block = f"""
+=== מידע בסיסי בזמן אמת (עובדתי ומדויק - אפשר להסתמך עליו לחישובים) ===
+שם המשתמש המחובר כרגע: {username or "לא ידוע"}
+תאריך ושעה נוכחיים: {_current_israel_time_block()}
+=========================================================================
+"""
 
     history_block = ""
     if conversation_summary:
@@ -266,7 +289,7 @@ def _build_chat_user_turn(
         history_block += f"\n=== הודעות אחרונות בשיחה ===\n{turns}\n"
 
     return f"""{build_system_prompt(bot_identity, catalog)}{extra_system_instructions}
-{history_block}
+{basic_info_block}{history_block}
 === מידע המכללה הרלוונטי לשאלה הנוכחית ===
 {context_text}
 =============================
@@ -295,50 +318,69 @@ async def stream_gemini_answer_with_moodle_tools(
     catalog: Optional[List[Dict[str, str]]] = None,
     conversation_summary: str = "",
     recent_messages: Optional[List[Dict[str, str]]] = None,
+    username: str = "",
+    enabled_functions: Optional[set] = None,
 ) -> AsyncGenerator[str, None]:
     """
     כמו stream_gemini_answer, אבל עם אפשרות ל-Gemini לבצע function calling מול Moodle
     (קורסים/מטלות/ציונים/יומן) כשהשאלה אישית. סיבוב ראשון (לא מוזרם) נותן ל-Gemini
-    הזדמנות להחליט אם להשתמש בכלי; אם כן - מבצעים את הקריאה האמיתית ל-Moodle ומזינים
-    את התוצאה בחזרה לסיבוב שני (מוזרם) שמנסח את התשובה הסופית לסטודנט.
+    הזדמנות להחליט אם להשתמש בכלי אחד או יותר (שאלה שנוגעת בכמה נושאים בבת אחת - למשל
+    גם ציונים וגם מועד הגשה - מטופלת בכל הקריאות המקבילות שהמודל מבקש, לא רק הראשונה);
+    אם כן - מבצעים את כל הקריאות האמיתיות ל-Moodle ומזינים את כל התוצאות בחזרה לסיבוב
+    שני (מוזרם) שמנסח את התשובה הסופית לסטודנט.
     אם משהו בנתיב הזה נכשל מכל סיבה - נופלים חזרה לנתיב הרגיל (בלי כלים), בלי לשבור את הצ'אט.
+    `enabled_functions` - סט שמות הפונקציות שהמנהל השאיר דלוקות (None = הכל דלוק).
     """
-    from moodle_tools import MOODLE_TOOLS, execute_moodle_function
+    from moodle_tools import get_enabled_tools, execute_moodle_function
+
+    tools = get_enabled_tools(enabled_functions)
+    if not tools:
+        # המנהל כיבה את כל הפונקציות - אין טעם לפנות ל-Moodle בכלל, נתיב רגיל
+        async for token in stream_gemini_answer(
+            question, context_chunks, api_key, bot_identity, catalog, conversation_summary,
+            recent_messages, username,
+        ):
+            yield token
+        return
 
     user_turn_text = _build_chat_user_turn(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
-        extra_system_instructions=MOODLE_SYSTEM_ADDENDUM,
+        username=username, extra_system_instructions=MOODLE_SYSTEM_ADDENDUM,
     )
     contents = [{"role": "user", "parts": [{"text": user_turn_text}]}]
 
     try:
         decision_content = await _generate_once(
-            contents, api_key, tools=MOODLE_TOOLS, max_output_tokens=300, call_type="chat_answer"
+            contents, api_key, tools=tools, max_output_tokens=400, call_type="chat_answer"
         )
     except Exception:
         decision_content = None
 
     parts = (decision_content or {}).get("parts", [])
-    function_call_part = next((p for p in parts if isinstance(p, dict) and "functionCall" in p), None)
+    function_call_parts = [p for p in parts if isinstance(p, dict) and "functionCall" in p]
 
-    if not function_call_part:
-        # גמיני לא ביקש כלי (שאלה לא אישית, או שלא זיהה צורך) - נתיב רגיל רגיל, בלי לבזבז את הסבב שכבר קרה
+    if not function_call_parts:
+        # גמיני לא ביקש כלי (שאלה לא אישית, או שלא זיהה צורך) - נתיב רגיל, בלי לבזבז את הסבב שכבר קרה
         async for token in stream_gemini_answer(
-            question, context_chunks, api_key, bot_identity, catalog, conversation_summary, recent_messages
+            question, context_chunks, api_key, bot_identity, catalog, conversation_summary,
+            recent_messages, username,
         ):
             yield token
         return
 
-    fc = function_call_part["functionCall"]
-    fn_name = fc.get("name", "")
-    fn_args = fc.get("args") or {}
+    # מבצעים את כל הקריאות שהמודל ביקש (יכול להיות יותר מאחת לשאלה מרובת-נושאים), במקביל
+    results = await asyncio.gather(*[
+        execute_moodle_function(p["functionCall"].get("name", ""), p["functionCall"].get("args") or {}, moodle_token, moodle_user_id)
+        for p in function_call_parts
+    ])
 
-    result_text = await execute_moodle_function(fn_name, fn_args, moodle_token, moodle_user_id)
-
-    contents.append({"role": "model", "parts": [function_call_part]})
+    contents.append({"role": "model", "parts": function_call_parts})
     contents.append({
         "role": "user",
-        "parts": [{"functionResponse": {"name": fn_name, "response": {"result": result_text}}}],
+        "parts": [
+            {"functionResponse": {"name": p["functionCall"].get("name", ""), "response": {"result": result}}}
+            for p, result in zip(function_call_parts, results)
+        ],
     })
 
     async for token in _stream_from_gemini(contents, api_key, call_type="chat_answer"):
@@ -353,10 +395,11 @@ async def stream_gemini_answer(
     catalog: Optional[List[Dict[str, str]]] = None,
     conversation_summary: str = "",
     recent_messages: Optional[List[Dict[str, str]]] = None,
+    username: str = "",
 ) -> AsyncGenerator[str, None]:
     """בונה את הפרומפט לתשובת צ'אט לסטודנט (עם ה-RAG שנשלף + זהות הבוט + מפת הנושאים + הקשר השיחה) ומזרים אותו מ-Gemini."""
     full_prompt = _build_chat_user_turn(
-        question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages
+        question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages, username=username
     )
     async for token in _stream_from_gemini(full_prompt, api_key, call_type="chat_answer"):
         yield token

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from pypdf import PdfReader
 
 from db import db
@@ -154,6 +154,10 @@ class MoodleConnectRequest(BaseModel):
 
 class TestLoginRequest(BaseModel):
     password: str
+
+
+class MoodleFunctionsUpdateRequest(BaseModel):
+    enabled: List[str]
 
 
 class PushSubscriptionKeys(BaseModel):
@@ -384,6 +388,62 @@ async def moodle_connect(req: MoodleConnectRequest):
             "fullname": data.get("fullname"),
             "available_functions": available_functions,
         },
+    }
+
+
+@app.get("/api/admin/moodle-functions", dependencies=[Depends(require_admin)])
+async def get_moodle_functions_config():
+    """מחזיר את כל הפונקציות (הכלים) הזמינים לגמיני מול Moodle, ואילו מהם דלוקים כרגע."""
+    from moodle_tools import MOODLE_FUNCTION_NAMES
+
+    enabled = await db.get_moodle_enabled_functions()
+    return {
+        "all_functions": MOODLE_FUNCTION_NAMES,
+        "enabled_functions": MOODLE_FUNCTION_NAMES if enabled is None else enabled,
+    }
+
+
+@app.post("/api/admin/moodle-functions", dependencies=[Depends(require_admin)])
+async def update_moodle_functions_config(req: MoodleFunctionsUpdateRequest):
+    """מאפשר למנהל להדליק/לכבות כל אחת מהפונקציות (קורסים/מטלות/ציונים/יומן) בנפרד."""
+    from moodle_tools import MOODLE_FUNCTION_NAMES
+
+    valid = [n for n in req.enabled if n in MOODLE_FUNCTION_NAMES]
+    await db.set_moodle_enabled_functions(valid)
+    return {"message": "העדכון נשמר בהצלחה", "enabled_functions": valid}
+
+
+@app.get("/api/admin/prompt-preview", dependencies=[Depends(require_admin)])
+async def preview_prompt(question: str = "מתי הבחינה במבוא לתכנות?"):
+    """
+    שקיפות מלאה למנהל: מרכיב בדיוק את אותו הפרומפט שהיה נשלח בפועל ל-Gemini לשאלה
+    לדוגמה הזו (זהות הבוט + קטלוג הנושאים + מידע בסיסי בזמן אמת + מקטעי הידע הרלוונטיים) -
+    בלי לשלוח אותו בפועל למודל הסופי (רק שליפת ה-embedding לשאלה, כדי שהתצוגה תהיה אמיתית).
+    """
+    from rag_engine import _build_chat_user_turn, MOODLE_SYSTEM_ADDENDUM
+    from moodle_tools import MOODLE_FUNCTION_NAMES
+
+    api_key = await db.get_api_key()
+    bot_identity = await db.get_bot_identity()
+    catalog = await db.get_catalog()
+
+    question_embedding = await get_embedding(question, api_key) if api_key else []
+    relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3) if question_embedding else []
+
+    enabled = await db.get_moodle_enabled_functions()
+    enabled_functions = MOODLE_FUNCTION_NAMES if enabled is None else enabled
+
+    composed_prompt = _build_chat_user_turn(
+        question, relevant_chunks, bot_identity, catalog, "", [],
+        username="<שם הסטודנט המחובר>",
+        extra_system_instructions=MOODLE_SYSTEM_ADDENDUM if enabled_functions else "",
+    )
+
+    return {
+        "composed_prompt": composed_prompt,
+        "relevant_chunks_found": len(relevant_chunks),
+        "catalog_categories": len(catalog or []),
+        "moodle_tools_declared": enabled_functions,
     }
 
 
@@ -642,6 +702,7 @@ KEEP_RECENT_MESSAGES = 12  # כמה הודעות אחרונות נשארות מ�
 async def _stream_chat_response(
     conversation_id: str,
     question: str,
+    username: str = "",
     moodle_token: Optional[str] = None,
     moodle_user_id: Optional[int] = None,
 ) -> StreamingResponse:
@@ -690,14 +751,16 @@ async def _stream_chat_response(
         history_for_prompt = recent_messages[:-1] if recent_messages else []
 
         if moodle_token and moodle_user_id:
+            enabled_functions = await db.get_moodle_enabled_functions()
             answer_stream = stream_gemini_answer_with_moodle_tools(
                 question, relevant_chunks, api_key, moodle_token, moodle_user_id,
-                bot_identity, catalog, conversation_summary, history_for_prompt
+                bot_identity, catalog, conversation_summary, history_for_prompt,
+                username=username, enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
             )
         else:
             answer_stream = stream_gemini_answer(
                 question, relevant_chunks, api_key, bot_identity, catalog,
-                conversation_summary, history_for_prompt
+                conversation_summary, history_for_prompt, username=username
             )
 
         async for token in answer_stream:
@@ -746,7 +809,7 @@ async def chat_stream_endpoint(req: ChatQuestionRequest, session=Depends(require
     if not question:
         raise HTTPException(status_code=400, detail="נא להזין שאלה")
     conversation_id = await db.get_or_create_today_conversation(session["user_id"])
-    return await _stream_chat_response(conversation_id, question)
+    return await _stream_chat_response(conversation_id, question, session["username"])
 
 
 @app.post("/api/chat/stream/v2")
@@ -761,7 +824,7 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
     # אותו פענוח כמו ב-/api/moodle/connect (moodlemobile://token=BASE64(...)) - המשתמש
     # תמיד שולח את מה שהודבק בפועל, בלי לפענח בצד הלקוח.
     moodle_wstoken = _extract_moodle_wstoken(req.moodle_token) if req.moodle_token else None
-    return await _stream_chat_response(req.conversation_id, question, moodle_wstoken, req.moodle_user_id)
+    return await _stream_chat_response(req.conversation_id, question, session["username"], moodle_wstoken, req.moodle_user_id)
 
 
 # =====================================================================

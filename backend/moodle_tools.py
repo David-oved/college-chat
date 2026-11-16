@@ -140,6 +140,22 @@ MOODLE_TOOLS = [{
     ],
 }]
 
+MOODLE_FUNCTION_NAMES = [f["name"] for f in MOODLE_TOOLS[0]["functionDeclarations"]]
+
+
+def get_enabled_tools(enabled_names: Optional[set]) -> list:
+    """
+    מסנן את MOODLE_TOOLS לפי מה שהמנהל השאיר דלוק בפאנל הניהול.
+    enabled_names=None פירושו "הכול דלוק" (ברירת המחדל, לתאימות אחורה).
+    אם אחרי הסינון לא נשאר כלום - מחזיר רשימה ריקה (הקריאה תדע לדלג על Moodle לגמרי).
+    """
+    if enabled_names is None:
+        return MOODLE_TOOLS
+    declarations = [f for f in MOODLE_TOOLS[0]["functionDeclarations"] if f["name"] in enabled_names]
+    if not declarations:
+        return []
+    return [{"functionDeclarations": declarations}]
+
 
 async def execute_moodle_function(name: str, args: Dict[str, Any], wstoken: str, moodle_user_id: Any) -> str:
     """

@@ -128,6 +128,24 @@ class Database:
             async with conn.cursor() as cur:
                 await cur.execute("update system_config set admin_password_hash = %s where id = 1;", (password_hash,))
 
+    async def get_moodle_enabled_functions(self) -> Optional[List[str]]:
+        """None = כל הפונקציות דלוקות (ברירת מחדל). רשימה (אפילו ריקה) = בדיוק מה שהמנהל בחר."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select moodle_enabled_functions from system_config where id = 1;")
+                row = await cur.fetchone()
+        raw = row[0] if row else None
+        if raw is None:
+            return None
+        return [n for n in raw.split(",") if n]
+
+    async def set_moodle_enabled_functions(self, names: List[str]):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "update system_config set moodle_enabled_functions = %s where id = 1;", (",".join(names),)
+                )
+
     # ----------------------------------------------------------------
     # מכסות סטודנטים (user_quotas)
     # ----------------------------------------------------------------
