@@ -307,14 +307,150 @@ MOODLE_SYSTEM_ADDENDUM = """
 שאין מידע או שיש שגיאה - העבר את זה לסטודנט בנימוס בדיוק כפי שהתקבל. לשאלות נהלים רגילות
 (לא אישיות) המשך כרגיל על בסיס מידע המכללה בלבד, בלי להשתמש בכלים.
 
-=== שליחת קבצים ומסמכים ===
-כשהסטודנט מבקש קובץ, מסמך, דף תרגיל, סיכום או מצגת מאחד הקורסים שלו - השתמש בכלי get_course_files
-(עם שם הקורס, ואם הוא ביקש משהו ספציפי גם מילת חיפוש). בתוצאה כל קובץ מופיע עם סמן בצורה
-[[file:קוד|שם הקובץ]]. כדי לשלוח קובץ לסטודנט, העתק את הסמן *בדיוק כפי שהוא* (אותו קוד ואותו שם)
-לתשובה, בשורה משלו - האפליקציה הופכת אותו אוטומטית לכפתור הורדה בצ'אט. לעולם אל תמציא סמנים או
-קודים, אל תכתוב כתובות URL של קבצים, ואל תכתוב טוקנים. אפשר לשלוח עד 5 קבצים בתשובה אחת; אם התאימו
-יותר, שלח את הרלוונטיים ביותר והצע לסטודנט לדייק. אתה לא קורא את תוכן הקובץ - רק שולח אותו; אם הוא
-מבקש הסבר על התוכן, אמור לו זאת בכנות."""
+=== שליחת קבצים ומסמכים - בחוכמה ובאחריות ===
+כשהסטודנט מבקש קובץ, מסמך, דף תרגיל, פתרון, הרצאה/מצגת, מבחן קודם, סילבוס או סיכום מאחד הקורסים שלו - השתמש בכלי get_course_files.
+1. תמיד ציין מאיזה קורס (course_name) ומה בדיוק מחפשים: שים ב-search את מה שהסטודנט ביקש במילים שלו (נושא, מספר תרגיל, שבוע; בלי מילות נימוס),
+   וב-kind את הסוג אם ברור. אם לא ברור באיזה קורס מדובר והסטודנט בכמה קורסים - שאל אותו קודם, אל תנחש.
+2. הכלי עצמו מדרג לפי התאמה ומחזיר רק את הטובים, עם הסבר על כל קובץ (סוג, מאיזו פעילות ונושא, מועד, תיאור). קרא את ההסברים ובחר בעצמך מה באמת עונה
+   על הבקשה - בדרך כלל קובץ אחד עד שלושה. הסבר בשורה קצרה מה כל קובץ שאתה שולח. "תרגיל 3" אינו "תרגיל 13"; פתרון נשלח רק אם ביקשו פתרון.
+   אם כמה קבצים מתאימים באותה מידה ואי אפשר לדעת למה הסטודנט התכוון - שאל אותו איזה מהם, במקום לשלוח את כולם.
+3. כדי לשלוח קובץ - העתק את הסמן [[file:קוד|שם|גודל]] *בדיוק כפי שהוא* מהתוצאה, בשורה משלו; האפליקציה הופכת אותו לכרטיס הורדה. לעולם אל תמציא סמנים
+   או קודים, אל תכתוב כתובות URL של קבצים, ואל תכתוב טוקנים.
+4. בקשות גורפות או לא הגיוניות - לא נענות כמו שהן: "תביא לי את כל הקבצים", "את כל מה שיש לי במודל", "את כל הקורס", קבצים מכל הקורסים בבת אחת.
+   הסבר בנימוס שלשלוח הכל זה לא מועיל ולא אפשרי, ושאל מה הוא צריך בפועל (איזה קורס, איזה סוג - תרגיל/הרצאה/מבחן - ואיזה מספר או נושא). אפשר להציע לו
+   את הסקירה שהכלי מחזיר (כמה קבצים מכל סוג) כדי שיבחר. אל תפעיל את הכלי שוב ושוב כדי "לאסוף הכל".
+   בקשות שהן בכלל לא קשורות למה שקיים (קבצים של סטודנטים אחרים, מבחנים סודיים שעוד לא פורסמו, עקיפת הרשאות) - סרב בנימוס והצע אלטרנטיבה חוקית.
+5. אם הכלי מחזיר שאין התאמה טובה - אל תשלח קבצים אקראיים "לפחות משהו". אמור שלא מצאת, ציין מה כן יש (לפי הסקירה) ושאל מה הוא מחפש.
+6. אתה לא קורא את תוכן הקבצים - רק שולח אותם ומתאר אותם לפי שם/נושא/תיאור. אם הוא מבקש הסבר על התוכן עצמו, אמור לו זאת בכנות."""
+
+
+# ---------------------------------------------------------------------
+# סטטוס חי: אירועים קטנים בתוך זרם התשובה ("מחפש קבצים בקורס X...") - רק ללקוח שביקש (status=true), ולא נשמרים ב-DB
+# ---------------------------------------------------------------------
+STATUS_OPEN, STATUS_CLOSE = "\x01", "\x02"
+
+
+def status_event(**kw) -> str:
+    return STATUS_OPEN + json.dumps(kw, ensure_ascii=False, separators=(",", ":")) + STATUS_CLOSE
+
+
+MAX_TOOL_CALLS_PER_TURN = 4
+MAX_FILE_SEARCHES_PER_TURN = 2
+
+
+async def stream_chat_with_tools(
+    question: str,
+    context_chunks: List[Dict[str, Any]],
+    api_key: str,
+    bot_identity: str = "",
+    catalog: Optional[List[Dict[str, str]]] = None,
+    conversation_summary: str = "",
+    recent_messages: Optional[List[Dict[str, str]]] = None,
+    username: str = "",
+    moodle_token: Optional[str] = None,
+    moodle_user_id: Any = None,
+    enabled_functions: Optional[set] = None,
+    memories: Optional[List[Dict[str, Any]]] = None,
+    user_id: Optional[str] = None,
+    emit_status: bool = False,
+) -> AsyncGenerator[str, None]:
+    """
+    מנוע הצ'אט המאוחד: כלי Moodle (אם יש חיבור) + כלי זיכרון (אם יש משתמש) בסיבוב החלטה אחד, ואז תשובה מוזרמת.
+    זיכרון הסטודנט מוזרם לפרומפט בכל הודעה, וקורסים שעזב מוסתרים מתוצאות Moodle. עם emit_status גם מזרים אירועי סטטוס.
+    כל כשל בנתיב הכלים נופל חזרה לתשובה רגילה בלי כלים - הצ'אט לא נשבר.
+    """
+    from moodle_tools import get_enabled_tools, execute_moodle_function, set_hidden_courses
+    from memory import (MEMORY_ADDENDUM, MEMORY_TOOLS, MEMORY_TOOL_NAMES, build_memory_block, left_courses, run_memory_tool)
+
+    memories = memories or []
+    set_hidden_courses(left_courses(memories))
+
+    moodle_tools = get_enabled_tools(enabled_functions) if (moodle_token and moodle_user_id) else []
+    moodle_names = {d["name"] for grp in moodle_tools for d in grp.get("functionDeclarations", [])}
+    declarations = [d for grp in moodle_tools for d in grp.get("functionDeclarations", [])]
+    if user_id:
+        declarations = declarations + MEMORY_TOOLS[0]["functionDeclarations"]
+    tools = [{"functionDeclarations": declarations}] if declarations else []
+
+    extra = ""
+    if moodle_names:
+        extra += MOODLE_SYSTEM_ADDENDUM
+    if user_id:
+        extra += MEMORY_ADDENDUM + build_memory_block(memories)
+
+    user_turn_text = _build_chat_user_turn(
+        question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
+        username=username, extra_system_instructions=extra,
+    )
+
+    async def final_answer(contents):
+        if emit_status:
+            yield status_event(s="write")
+        async for token in _stream_from_gemini(contents, api_key, call_type="chat_answer"):
+            yield token
+
+    contents = [{"role": "user", "parts": [{"text": user_turn_text}]}]
+    if not tools:
+        async for token in final_answer(user_turn_text):
+            yield token
+        return
+
+    if emit_status:
+        yield status_event(s="think")
+    try:
+        decision_content = await _generate_once(contents, api_key, tools=tools, max_output_tokens=400, call_type="chat_answer")
+    except Exception:
+        decision_content = None
+
+    parts = (decision_content or {}).get("parts", [])
+    calls = [p for p in parts if isinstance(p, dict) and "functionCall" in p][:MAX_TOOL_CALLS_PER_TURN]
+    if not calls:
+        async for token in final_answer(user_turn_text):
+            yield token
+        return
+
+    # לא לתת לבקשה אחת להפוך לשטיפה של Moodle: מגבילים כמה חיפושי קבצים אפשר בתור אחד
+    kept, file_calls = [], 0
+    for p in calls:
+        if p["functionCall"].get("name") == "get_course_files":
+            file_calls += 1
+            if file_calls > MAX_FILE_SEARCHES_PER_TURN:
+                continue
+        kept.append(p)
+    calls = kept
+
+    if emit_status:
+        for p in calls:
+            fc = p["functionCall"]
+            a = fc.get("args") or {}
+            yield status_event(
+                s="tool", name=fc.get("name", ""),
+                arg=str(a.get("course_name") or a.get("quiz_name") or a.get("fact") or "")[:80],
+                detail=str(a.get("search") or a.get("assignment_name") or a.get("kind") or "")[:80],
+            )
+
+    async def run(p):
+        fc = p["functionCall"]
+        name, args = fc.get("name", ""), fc.get("args") or {}
+        if name in MEMORY_TOOL_NAMES and user_id:
+            return await run_memory_tool(name, args, user_id, memories)
+        if name in moodle_names:
+            return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
+        return f"הכלי {name} לא זמין.", None
+
+    outcomes = await asyncio.gather(*[run(p) for p in calls])
+    if emit_status:
+        for _, event in outcomes:
+            if event:
+                yield status_event(**event)
+
+    contents.append({"role": "model", "parts": calls})
+    contents.append({
+        "role": "user",
+        "parts": [{"functionResponse": {"name": p["functionCall"].get("name", ""), "response": {"result": text}}} for p, (text, _) in zip(calls, outcomes)],
+    })
+    async for token in final_answer(contents):
+        yield token
 
 
 async def stream_gemini_answer_with_moodle_tools(

@@ -14,6 +14,8 @@
 """
 import asyncio
 import base64
+import contextvars
+import html
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -93,6 +95,29 @@ class MoodleTokenInvalid(Exception):
     pass
 
 
+# קורסים שהסטודנט אמר שעזב (מהזיכרון שלו): נשארים ב-Moodle אבל לא מוצגים כ"פעילים". נקבע פעם בבקשה ע"י מנוע הצ'אט.
+_HIDDEN_COURSES: contextvars.ContextVar = contextvars.ContextVar("hidden_courses", default=())
+
+
+def set_hidden_courses(names) -> None:
+    _HIDDEN_COURSES.set(tuple(str(n).strip() for n in (names or []) if str(n).strip()))
+
+
+def _name_hidden(name: Any) -> bool:
+    n = _norm_plain(name)
+    if not n:
+        return False
+    for h in _HIDDEN_COURSES.get():
+        hn = _norm_plain(h)
+        if hn and (hn in n or n in hn):
+            return True
+    return False
+
+
+def _norm_plain(s: Any) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[_\-\.\(\)\[\]\{\},;:!?\"'/\\|]+", " ", str(s or "").lower())).strip()
+
+
 async def _moodle_call(wstoken: str, wsfunction: str, params: Optional[Dict[str, Any]] = None) -> Any:
     query = {"wstoken": wstoken, "wsfunction": wsfunction, "moodlewsrestformat": "json"}
     query.update(params or {})
@@ -128,15 +153,25 @@ async def _cached_moodle_call(cache_key: tuple, wstoken: str, wsfunction: str, p
     return result
 
 
-async def _get_courses(wstoken: str, moodle_user_id: Any):
-    return await _cached_moodle_call(
+async def _get_courses(wstoken: str, moodle_user_id: Any, include_hidden: bool = False):
+    courses = await _cached_moodle_call(
         (moodle_user_id, "courses"), wstoken, "core_enrol_get_users_courses", {"userid": moodle_user_id}
     )
+    if include_hidden or not courses or not _HIDDEN_COURSES.get():
+        return courses
+    return [c for c in courses if not (_name_hidden(c.get("fullname")) or _name_hidden(c.get("shortname")))]
+
+
+async def _hidden_course_ids(wstoken: str, moodle_user_id: Any) -> set:
+    if not _HIDDEN_COURSES.get():
+        return set()
+    allc = await _get_courses(wstoken, moodle_user_id, include_hidden=True)
+    return {c.get("id") for c in (allc or []) if _name_hidden(c.get("fullname")) or _name_hidden(c.get("shortname"))}
 
 
 async def _resolve_course(wstoken: str, moodle_user_id: Any, course_name: str) -> Optional[dict]:
-    """מתאים שם קורס חופשי (כפי שהסטודנט/המנהל כתב) לאחד הקורסים הרשומים בפועל."""
-    courses = await _get_courses(wstoken, moodle_user_id)
+    """מתאים שם קורס חופשי (כפי שהסטודנט/המנהל כתב) לאחד הקורסים הרשומים בפועל (גם קורס שעזב - אם שאל עליו במפורש)."""
+    courses = await _get_courses(wstoken, moodle_user_id, include_hidden=True)
     if not courses:
         return None
     name = (course_name or "").strip().lower()
@@ -195,7 +230,11 @@ async def _exec_get_my_courses(wstoken, moodle_user_id, args) -> Tuple[Any, str]
     courses = await _get_courses(wstoken, moodle_user_id)
     if not courses:
         return courses, "לא נמצאו קורסים רשומים."
-    return courses, "רשימת הקורסים של הסטודנט:\n" + "\n".join(f"- {c.get('fullname')}" for c in courses)
+    text = "רשימת הקורסים של הסטודנט:\n" + "\n".join(f"- {c.get('fullname')}" for c in courses)
+    left = [c.get("fullname") for c in (await _get_courses(wstoken, moodle_user_id, include_hidden=True) or []) if c not in courses]
+    if left:
+        text += "\n\n(הסטודנט אמר שעזב ולכן לא מוצגים כפעילים: " + "; ".join(str(x) for x in left) + ")"
+    return courses, text
 
 
 @_register(
@@ -262,6 +301,9 @@ async def _exec_get_calendar_events(wstoken, moodle_user_id, args) -> Tuple[Any,
         {"options[userevents]": 1, "options[siteevents]": 0},
     )
     events = (data or {}).get("events", [])
+    hidden_ids = await _hidden_course_ids(wstoken, moodle_user_id)
+    if hidden_ids:
+        events = [e for e in events if e.get("courseid") not in hidden_ids]
     if not events:
         return data, "לא נמצאו אירועים קרובים ביומן."
     lines = [f"- {e.get('name')} ({_fmt_ts(e.get('timestart'))})" for e in events[:20]]
@@ -299,22 +341,201 @@ async def _exec_get_course_content(wstoken, moodle_user_id, args) -> Tuple[Any, 
     return data, f"תוכן הקורס '{course.get('fullname')}':\n" + "\n".join(lines)
 
 
+# ---------------------------------------------------------------------
+# חיפוש קבצים חכם: ממיין לפי התאמה, מבין מה כל קובץ (סוג/נושא/תיאור), ולא זורק קבצים אקראיים
+# ---------------------------------------------------------------------
+_NIQQUD = re.compile(r"[֑-ׇ]")
+_STOP = {
+    # עברית
+    "של", "את", "על", "עם", "אל", "לי", "לך", "לו", "לנו", "בבקשה", "הקובץ", "קובץ", "קבצים", "קבצי", "מסמך", "מסמכים", "תביא", "הבא", "שלח", "תשלח",
+    "תן", "תני", "רוצה", "צריך", "צריכה", "אפשר", "אני", "אותו", "אותה", "מה", "איזה", "איפה", "יש", "זה", "זאת", "הוא", "היא", "או", "גם",
+    "רק", "פשוט", "מהקורס", "בקורס", "קורס", "הזה", "הזו", "שלי", "שיש", "קיים", "קיימים", "שקיימים", "לקבל", "להוריד", "הורדה", "בשביל", "של",
+    "ל", "ב", "מ", "ו", "ה", "כמו", "אותם", "אותן", "בעניין", "לגבי", "בנושא", "אם", "כן", "לא", "נא", "תוכל", "תוכלי", "מודל", "במודל",
+    # אנגלית
+    "the", "a", "an", "of", "for", "to", "me", "my", "please", "send", "give", "get", "file", "files", "document", "documents", "i", "want",
+    "need", "can", "you", "in", "from", "course", "with", "and", "or", "that", "this", "moodle", "download",
+}
+_BULK = {"כל", "כולם", "כולן", "הכל", "כלל", "all", "everything", "every", "כוללים"}
+
+_KIND_WORDS = {
+    "solution": {"פתרון", "פתרונות", "פתרונו", "solution", "solutions", "sol", "answers", "תשובות", "פתרונותיו"},
+    "exam": {"מבחן", "מבחנים", "בוחן", "בחינה", "בחינות", "מועד", "exam", "exams", "test", "midterm", "final", "מבחני"},
+    "exercise": {"תרגיל", "תרגילים", "תרגול", "תרגילי", "ex", "exercise", "exercises", "hw", "homework", "assignment", "מטלה", "מטלות", "דף", "worksheet", "lab", "מעבדה", "שיעורי"},
+    "lecture": {"הרצאה", "הרצאות", "מצגת", "מצגות", "שקפים", "שקף", "lecture", "lectures", "slides", "slide", "presentation", "ppt", "pptx", "הרצאת"},
+    "syllabus": {"סילבוס", "syllabus", "תכנית", "תוכנית"},
+    "summary": {"סיכום", "סיכומים", "summary", "notes", "cheatsheet", "נוסחאות"},
+    "code": {"קוד", "code", "src", "source", "project", "פרויקט", "starter", "תבנית", "template"},
+    "reading": {"מאמר", "קריאה", "article", "reading", "ספר", "book", "paper"},
+}
+_KIND_ORDER = ["solution", "summary", "exam", "exercise", "lecture", "syllabus", "code", "reading"]
+_KIND_LABEL = {
+    "solution": "פתרון", "exam": "מבחן/בוחן", "exercise": "תרגיל/מטלה", "lecture": "הרצאה/מצגת", "syllabus": "סילבוס",
+    "summary": "סיכום", "code": "קוד/פרויקט", "reading": "חומר קריאה", "other": "אחר",
+}
+_KIND_PLURAL = {
+    "solution": "פתרונות", "exam": "מבחנים", "exercise": "תרגילים/מטלות", "lecture": "הרצאות/מצגות", "syllabus": "סילבוס",
+    "summary": "סיכומים", "code": "קוד/פרויקטים", "reading": "חומרי קריאה", "other": "אחר",
+}
+_EXT_KIND = {"pptx": "lecture", "ppt": "lecture", "key": "lecture", "py": "code", "java": "code", "c": "code", "cpp": "code", "zip": "code"}
+MIN_MATCH_SCORE = 2.5
+MAX_FILES_PER_ANSWER = 5
+
+
+def _norm(s: Any) -> str:
+    s = re.sub(r"<[^>]+>", " ", html.unescape(str(s or "")))
+    s = _NIQQUD.sub("", s).lower()
+    s = re.sub(r"[_\-\.\(\)\[\]\{\},;:!?\"'׳״/\\|]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _variants(t: str) -> set:
+    """צורות של מילה לצורך התאמה: בלי תחילית עברית נפוצה (ה/ו/ב/ל/מ/ש/כ), ורבים של ים/ות."""
+    vs = {t}
+    if len(t) > 3 and t[0] in "והבלמכש":
+        vs.add(t[1:])
+    if len(t) > 4 and t[:2] in ("וה", "ול", "וב", "מה", "שה", "כש", "לה", "בה"):
+        vs.add(t[2:])
+    for v in list(vs):
+        if len(v) > 4 and v.endswith(("ים", "ות")):
+            vs.add(v[:-2])
+            vs.add(v[:-2] + "ה")
+            vs.add(v[:-2] + "ת")
+    return vs
+
+
+def _tokens(s: Any) -> List[str]:
+    return [t for t in _norm(s).split(" ") if t]
+
+
+def _kind_of_tokens(tokens: List[str]) -> Optional[str]:
+    toks = set()
+    for t in tokens:
+        toks |= _variants(t)
+    for kind in _KIND_ORDER:
+        if toks & _KIND_WORDS[kind]:
+            return kind
+    return None
+
+
+def _infer_kind(filename: str, activity: str, section: str, desc: str) -> str:
+    """מה הקובץ הזה בעצם: קודם לפי שם הקובץ והפעילות (הכי אמין), אחר כך לפי הנושא והתיאור, ולבסוף לפי הסיומת."""
+    k = _kind_of_tokens(_tokens(filename) + _tokens(activity))
+    if k:
+        return k
+    k = _kind_of_tokens(_tokens(section) + _tokens(desc)[:25])
+    if k:
+        return k
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return _EXT_KIND.get(ext, "other")
+
+
+def _parse_query(search: str, kind_arg: str):
+    """מפרק בקשה למילות תוכן, מספרים, וסוגי קבצים; ומזהה בקשה גורפת ('כל הקבצים') או ריקה."""
+    toks = _tokens(search)
+    numbers = [t for t in toks if t.isdigit()]
+    kinds = set()
+    if kind_arg and kind_arg.strip().lower() in _KIND_WORDS:
+        kinds.add(kind_arg.strip().lower())
+    content = []
+    for t in toks:
+        if t.isdigit() or t in _STOP:
+            continue
+        if t in _BULK:
+            continue
+        k = _kind_of_tokens([t])
+        if k:
+            kinds.add(k)
+            continue
+        content.append(t)
+    bulk = any(t in _BULK for t in toks)
+    if "solution" in kinds:
+        kinds = {"solution"}
+    return content, numbers, kinds, bulk
+
+
+def _score_file(f: Dict[str, Any], content: List[str], numbers: List[str], kinds: set) -> float:
+    name_n, act_n, sec_n, desc_n = f["_name_n"], f["_act_n"], f["_sec_n"], f["_desc_n"]
+    name_t, act_t, sec_t, desc_t = f["_name_t"], f["_act_t"], f["_sec_t"], f["_desc_t"]
+    score = 0.0
+    for q in content:
+        vs = _variants(q)
+        if vs & name_t:
+            score += 4
+        elif any(len(v) >= 3 and v in name_n for v in vs):
+            score += 2
+        if vs & act_t:
+            score += 3
+        elif any(len(v) >= 3 and v in act_n for v in vs):
+            score += 1.5
+        if vs & sec_t:
+            score += 2.5
+        if vs & desc_t:
+            score += 1.5
+    file_nums = set(re.findall(r"\d+", f["_name_n"] + " " + f["_act_n"]))
+    sec_nums = set(re.findall(r"\d+", f["_sec_n"]))
+    for n in numbers:
+        if n in file_nums:
+            score += 4
+        elif n in sec_nums and not file_nums:
+            score += 3
+        elif file_nums:
+            score -= 3                       # "תרגיל 3" ≠ "תרגיל 13" ≠ "תרגיל 4"
+    for k in kinds:
+        score += 3 if f["kind"] == k else 0
+    if kinds and f["kind"] not in kinds:
+        score -= 1.5
+    if f["kind"] == "solution" and "solution" not in kinds:
+        score -= 2                           # פתרון לא נשלח אלא אם ביקשו פתרון
+    return score
+
+
+def _short(s: Any, n: int = 130) -> str:
+    t = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(str(s or "")))).strip()
+    return (t[: n - 1] + "…") if len(t) > n else t
+
+
+def _fmt_day(ts: Any) -> str:
+    try:
+        ts = int(ts)
+        return time.strftime("%d/%m/%Y", time.localtime(ts)) if ts else ""
+    except Exception:
+        return ""
+
+
+def _overview_text(course_name: str, files: List[Dict[str, Any]]) -> str:
+    by_kind: Dict[str, int] = {}
+    by_section: Dict[str, int] = {}
+    for f in files:
+        by_kind[f["kind"]] = by_kind.get(f["kind"], 0) + 1
+        by_section[f["section"] or "כללי"] = by_section.get(f["section"] or "כללי", 0) + 1
+    kinds_line = ", ".join(f"{_KIND_PLURAL[k]} ({by_kind[k]})" for k in _KIND_ORDER + ["other"] if k in by_kind)
+    secs = list(by_section.items())[:14]
+    secs_line = "; ".join(f"{name} ({n})" for name, n in secs) + ("…" if len(by_section) > 14 else "")
+    return f"בקורס '{course_name}' יש {len(files)} קבצים.\nלפי סוג: {kinds_line}.\nלפי נושא: {secs_line}."
+
+
 @_register(
     name="get_course_files", moodle_function="core_course_get_contents",
     icon="📎", label="קבצים ומסמכים בקורס (שליחה לסטודנט)",
-    description_admin="מוצא קבצים בקורס - מסמכי תרגילים, סיכומים, מצגות, וקבצים מצורפים למטלות - וממיר כל אחד ל'סמן קובץ' שהמודל מעתיק לתשובה כדי שהסטודנט יקבל כפתור הורדה ישירות בצ'אט. הטוקן אף פעם לא מופיע בסמן.",
-    description_ai="מחזיר רשימת קבצים בקורס מסוים (מסמכי תרגילים, סיכומים, מצגות, קבצים מצורפים למטלות). כל קובץ מגיע עם סמן [[file:...|שם]] - כדי לשלוח קובץ לסטודנט מעתיקים את הסמן בדיוק לתשובה. אפשר לסנן לפי מילת חיפוש (שם קובץ, פעילות או נושא).",
+    description_admin="מחפש קבצים בקורס בצורה חכמה: מבין מה כל קובץ (תרגיל/פתרון/הרצאה/מבחן/סיכום... לפי השם, הפעילות, הנושא והתיאור), מדרג לפי התאמה לבקשה, ומחזיר רק את הטובים ביותר (עד 5) עם 'סמן קובץ' לשליחה בצ'אט. בקשה גורפת או כללית מדי ('כל הקבצים') מחזירה סקירה בלבד, לא קבצים; ואם אין התאמה טובה לא נשלחים קבצים אקראיים. הטוקן אף פעם לא מופיע בסמן.",
+    description_ai="מחפש קבצים בקורס מסוים (מסמכי תרגילים, פתרונות, הרצאות/מצגות, מבחנים, סילבוס, סיכומים, קוד) ומחזיר רק את המתאימים ביותר לבקשה, עם הסבר על כל קובץ ועם סמן [[file:...]] לשליחה. חובה לציין course_name, ובמיוחד search (מה בדיוק מחפשים: נושא, מספר תרגיל, שבוע...) ו/או kind (סוג). אם לא מציינים מה מחפשים - מקבלים רק סקירה של הקורס ללא קבצים.",
     params=[
         {"name": "course_name", "type": "STRING", "description": "שם הקורס", "required": True},
-        {"name": "search", "type": "STRING", "description": "מילת חיפוש בשם הקובץ/הפעילות/הנושא (למשל 'תרגיל 3'). אופציונלי - בלעדיה מוחזרים כל הקבצים.", "required": False},
+        {"name": "search", "type": "STRING", "description": "מה מחפשים, בקצרה ובמילים של הסטודנט: נושא, מספר תרגיל או שבוע (למשל 'תרגיל 3', 'מצגת רקורסיה', 'מבחן מועד א'). בלי מילות נימוס.", "required": False},
+        {"name": "kind", "type": "STRING", "description": "סוג הקובץ אם ידוע: exercise (תרגיל/מטלה), solution (פתרון), lecture (הרצאה/מצגת), exam (מבחן), syllabus, summary (סיכום), code, reading. אופציונלי.", "required": False},
     ],
 )
 async def _exec_get_course_files(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
     course_name = args.get("course_name", "")
-    search = (args.get("search") or "").strip().lower()
+    search = str(args.get("search") or "").strip()
+    kind_arg = str(args.get("kind") or "").strip()
     course = await _resolve_course(wstoken, moodle_user_id, course_name)
     if not course:
-        return None, f"לא נמצא קורס בשם '{course_name}' ברשימת הקורסים."
+        courses = await _get_courses(wstoken, moodle_user_id)
+        names = "; ".join(c.get("fullname") or "" for c in (courses or [])[:12])
+        hint = f" הקורסים של הסטודנט: {names}." if names else ""
+        return None, (f"לא זוהה באיזה קורס מדובר ('{course_name}').{hint} שאל את הסטודנט מאיזה קורס הוא צריך קובץ - "
+                      "אי אפשר לשלוף קבצים מכל הקורסים בבת אחת.")
 
     content = await _cached_moodle_call(
         (moodle_user_id, "content", course["id"]), wstoken, "core_course_get_contents", {"courseid": course["id"]},
@@ -322,7 +543,7 @@ async def _exec_get_course_files(wstoken, moodle_user_id, args) -> Tuple[Any, st
     found: List[Dict[str, Any]] = []
     seen = set()
 
-    def add(filename, size, mimetype, fileurl, activity, section):
+    def add(filename, size, mimetype, fileurl, activity, section, desc="", modified=0, due=0):
         key = str(fileurl)
         if key in seen:
             return
@@ -330,13 +551,26 @@ async def _exec_get_course_files(wstoken, moodle_user_id, args) -> Tuple[Any, st
         if not ref:
             return
         seen.add(key)
-        found.append({"filename": filename or "קובץ", "size": size, "mimetype": mimetype or "", "ref": ref, "activity": activity or "", "section": section or ""})
+        filename = filename or "קובץ"
+        activity = activity or ""
+        section = section or ""
+        d = _short(desc, 140)
+        kind = _infer_kind(filename, activity, section, d)
+        found.append({
+            "filename": filename, "size": size, "mimetype": mimetype or "", "ref": ref, "activity": activity, "section": section,
+            "desc": d, "kind": kind, "modified": modified or 0, "due": due or 0,
+            "_name_n": _norm(filename), "_act_n": _norm(activity), "_sec_n": _norm(section), "_desc_n": _norm(d),
+            "_name_t": {v for t in _tokens(filename) for v in _variants(t)}, "_act_t": {v for t in _tokens(activity) for v in _variants(t)},
+            "_sec_t": {v for t in _tokens(section) for v in _variants(t)}, "_desc_t": {v for t in _tokens(d) for v in _variants(t)},
+        })
 
     for s in (content if isinstance(content, list) else []):
         for m in (s.get("modules") or []):
             for c in (m.get("contents") or []):
                 if c.get("type") == "file":
-                    add(c.get("filename"), c.get("filesize"), c.get("mimetype"), c.get("fileurl"), m.get("name"), s.get("name"))
+                    sub = (c.get("filepath") or "").strip("/")
+                    add(c.get("filename"), c.get("filesize"), c.get("mimetype"), c.get("fileurl"),
+                        (m.get("name") or "") + (f" / {sub}" if sub else ""), s.get("name"), m.get("description") or "", c.get("timemodified"))
 
     # קבצים מצורפים לתיאור של מטלות (מסמכי התרגיל עצמם) - לא תמיד מופיעים ב-contents של הקורס
     try:
@@ -346,29 +580,58 @@ async def _exec_get_course_files(wstoken, moodle_user_id, args) -> Tuple[Any, st
         c0 = ((a_data or {}).get("courses") or [{}])[0]
         for a in (c0.get("assignments") or []):
             for att in (a.get("introattachments") or []):
-                add(att.get("filename"), att.get("filesize"), att.get("mimetype"), att.get("fileurl"), a.get("name"), "מטלות")
+                add(att.get("filename"), att.get("filesize"), att.get("mimetype"), att.get("fileurl"), a.get("name"), "מטלות",
+                    a.get("intro") or "", att.get("timemodified"), a.get("duedate"))
     except MoodleTokenInvalid:
         raise
     except Exception:
         pass  # אם הפונקציה הזו חסומה בשרת - עדיין מחזירים את הקבצים שנמצאו בתוכן הקורס
 
-    if search:
-        found = [f for f in found if search in f"{f['filename']} {f['activity']} {f['section']}".lower()]
+    fullname = course.get("fullname") or course_name
     if not found:
-        return found, (f"לא נמצאו קבצים בקורס '{course.get('fullname')}'" + (f" התואמים ל-'{args.get('search')}'." if search else "."))
+        return found, f"לא נמצאו קבצים בקורס '{fullname}'."
 
-    total = len(found)
-    shown = found[:MAX_FILES_PER_LISTING]
+    q_content, q_numbers, q_kinds, bulk = _parse_query(search, kind_arg)
+    specific = bool(q_content or q_numbers or q_kinds)
+
+    # בקשה כללית/גורפת ("כל הקבצים", או בלי שום פירוט) - לא שולחים קבצים, רק מציגים סקירה כדי שהסטודנט יבחר
+    if not specific:
+        why = "הבקשה כללית מדי (כל הקבצים של הקורס)" if (bulk or search) else "לא צוין מה מחפשים"
+        return [], (_overview_text(fullname, found) + f"\n\nלא נשלפו קבצים: {why}. אל תשלח קבצים אקראיים ואל תנסה 'כל הקבצים'. "
+                    "הסבר לסטודנט בקצרה שאי אפשר לשלוח הכל, והצע לו לבחור: סוג (תרגיל/הרצאה/מבחן...) ומספר או נושא או שבוע. אחר כך חפש שוב עם search/kind.")
+
+    scored = sorted(((_score_file(f, q_content, q_numbers, q_kinds), i, f) for i, f in enumerate(found)), key=lambda x: (-x[0], -(x[2].get("modified") or 0), x[1]))
+    best = scored[0][0] if scored else 0
+    good = [(sc, f) for sc, _, f in scored if sc >= MIN_MATCH_SCORE and sc >= best * 0.5]
+    if not good:
+        return [], (f"לא נמצאה התאמה טובה ל-'{search or kind_arg}' בקורס '{fullname}'.\n" + _overview_text(fullname, found) +
+                    "\n\nאל תשלח קבצים אקראיים. אמור לסטודנט שלא מצאת התאמה, וציין מה כן יש בקורס (לפי הסקירה), ושאל מה בדיוק הוא מחפש.")
+    shown = good[:MAX_FILES_PER_ANSWER]
     lines = []
-    for i, f in enumerate(shown, 1):
+    for i, (sc, f) in enumerate(shown, 1):
         label = _clean_label(f["filename"])
         meta = ", ".join(x for x in (_file_kind(f["filename"], f["mimetype"]), _fmt_size(f["size"])) if x)
-        origin = " · ".join(x for x in (f["activity"], f["section"]) if x)
-        lines.append(f"{i}. [[file:{f['ref']}|{label}]] ({meta})" + (f" - מתוך: {origin}" if origin else ""))
-    head = f"קבצים בקורס '{course.get('fullname')}' ({total}" + (f", מוצגים {len(shown)} הראשונים" if total > len(shown) else "") + "):\n"
-    note = ("\n\nהוראה: כדי לשלוח קובץ לסטודנט העתק את הסמן [[file:...|...]] שלו בדיוק כפי שהוא לתשובה, בשורה משלו. "
+        marker = f"[[file:{f['ref']}|{label}" + (f"|{int(f['size'])}" if str(f["size"] or "").isdigit() and int(f["size"]) > 0 else "") + "]]"
+        parts = [f"סוג: {_KIND_LABEL[f['kind']]}"]
+        if f["activity"]:
+            parts.append(f"מתוך: \"{f['activity']}\"" + (f" (נושא: {f['section']})" if f["section"] else ""))
+        elif f["section"]:
+            parts.append(f"נושא: {f['section']}")
+        if f["due"]:
+            parts.append(f"מועד הגשה: {_fmt_day(f['due'])}")
+        if f["modified"]:
+            parts.append(f"עודכן: {_fmt_day(f['modified'])}")
+        if f["desc"]:
+            parts.append(f"תיאור: {f['desc']}")
+        conf = "גבוהה" if sc >= 8 else "בינונית"
+        lines.append(f"{i}. {marker} ({meta}) - התאמה: {conf} | " + " | ".join(parts))
+    total = len(good)
+    head = f"קבצים שמתאימים ל-'{search or kind_arg}' בקורס '{fullname}' ({'התאמה אחת' if total == 1 else str(total) + ' התאמות'}" + (f", מוצגות {len(shown)} המתאימות ביותר" if total > len(shown) else "") + "):\n"
+    note = ("\n\nהוראות: אל תשלח את כל הרשימה בהכרח - בחר את מה שבאמת עונה על הבקשה (בדרך כלל 1-3 קבצים), הסבר בשורה קצרה מה כל קובץ שאתה שולח, "
+            "והעתק את הסמן [[file:...|...]] שלו בדיוק כפי שהוא, בשורה משלו. אם כמה קבצים מתאימים באותה מידה ואי אפשר לדעת למי הכוונה - שאל את הסטודנט. "
             "אל תכתוב כתובות URL ואל תמציא סמנים.")
-    return shown, head + "\n".join(lines) + note
+    raw = [{k: v for k, v in f.items() if not k.startswith("_")} | {"score": round(sc, 2)} for sc, f in shown]
+    return raw, head + "\n".join(lines) + note
 
 
 @_register(
@@ -419,6 +682,8 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
         {"timesortfrom": now, "limitnum": 15},
     )
     events = (data or {}).get("events", [])
+    if _HIDDEN_COURSES.get():
+        events = [e for e in events if not _name_hidden((e.get("course") or {}).get("fullname"))]
     if not events:
         return data, "אין כרגע דברים דחופים ממתינים."
     lines = [f"- {e.get('name')} ({(e.get('course') or {}).get('fullname', '')}) - {_fmt_ts(e.get('timesort'))}" for e in events]
@@ -440,6 +705,9 @@ async def _exec_get_overall_grades(wstoken, moodle_user_id, args) -> Tuple[Any, 
         {"userid": moodle_user_id},
     )
     grades = (data or {}).get("grades", [])
+    hidden_ids = await _hidden_course_ids(wstoken, moodle_user_id)
+    if hidden_ids:
+        grades = [g for g in grades if g.get("courseid") not in hidden_ids]
     if not grades:
         return data, "לא נמצאו ציונים כוללים זמינים."
     lines = [f"- {course_names.get(g.get('courseid'), g.get('courseid'))}: {(g.get('grade') or 'אין עדיין ציון')}" for g in grades]

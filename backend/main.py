@@ -35,6 +35,9 @@ from rag_engine import (
     categorize_and_summarize,
     stream_gemini_answer,
     stream_gemini_answer_with_moodle_tools,
+    stream_chat_with_tools,
+    status_event,
+    STATUS_OPEN,
     stream_knowledge_draft,
     summarize_conversation,
 )
@@ -169,6 +172,7 @@ class ChatQuestionV2Request(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     moodle_token: Optional[str] = None
     moodle_user_id: Optional[int] = None
+    status: bool = False        # האם לשלוח גם אירועי סטטוס חיים ("מחפש קבצים...") בתוך הזרם - רק ללקוחות שיודעים לקרוא אותם
 
 
 class AdminLoginRequest(BaseModel):
@@ -812,19 +816,16 @@ async def _stream_chat_response(
     username: str = "",
     moodle_token: Optional[str] = None,
     moodle_user_id: Optional[int] = None,
+    user_id: Optional[str] = None,
+    emit_status: bool = False,
 ) -> StreamingResponse:
     """
-    ליבת הצ'אט המשותפת: שולפת מידע רלוונטי (pgvector), שומרת את שאלת הסטודנט,
-    מזרימה תשובה עם הקשר (סיכום + הודעות אחרונות), שומרת אותה, ודוחסת הקשר ישן לסיכום
-    כשהשיחה מתארכת. אין יותר הגבלת מכסה יומית - סטודנט יכול לשאול כמה שאלות שהוא רוצה.
-    אם יש חיבור Moodle פעיל (moodle_token+moodle_user_id מגיעים מה-frontend, לא נשמרים
-    אצלנו) - גמיני מקבל גם כלים (function calling) לשלוף קורסים/מטלות/ציונים/יומן אמיתיים.
+    ליבת הצ'אט המשותפת: שומרת את שאלת הסטודנט, שולפת מידע רלוונטי (pgvector), טוענת את הזיכרון של הסטודנט, ומזרימה תשובה
+    עם הקשר (סיכום + הודעות אחרונות); שומרת אותה, ודוחסת הקשר ישן לסיכום כשהשיחה מתארכת. אין הגבלת מכסה יומית.
+    אם יש חיבור Moodle פעיל (moodle_token+moodle_user_id מגיעים מה-frontend, לא נשמרים אצלנו) - גמיני מקבל כלי Moodle,
+    ואם יש user_id - גם כלי זיכרון. עם emit_status הזרם כולל אירועי סטטוס (\x01{json}\x02) שלא נשמרים ב-DB.
     """
     api_key = await db.get_api_key()
-
-    # שליפת המידע הרלוונטי ממאגר הידע של המכללה - חיפוש וקטורי שרץ בתוך ה-DB עצמו (pgvector)
-    question_embedding = await get_embedding(question, api_key) if api_key else []
-    relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3)
 
     await db.add_message(conversation_id, "user", question)
     # כותרת לשיחה (להיסטוריה): השורה הראשונה של השאלה הראשונה, קצרה
@@ -832,6 +833,16 @@ async def _stream_chat_response(
 
     async def response_generator():
         full_answer = ""
+
+        if emit_status:
+            yield status_event(s="kb")
+        # שליפת המידע הרלוונטי ממאגר הידע של המכללה - חיפוש וקטורי שרץ בתוך ה-DB עצמו (pgvector)
+        try:
+            question_embedding = await get_embedding(question, api_key) if api_key else []
+            relevant_chunks = await db.search_similar_chunks(question_embedding, top_k=3)
+        except Exception as e:
+            print(f"[chat] knowledge search failed: {type(e).__name__}: {e}")
+            relevant_chunks = []
 
         if not api_key:
             import asyncio
@@ -858,21 +869,21 @@ async def _stream_chat_response(
         recent_messages = await db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES)
         # ההודעה האחרונה ברשימה היא השאלה הנוכחית עצמה - לא צריך לשלוח אותה פעמיים
         history_for_prompt = recent_messages[:-1] if recent_messages else []
+        memories = await db.list_memories(user_id) if user_id else []
+        enabled_functions = await db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else None
 
-        if moodle_token and moodle_user_id:
-            enabled_functions = await db.get_moodle_enabled_functions()
-            answer_stream = stream_gemini_answer_with_moodle_tools(
-                question, relevant_chunks, api_key, moodle_token, moodle_user_id,
-                bot_identity, catalog, conversation_summary, history_for_prompt,
-                username=username, enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
-            )
-        else:
-            answer_stream = stream_gemini_answer(
-                question, relevant_chunks, api_key, bot_identity, catalog,
-                conversation_summary, history_for_prompt, username=username
-            )
+        answer_stream = stream_chat_with_tools(
+            question, relevant_chunks, api_key, bot_identity, catalog, conversation_summary, history_for_prompt,
+            username=username, moodle_token=moodle_token, moodle_user_id=moodle_user_id,
+            enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
+            memories=memories, user_id=user_id, emit_status=emit_status,
+        )
 
         async for token in answer_stream:
+            if token.startswith(STATUS_OPEN):      # אירוע סטטוס: עובר ללקוח, אבל לא חלק מהתשובה שנשמרת
+                if emit_status:
+                    yield token
+                continue
             full_answer += token
             yield token
 
@@ -917,6 +928,27 @@ def _valid_uuid(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+@app.get("/api/memory")
+async def list_my_memories(session=Depends(require_student)):
+    """מה הבוט זוכר על הסטודנט המחובר (רק שלו). הסטודנט רואה את הכול ויכול למחוק."""
+    items = await db.list_memories(session["user_id"])
+    return {"memories": [{"id": m["id"], "content": m["content"], "kind": m["kind"], "course": m.get("course"),
+                          "created_at": m["created_at"].isoformat() if m.get("created_at") else None} for m in items],
+            "max": db.MAX_MEMORIES_PER_USER}
+
+
+@app.delete("/api/memory/{memory_id}")
+async def delete_one_memory(memory_id: str, session=Depends(require_student)):
+    if not _valid_uuid(memory_id) or not await db.delete_memory(session["user_id"], memory_id):
+        raise HTTPException(status_code=404, detail="הזיכרון לא נמצא")
+    return {"deleted": 1}
+
+
+@app.delete("/api/memory")
+async def delete_all_my_memories(session=Depends(require_student)):
+    return {"deleted": await db.delete_all_memories(session["user_id"])}
 
 
 @app.delete("/api/conversations/{conversation_id}")
@@ -1062,7 +1094,8 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
                 raise HTTPException(status_code=403, detail="הטוקן שייך למשתמש אחר")
             moodle_uid = int(info["userid"])
     return await _stream_chat_response(
-        req.conversation_id, question, session.get("display_name") or session["username"], moodle_wstoken, moodle_uid
+        req.conversation_id, question, session.get("display_name") or session["username"], moodle_wstoken, moodle_uid,
+        user_id=session["user_id"], emit_status=bool(req.status),
     )
 
 

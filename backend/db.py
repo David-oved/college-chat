@@ -59,6 +59,25 @@ class Database:
                     await cur.execute("alter table app_users add column if not exists display_name text;")
         except Exception as e:
             print(f"[db] could not ensure app_users.display_name: {e}")
+        # זיכרון הבוט לכל משתמש: עובדות שהסטודנט סיפר (למשל "עזבתי את הקורס X") - נשמרות בשרת, לכל משתמש לחוד
+        try:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        create table if not exists user_memories (
+                            id uuid primary key default gen_random_uuid(),
+                            user_id uuid not null references app_users(id) on delete cascade,
+                            content text not null,
+                            kind text not null default 'fact',
+                            course text,
+                            created_at timestamptz not null default now()
+                        );
+                        """
+                    )
+                    await cur.execute("create index if not exists user_memories_user_idx on user_memories (user_id, created_at);")
+        except Exception as e:
+            print(f"[db] could not ensure user_memories: {e}")
 
     async def close(self):
         if _pool is not None and not _pool.closed:
@@ -619,6 +638,56 @@ class Database:
                 )
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ----------------------------------------------------------------
+    # זיכרון הבוט על כל משתמש (user_memories)
+    # ----------------------------------------------------------------
+    MAX_MEMORIES_PER_USER = 40
+
+    async def list_memories(self, user_id: str) -> List[Dict[str, Any]]:
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cur:
+                    await cur.execute(
+                        "select id, content, kind, course, created_at from user_memories where user_id = %s order by created_at asc;",
+                        (user_id,),
+                    )
+                    rows = await cur.fetchall()
+            return [{**dict(r), "id": str(r["id"])} for r in rows]
+        except Exception as e:
+            print(f"[db] list_memories failed: {e}")
+            return []
+
+    async def add_memory(self, user_id: str, content: str, kind: str = "fact", course: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """שומר זיכרון חדש. מחזיר None אם זה כפול (אותו תוכן בדיוק) או אם הזיכרון מלא."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("select count(*) as n from user_memories where user_id = %s;", (user_id,))
+                if (await cur.fetchone())["n"] >= self.MAX_MEMORIES_PER_USER:
+                    return None
+                await cur.execute(
+                    "select 1 from user_memories where user_id = %s and lower(content) = lower(%s);", (user_id, content)
+                )
+                if await cur.fetchone():
+                    return None
+                await cur.execute(
+                    "insert into user_memories (user_id, content, kind, course) values (%s, %s, %s, %s) returning id, content, kind, course, created_at;",
+                    (user_id, content, kind, course),
+                )
+                row = await cur.fetchone()
+        return {**dict(row), "id": str(row["id"])}
+
+    async def delete_memory(self, user_id: str, memory_id: str) -> bool:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("delete from user_memories where id = %s and user_id = %s returning id;", (memory_id, user_id))
+                return (await cur.fetchone()) is not None
+
+    async def delete_all_memories(self, user_id: str) -> int:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("delete from user_memories where user_id = %s;", (user_id,))
+                return cur.rowcount or 0
 
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         """מוחק שיחה אחת של המשתמש (וכל ההודעות שלה). מחזיר False אם השיחה לא קיימת או לא שלו."""
