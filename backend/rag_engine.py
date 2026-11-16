@@ -229,8 +229,12 @@ async def _generate_once(
                     candidates = resp.json().get("candidates", [])
                     return candidates[0].get("content") if candidates else None
                 if resp.status_code not in (429, 500, 502, 503, 504):
+                    # לא מנסים שוב (שגיאה קבועה, כמו 400 בבעיית סכמה) - אבל מדפיסים כדי שלא
+                    # ייפול בשקט לנתיב-בלי-כלים בלי שום עקבה למה (זה בדיוק מה שקרה בבדיקה בפועל)
+                    print(f"[moodle-tools] Gemini decision call נכשל ({resp.status_code}): {resp.text[:500]}")
                     return None
-            except Exception:
+            except Exception as e:
+                print(f"[moodle-tools] Gemini decision call החריג עם {model_name}: {type(e).__name__}: {e}")
                 continue
     return None
 

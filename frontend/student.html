@@ -196,6 +196,7 @@
             + שיחה חדשה
           </button>
         </div>
+        <div id="moodleStatusBadge" class="mt-1.5 text-[10px] text-center rounded-lg px-2 py-1"></div>
       </div>
 
       <!-- התראת מערכת (שגיאות תקשורת וכד') -->
@@ -273,6 +274,20 @@
     // ---------- Helpers ----------
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    // מראה בדיוק מה המצב שהצ'אט עצמו רואה ברגע זה - כדי לדעת אם "אין מידע" מגיע מחוסר
+    // חיבור בצד הלקוח, או מבעיה בצד השרת/המודל (אם זה מראה "מחובר" אבל עדיין אין תשובה אישית).
+    function updateMoodleStatusBadge() {
+      const badge = document.getElementById('moodleStatusBadge');
+      if (!badge) return;
+      if (MOODLE_TOKEN && MOODLE_USER_ID) {
+        badge.textContent = `🎓 Moodle: מחובר (userid ${MOODLE_USER_ID})`;
+        badge.className = 'mt-1.5 text-[10px] text-center rounded-lg px-2 py-1 bg-emerald-500/20 text-emerald-50';
+      } else {
+        badge.textContent = '🎓 Moodle: לא מחובר - שאלות אישיות (קורסים/ציונים) לא יענו';
+        badge.className = 'mt-1.5 text-[10px] text-center rounded-lg px-2 py-1 bg-white/10 text-indigo-100';
+      }
     }
 
     async function apiFetch(path, options = {}) {
@@ -486,6 +501,7 @@
       authScreen.classList.add('hidden');
       chatScreen.classList.remove('hidden');
       clearSystemNotice();
+      updateMoodleStatusBadge();
       await initConversations();
       subscribeToPushNotifications();
     }
@@ -872,6 +888,7 @@
       if (TOKEN) {
         authScreen.classList.add('hidden');
         chatScreen.classList.remove('hidden');
+        updateMoodleStatusBadge();
         await initConversations();
         subscribeToPushNotifications();
       } else {
