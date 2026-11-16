@@ -51,6 +51,7 @@ def build_system_prompt(bot_identity: str = "", catalog: Optional[List[Dict[str,
 2. אל תמציא שום מידע, מספרי טלפון, שמות, חדרים, שעות פעילות או נהלים שאינם כתובים במפורש במידע המצורף!
 3. אם התשובה לשאלת הסטודנט אינה מופיעה באף אחד מהמקורות המצורפים, אמור בנימוס: "אין לי מידע רשמי על כך בנהלי המכללה המעודכנים במערכת. מומלץ לפנות למזכירות הסטודנטים לבירור."
 4. שמור על תשובות מסודרות ונעימות לקריאה (השתמש בנקודות במידת הצורך).
+5. אל תשתמש באימוג'ים או בסמלי אימוג'י בתשובות - כתוב טקסט נקי בלבד (האפליקציה מציגה אייקונים משלה).
 """
 
 
@@ -191,7 +192,7 @@ async def _stream_from_gemini(
                                 err_body = await response.aread()
                                 err_msg = err_body.decode("utf-8", errors="ignore")
                                 if "API_KEY_INVALID" in err_msg or response.status_code == 403:
-                                    yield "⚠️ שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל."
+                                    yield "שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל."
                                     return
                 except Exception:
                     continue
@@ -200,7 +201,7 @@ async def _stream_from_gemini(
             if attempt < max_retries - 1:
                 await asyncio.sleep(2 * (attempt + 1))
 
-        yield "⚠️ המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
+        yield "המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
 
 
 async def _generate_once(

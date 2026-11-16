@@ -334,7 +334,7 @@ async def _exec_get_course_content(wstoken, moodle_user_id, args) -> Tuple[Any, 
         modules = s.get("modules") or []
         if not modules:
             continue
-        lines.append(f"📂 {section_name}:")
+        lines.append(f"{section_name}:")
         lines.extend(f"  - {m.get('name')} ({m.get('modname')})" for m in modules)
     if not lines:
         return data, f"לא נמצא תוכן בקורס '{course.get('fullname')}'."

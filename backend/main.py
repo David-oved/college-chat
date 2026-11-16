@@ -846,14 +846,14 @@ async def _stream_chat_response(
 
         if not api_key:
             import asyncio
-            demo_intro = "💡 **[מצב הדגמה - טרם הוזן מפתח Gemini API במסך המנהל]**\n\nחיפשתי במאגר הידע של המכללה ומצאתי עבורך את הנהלים הרלוונטיים ביותר לשאלתך:\n\n"
+            demo_intro = "**[מצב הדגמה - טרם הוזן מפתח Gemini API במסך המנהל]**\n\nחיפשתי במאגר הידע של המכללה ומצאתי עבורך את הנהלים הרלוונטיים ביותר לשאלתך:\n\n"
             for word in demo_intro.split(" "):
                 yield word + " "
                 await asyncio.sleep(0.03)
 
             if relevant_chunks:
                 top = relevant_chunks[0]
-                text_out = f"📌 **{top.get('title', 'נוהל מכללה')}:**\n{top['text']}\n\n*(הזן מפתח Gemini API בפאנל המנהל כדי לקבל ניסוח AI חכם ומלא!)*"
+                text_out = f"**{top.get('title', 'נוהל מכללה')}:**\n{top['text']}\n\n*(הזן מפתח Gemini API בפאנל המנהל כדי לקבל ניסוח AI חכם ומלא!)*"
             else:
                 text_out = "לא נמצא מידע תואם במאגר המכללה."
 
