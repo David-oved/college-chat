@@ -115,57 +115,24 @@
           <p class="text-xs text-slate-500 mt-1">מענה מיידי מבוסס נהלי המכללה הרשמיים</p>
         </div>
 
-        <!-- טאבים -->
-        <div class="flex bg-slate-100 rounded-xl p-1 mb-6">
-          <button id="tabLoginBtn" onclick="showAuthTab('login')" class="tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm">
-            התחברות
-          </button>
-          <button id="tabSignupBtn" onclick="showAuthTab('signup')" class="tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500">
-            הרשמה
-          </button>
-        </div>
-
         <!-- הודעת שגיאה -->
         <div id="authError" class="hidden mb-4 text-sm bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-3.5 py-2.5"></div>
 
-        <!-- טופס התחברות -->
-        <form id="loginForm" onsubmit="handleLogin(event)" class="flex flex-col gap-3">
+        <!-- כניסת בדיקה זמנית: סיסמה אחידה בלבד, בלי שם משתמש.
+             הכניסה "האמיתית" תגיע בעתיד מה-ID+טוקן של אפליקציית Moodle המארחת (ראו את פאנל הבדיקה למטה). -->
+        <form id="testLoginForm" onsubmit="handleTestLogin(event)" class="flex flex-col gap-3">
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1.5">שם משתמש</label>
-            <input id="loginUsername" type="text" autocomplete="username" placeholder="לדוגמה: דניאל כהן"
+            <label class="block text-xs font-medium text-slate-600 mb-1.5">סיסמת בדיקה</label>
+            <input id="testPasswordInput" type="password" inputmode="numeric" autocomplete="off" placeholder="1234"
               class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1.5">סיסמה</label>
-            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"
-              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
-          </div>
-          <button id="loginSubmitBtn" type="submit" class="btn-press mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2">
-            <span id="loginSubmitText">התחברות</span>
+          <button id="testLoginSubmitBtn" type="submit" class="btn-press mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2">
+            <span id="testLoginSubmitText">כניסה לבדיקה</span>
           </button>
         </form>
-
-        <!-- טופס הרשמה -->
-        <form id="signupForm" onsubmit="handleSignup(event)" class="hidden flex flex-col gap-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1.5">שם משתמש</label>
-            <input id="signupUsername" type="text" autocomplete="username" placeholder="בחרו שם משתמש"
-              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1.5">סיסמה</label>
-            <input id="signupPassword" type="password" autocomplete="new-password" placeholder="בחרו סיסמה"
-              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1.5">אימות סיסמה</label>
-            <input id="signupConfirm" type="password" autocomplete="new-password" placeholder="הקלידו שוב את הסיסמה"
-              class="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm outline-none transition" />
-          </div>
-          <button id="signupSubmitBtn" type="submit" class="btn-press mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2">
-            <span id="signupSubmitText">יצירת חשבון</span>
-          </button>
-        </form>
+        <p class="text-[11px] text-slate-400 text-center mt-3">
+          זו כניסת בדיקה זמנית בלבד (סיסמה אחידה, בלי חשבון אישי) - הכניסה האמיתית תגיע מאפליקציית המכללה הראשית (Moodle).
+        </p>
 
         <button type="button" onclick="toggleMoodlePanel()" class="text-[11px] text-indigo-500 hover:text-indigo-700 underline text-center mt-5">
           🔗 בדיקת חיבור Moodle (למפתחים בלבד)
@@ -180,10 +147,6 @@
           </button>
           <div id="moodleResult" class="mt-3 text-xs"></div>
         </div>
-
-        <p class="text-[11px] text-slate-400 text-center mt-6">
-          בהתחברות או ברישום הנתונים נשמרים במכשיר זה כדי לשמור אתכם מחוברים 🔒
-        </p>
       </div>
     </div>
 
@@ -337,25 +300,6 @@
     }
 
     // ---------- Auth screen ----------
-    function showAuthTab(tab) {
-      const loginForm = document.getElementById('loginForm');
-      const signupForm = document.getElementById('signupForm');
-      const tabLoginBtn = document.getElementById('tabLoginBtn');
-      const tabSignupBtn = document.getElementById('tabSignupBtn');
-      clearAuthError();
-      if (tab === 'login') {
-        loginForm.classList.remove('hidden');
-        signupForm.classList.add('hidden');
-        tabLoginBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm';
-        tabSignupBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500';
-      } else {
-        signupForm.classList.remove('hidden');
-        loginForm.classList.add('hidden');
-        tabSignupBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold bg-white text-indigo-600 shadow-sm';
-        tabLoginBtn.className = 'tab-pill flex-1 py-2 rounded-lg text-sm font-bold text-slate-500';
-      }
-    }
-
     function showAuthError(text) {
       const el = document.getElementById('authError');
       el.textContent = text;
@@ -368,31 +312,25 @@
       el.textContent = '';
     }
 
-    function setAuthLoading(formPrefix, loading) {
-      const btn = document.getElementById(`${formPrefix}SubmitBtn`);
-      const text = document.getElementById(`${formPrefix}SubmitText`);
-      btn.disabled = loading;
-      if (loading) {
-        text.innerHTML = `<span class="spinner"></span>`;
-      } else {
-        text.textContent = formPrefix === 'login' ? 'התחברות' : 'יצירת חשבון';
-      }
-    }
-
-    async function handleLogin(e) {
+    async function handleTestLogin(e) {
       e.preventDefault();
       clearAuthError();
-      const username = document.getElementById('loginUsername').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      if (!username || !password) { showAuthError('נא למלא שם משתמש וסיסמה'); return; }
+      const password = document.getElementById('testPasswordInput').value;
+      if (!password) { showAuthError('נא להזין סיסמת בדיקה'); return; }
 
-      setAuthLoading('login', true);
-      const { res, networkError } = await apiFetch('/api/login', {
+      const btn = document.getElementById('testLoginSubmitBtn');
+      const text = document.getElementById('testLoginSubmitText');
+      btn.disabled = true;
+      text.innerHTML = `<span class="spinner"></span>`;
+
+      const { res, networkError } = await apiFetch('/api/test-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ password })
       });
-      setAuthLoading('login', false);
+
+      btn.disabled = false;
+      text.textContent = 'כניסה לבדיקה';
 
       if (networkError) {
         showAuthError('⚠️ לא ניתן להתחבר לשרת כרגע. בדקו את החיבור ונסו שוב.');
@@ -400,44 +338,7 @@
       }
       const data = await safeJson(res);
       if (!res.ok) {
-        showAuthError(data.detail || 'שם משתמש או סיסמה שגויים.');
-        return;
-      }
-      if (!data.token) {
-        showAuthError('התקבלה תשובה לא תקינה מהשרת. נסו שוב.');
-        return;
-      }
-      TOKEN = data.token;
-      USER_ID = data.user_id || null;
-      safeStorageSet('token', TOKEN);
-      if (USER_ID !== null) safeStorageSet('user_id', USER_ID);
-      await enterApp();
-    }
-
-    async function handleSignup(e) {
-      e.preventDefault();
-      clearAuthError();
-      const username = document.getElementById('signupUsername').value.trim();
-      const password = document.getElementById('signupPassword').value;
-      const confirm = document.getElementById('signupConfirm').value;
-      if (!username || !password) { showAuthError('נא למלא שם משתמש וסיסמה'); return; }
-      if (password !== confirm) { showAuthError('הסיסמאות אינן תואמות.'); return; }
-
-      setAuthLoading('signup', true);
-      const { res, networkError } = await apiFetch('/api/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      setAuthLoading('signup', false);
-
-      if (networkError) {
-        showAuthError('⚠️ לא ניתן להתחבר לשרת כרגע. בדקו את החיבור ונסו שוב.');
-        return;
-      }
-      const data = await safeJson(res);
-      if (!res.ok) {
-        showAuthError(data.detail || 'שם המשתמש הזה כבר תפוס. נסו שם אחר.');
+        showAuthError(data.detail || 'סיסמת בדיקה שגויה.');
         return;
       }
       if (!data.token) {
@@ -545,8 +446,7 @@
       clearSystemNotice();
       chatScreen.classList.add('hidden');
       authScreen.classList.remove('hidden');
-      document.getElementById('loginUsername').value = '';
-      document.getElementById('loginPassword').value = '';
+      document.getElementById('testPasswordInput').value = '';
     }
 
     // ---------- App entry ----------

@@ -147,6 +147,10 @@ class MoodleConnectRequest(BaseModel):
     token: str
 
 
+class TestLoginRequest(BaseModel):
+    password: str
+
+
 class PushSubscriptionKeys(BaseModel):
     p256dh: str
     auth: str
@@ -241,6 +245,28 @@ async def student_login(req: StudentLoginRequest):
     if not result:
         raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
     return result
+
+
+TEST_LOGIN_PASSWORD = "1234"
+TEST_LOGIN_USERNAME = "test_user"
+
+
+@app.post("/api/test-login")
+async def test_login(req: TestLoginRequest):
+    """
+    כניסת בדיקה זמנית בלבד (עד שהכניסה האמיתית תגיע מה-SSO של Moodle): סיסמה אחידה,
+    בלי שם משתמש, תמיד אותו משתמש-בדיקה יחיד (לא יוצר חשבון חדש בכל פעם).
+    """
+    if req.password != TEST_LOGIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="סיסמת בדיקה שגויה")
+
+    user = await db.get_user_by_username(TEST_LOGIN_USERNAME)
+    if not user:
+        random_password_hash = hash_password(secrets.token_urlsafe(16))
+        new_id = await db.create_user(TEST_LOGIN_USERNAME, random_password_hash)
+        user = await db.get_user_by_id(new_id)
+
+    return student_auth.create_session_for_user(user["id"], user["username"])
 
 
 @app.get("/api/me")
