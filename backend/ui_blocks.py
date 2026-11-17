@@ -71,6 +71,7 @@ UI_ADDENDUM = """
 10. מיקום והגעה: location + steps עם הוראות הגעה + hours.
 11. מידע אישי מ-Moodle: deadlines / grades / courses לפי ids, ומעליהם highlight או stats (למשל כמה מטלות השבוע) ו-callout אדום על איחור.
 12. כשהמידע ארוך: heading בין הקבוצות (בקצרה) ו-summary של שורה אחת בסוף. בסוף תשובה עשירה אפשר buttons עם 2-3 המשכים טבעיים ("עוד פרטים", "איך נרשמים").
+שלמות, בלי יוצא מן הכלל: אין כרטיס ריק. בכל שורה ב-facts / price / stats / progress / highlight חייב להיות value אמיתי (או detail ב-facts) מהחומר שקיבלת. אם אין לך מידע על משהו - אל תכלול אותו בכלל (אל תשלח שורה עם label בלבד, אל תכתוב "חניה" בלי לומר מה). כל בלוק מכיל תוכן ממשי, ואם הוא לא - מחק אותו. לפני ששולחים: עבור על הבלוקים ובדוק שכל פרט נכון ושנמצא בחומר.
 אנימציה וצבע: anim=rise כברירת מחדל, pop למספר גדול (highlight), glow לדבר דחוף או חשוב מאוד, slide לצעדים. צבע לפי משמעות. אל תחזור על אותו סוג בלוק כשיש סוג מתאים יותר (רשימת bullets היא הברירה האחרונה, לא הראשונה). בלי טקסט כפול: מה שבכרטיס לא חוזר בטקסט.
 דוגמה: "כמה עולה שכר לימוד ואיך משלמים?" -> blocks: [highlight(items:[{value:"...",label:"שכר לימוד לשנה"}], anim:pop, color:blue), facts(items:[{label:"תשלומים",value:"..."},{label:"הנחה",value:"..."}]), steps(style:timeline, items:[{title:"שלב 1"},{title:"שלב 2"}]), callout(tone:warn, text:"שים לב: ..."), buttons(items:[{label:"איך מגישים בקשה למלגה"}])].
 דוגמה: "מי אחראי על הרישום ומתי פתוח?" -> blocks: [contact(title:"...", subtitle:"...", items:[{kind:phone,value:"..."},{kind:email,value:"..."}], color:teal), hours(style:week, items:[...]), callout(tone:tip, text:"...")].
@@ -298,8 +299,19 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
                 if ic:
                     row["ic"] = ic
                 its.append(row)
+            # never an empty-looking card: rows of a value-type block must carry their value (facts may carry a detail instead)
+            if kind in ("price", "stats", "progress", "highlight"):
+                its = [r for r in its if r.get("v")]
+            elif kind == "facts":
+                full = [r for r in its if r.get("v") or r.get("d")]
+                if full:
+                    its = full
+                else:                                        # labels only: it is a plain list, not a table of facts
+                    base = {**base, "k": "list", "s": "bullets"}
             if its or (kind == "summary" and text):
                 out.append({**base, "tx": text, "it": its})
+            elif kind != "summary":
+                problems.append(f"בלוק {kind} נזרק: לשורות חסרים ערכים.")
         # ---------------- links
         elif kind == "links":
             its = []

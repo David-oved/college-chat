@@ -1023,6 +1023,8 @@ async def _stream_chat_response(
             db.list_memories(user_id) if user_id else _empty(),
             db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else _none(),
         )
+        if emit_status and relevant_chunks:
+            yield status_event(s="kbdone", t=str(relevant_chunks[0].get("title") or "")[:60])      # what it found (the client shows "found: ...")
         if moodle_token and moodle_user_id:
             _spawn(_prefetch_courses(moodle_token, moodle_user_id))      # רוב השאלות צריכות את רשימת הקורסים: מחממים את המטמון במקביל לחיפוש
         # שאלת הסטודנט עוד לא נשמרה (נשמרת עכשיו ברקע), ולכן ההיסטוריה שנשלפה היא רק מה שלפניה

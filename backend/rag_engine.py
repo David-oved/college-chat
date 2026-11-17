@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import re
 from datetime import datetime
@@ -135,7 +136,14 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
 # ה-"lite" מודל ראשון בכוונה: בבדיקה בפועל (ראה שיחה) התגלה שלמפתח חינמי יש מכסה יומית
 # נמוכה מאוד (20 בקשות/יום) על המודל הכבד (gemini-flash-latest), בעוד שהגרסה ה-lite
 # עדיין הייתה זמינה - אז היא סיכוי טוב יותר להצלחה בפועל במכסה חינמית.
-DEFAULT_MODELS_TO_TRY = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-pro-latest"]
+# Measured: the lite models answer in ~2s, while the heavier flash/pro models are often overloaded (503) or hang for 30-40s. So several lite
+# models come first (they have separate capacity), the heavy ones are only the last resort, and every model gets a short timeout.
+DEFAULT_MODELS_TO_TRY = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-pro-latest"]
+
+
+def _model_timeout(model: str) -> "httpx.Timeout":
+    read = 11.0 if "lite" in model else (28.0 if "pro" in model else 18.0)      # how long a model may stay silent before the next one is tried
+    return httpx.Timeout(connect=5.0, read=read, write=10.0, pool=5.0)
 
 
 async def _stream_from_gemini(
@@ -171,7 +179,7 @@ async def _stream_from_gemini(
                 try:
                     db.bump_api_usage(call_type)
                     async with shared_client(30.0) as client:
-                        async with client.stream("POST", url, json=payload) as response:
+                        async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
                             gemini_stats.record(model_name, response.status_code)
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
@@ -193,8 +201,8 @@ async def _stream_from_gemini(
                                 return  # סיימנו להזרים בהצלחה!
 
                             elif response.status_code == 429 or response.status_code >= 500:
-                                # עומס (429) או שגיאת שרת זמנית של גוגל (5xx) - נמתין מעט וננסה שוב
-                                break
+                                # עומס (429) או שגיאת שרת זמנית של גוגל (5xx) - מנסים מיד את המודל הבא (והסבב כולו שוב רק אם כולם נכשלו)
+                                continue
                             elif response.status_code in (400, 403):
                                 err_body = await response.aread()
                                 err_msg = err_body.decode("utf-8", errors="ignore")
@@ -230,7 +238,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                 try:
                     db.bump_api_usage(call_type)
                     async with shared_client(30.0) as client:
-                        async with client.stream("POST", url, json=payload) as response:
+                        async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
                             gemini_stats.record(model_name, response.status_code)
                             if response.status_code == 200:
                                 async for line in response.aiter_lines():
@@ -280,6 +288,7 @@ async def _generate_once(
     max_output_tokens: int = 300,
     call_type: str = "other",
     tool_config: Optional[dict] = None,
+    gen_extra: Optional[dict] = None,
 ) -> Optional[dict]:
     """
     קריאה בודדת (לא מוזרמת) ל-Gemini - משמשת לסיבוב ה"החלטה" של function calling
@@ -294,6 +303,8 @@ async def _generate_once(
         payload["tools"] = tools
     if tool_config:
         payload["toolConfig"] = tool_config
+    if gen_extra:
+        payload["generationConfig"].update(gen_extra)
 
     async with gemini_queue_semaphore:
         for model_name in DEFAULT_MODELS_TO_TRY:
@@ -301,7 +312,7 @@ async def _generate_once(
             try:
                 db.bump_api_usage(call_type)
                 async with shared_client(30.0) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, json=payload, timeout=_model_timeout(model_name))
                 if resp.status_code == 200:
                     candidates = resp.json().get("candidates", [])
                     return candidates[0].get("content") if candidates else None
@@ -323,6 +334,41 @@ def _current_israel_time_block() -> str:
     now = datetime.now(ISRAEL_TZ)
     day_name = _HEBREW_WEEKDAYS[now.weekday()]
     return f"יום {day_name}, {now.strftime('%d/%m/%Y %H:%M')} (שעון ישראל), {hebrew_date_str(now.date())}"
+
+
+_UI_MARK = re.compile(r"\[\[ui:([A-Za-z0-9_\-]+)\]\]")
+_FILE_MARK = re.compile(r"\[\[file:[^|\]\n]*\|([^|\]\n]*)[^\]\n]*\]\]")
+
+
+def _decode_ui_blocks(text: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for m in _UI_MARK.finditer(text or ""):
+        try:
+            b = m.group(1)
+            data = json.loads(base64.urlsafe_b64decode(b + "=" * (-len(b) % 4)).decode("utf-8"))
+            out.extend(x for x in data.get("b", []) if isinstance(x, dict))
+        except Exception:
+            continue
+    return out
+
+
+def _blocks_digest(blocks: List[Dict[str, Any]], limit: int = 900) -> str:
+    parts: List[str] = []
+    for blk in blocks:
+        bits = [str(blk.get("ti") or ""), str(blk.get("su") or ""), str(blk.get("tx") or "")]
+        for it in (blk.get("it") or [])[:10]:
+            if isinstance(it, dict):
+                bits.append(" ".join(str(it.get(k) or "") for k in ("l", "n", "q", "dt", "v", "d", "a") if it.get(k)))
+        parts.append(" / ".join(b for b in bits if b.strip()))
+    return " | ".join(p for p in parts if p)[:limit]
+
+
+def _history_text(content: str) -> str:
+    """An earlier answer as the model should read it: cards and files as short descriptions instead of base64."""
+    text = str(content or "")
+    text = _UI_MARK.sub(lambda m: "[הוצגו כרטיסים: " + _blocks_digest(_decode_ui_blocks(m.group(0)), 500) + "]", text)
+    text = _FILE_MARK.sub(lambda m: "[נשלח קובץ: " + m.group(1) + "]", text)
+    return text
 
 
 def _build_chat_user_turn(
@@ -357,7 +403,7 @@ def _build_chat_user_turn(
         history_block += f"\n=== תקציר השיחה עד כה ===\n{conversation_summary}\n"
     if recent_messages:
         turns = "\n".join(
-            f"{'סטודנט' if m['role'] == 'user' else 'בוט'}: {m['content']}" for m in recent_messages
+            f"{'סטודנט' if m['role'] == 'user' else 'בוט'}: {_history_text(m['content']) if m['role'] != 'user' else m['content']}" for m in recent_messages
         )
         history_block += f"\n=== הודעות אחרונות בשיחה ===\n{turns}\n"
 
@@ -386,6 +432,7 @@ RICH_ADDENDUM = """
 כשהתשובה מגיעה, עדכן את הזיכרון: כל קורס שלא סומן הוא קורס שהסטודנט לא לומד - שמור אותו עם remember_about_student ו-kind="left_course" (קריאה אחת לכל קורס, בלי לשמור את מה שסומן). אשר בקצרה מה עודכן.
 חשוב: "לא לומד קורס X" נשמר רק כ-kind="left_course" עם course=שם הקורס המדויק, אף פעם לא כ-fact רגיל. נסח את שאלת הסקר בצורה חד-משמעית ("אילו מהקורסים האלה אתה לומד עכשיו?"), ואם הסטודנט סימן את כל הקורסים - אל תשמור כלום.
 זיכרון הסקרים - חשוב: אחרי שסקר הקורסים נענה, שמור גם עובדה אחת עם remember_about_student (kind="fact") בנוסח קבוע: "אימת אילו קורסים פעילים אצלו (סקר)". אם העובדה הזו כבר ברשימת מה שאתה זוכר, או שכבר שאלת את אותו סקר בשיחה הזו - אל תשלח אותו שוב, גם אם הסטודנט שואל שוב "מה הקורסים שלי": פשוט ענה לפי מה שאתה יודע (הקורסים שהוא עזב כבר מוסתרים אוטומטית). חזור לשאול רק אם הסטודנט עצמו אומר שמשהו השתנה או מבקש לעדכן את הרשימה. הכלל חל על כל סקר: אל תשאל שוב על מה שכבר נענה, בשיחה או בזיכרון.
+כלל: הסטודנט לא אמור להקליד כדי להמשיך. אל תסיים תשובה בשאלה פתוחה בטקסט ("רוצה שאסביר?", "מה מעניין אותך?") ואל תבקש ממנו לענות "כן" או "לא" - כל שאלה שלך אליו מוצגת ככפתורים (quick) או כסקר (poll), עם אפשרויות קונקרטיות שקשורות למה שהוא שאל. כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורים, אל תנחש. בסוף כל תשובה השרת מוסיף בעצמו כפתורי המשך מתאימים, אז אין צורך שתוסיף אותם; הוסף quick או poll רק כשיש שאלה ממוקדת שאתה צריך את תשובתה.
 אל תציף בסקרים: רק כשזה באמת חוסך הקלדה או מבהיר משהו, לא בכל תשובה ולא על מידע רגיש. אל תחזור על רשימת האפשרויות בטקסט שמעל הסקר.
 """
 
@@ -687,7 +734,7 @@ async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[s
     return []
 
 
-async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
+async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
     """עוטף את מנוע הצ'אט ומוודא שהבוט לא מבטיח קובץ שלא צירף: אם כתב "הנה הקובץ" בלי סמן - מצרפים את הקובץ שהכלי מצא, ואם לא נמצא כלום - אומרים את זה בפשטות."""
     from moodle_tools import get_cards as _gc
     acc: List[str] = []
@@ -722,6 +769,64 @@ async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
         yield "\n\n" + "\n".join(markers[:3])
     elif files_called and (promised or (text.rstrip().endswith(":") and re.search(r"קובץ|קבצים|מסמך", text))):
         yield "\n\nלא הצלחתי למשוך את הקובץ כרגע. אפשר לנסות שוב בעוד רגע, או לפתוח אותו ישירות ב-Moodle."
+
+
+_FOLLOW_SKIP = re.compile(r"\[\[(?:poll|quick)")
+
+
+async def _followups(question: str, digest: str, api_key: str) -> List[str]:
+    """3-4 short follow-up questions that fit what was just asked and answered (one quick call, never blocks the answer: it runs after it)."""
+    try:
+        q = str(question or "").split("\n\n[")[0].strip()[:400]
+        prompt = (
+            "אתה אורי, העוזר של המרכז האקדמי לב. הסטודנט שאל שאלה וקיבל תשובה. הצע 3 עד 4 שאלות המשך שהוא עשוי לרצות לשאול עכשיו, "
+            "כפי שהוא עצמו היה כותב אותן (גוף ראשון, עד 6 מילים כל אחת, באותה שפה של השאלה).\n"
+            "הן חייבות להיות קשורות ישירות לשאלה ולתשובה ולהביא מידע שימושי נוסף שאפשר לענות עליו (על המכללה, או על Moodle האישי שלו). "
+            "אסור: כן/לא, 'יש לי שאלה נוספת', שאלות כלליות, או חזרה על מה שכבר נענה. מחזיר מערך JSON של מחרוזות בלבד.\n\n"
+            f"שאלת הסטודנט: {q}\nתקציר התשובה: {digest}"
+        )
+        content = await asyncio.wait_for(_generate_once(
+            [{"role": "user", "parts": [{"text": prompt}]}], api_key, max_output_tokens=180, call_type="followups",
+            gen_extra={"responseMimeType": "application/json", "responseSchema": {"type": "ARRAY", "items": {"type": "STRING"}}},
+        ), timeout=7.0)
+        txt = "".join(part.get("text", "") for part in (content or {}).get("parts", []) if isinstance(part, dict))
+        arr = json.loads(txt)
+        out: List[str] = []
+        for x in arr if isinstance(arr, list) else []:
+            t = " ".join(str(x).split()).strip(" .\"'")
+            if 3 <= len(t) <= 46 and t not in out and t not in ("כן", "לא", "כן, תסביר", "תודה"):
+                out.append(t)
+        return out[:4]
+    except Exception as e:
+        print(f"[followups] skipped: {type(e).__name__}: {e}")
+        return []
+
+
+async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
+    """The chat engine for a student: the guarded answer (iron rule + file promise) and, after it, follow-up buttons so the student can keep going without typing."""
+    acc: List[str] = []
+    async for tok in _stream_chat_guarded(*args, **kwargs):
+        if tok == VISUAL_TOKEN:
+            acc.clear()                                          # the text so far was replaced by cards
+        elif not tok.startswith(STATUS_OPEN):
+            acc.append(tok)
+        yield tok
+    if not kwargs.get("emit_status"):
+        return
+    text = "".join(acc)
+    question = args[0] if args else kwargs.get("question", "")
+    api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
+    plain = _MARKERS.sub("", text).strip()
+    blocks = _decode_ui_blocks(text)
+    if _FOLLOW_SKIP.search(text) or any(b.get("k") == "buttons" for b in blocks):
+        return                                                   # the answer already carries its own buttons or poll
+    digest = (plain[:700] + " " + _blocks_digest(blocks)).strip()
+    if _is_smalltalk(question) or _FAILURE_OPEN.match(plain) or len(digest) < 20:
+        return
+    labels = await _followups(question, digest, api_key)
+    if labels:
+        db.bump_api_usage("ui:followups")
+        yield "\n\n" + f"[[ui:{encode_blocks([{'k': 'buttons', 's': 'quick', 'ti': '', 'it': [{'l': x, 'v': x} for x in labels]}])}]]"
 
 
 async def stream_gemini_answer_with_moodle_tools(
