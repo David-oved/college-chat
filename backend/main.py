@@ -496,7 +496,9 @@ async def moodle_connect(req: MoodleConnectRequest, request: Request):
 
     local_username = f"moodle_{moodle_user_id}"
     user = await db.get_user_by_username(local_username)
+    new_user = False
     if not user:
+        new_user = True
         random_password_hash = hash_password(secrets.token_urlsafe(16))
         new_id = await db.create_user(local_username, random_password_hash)
         # אם שתי בקשות ראשונות הגיעו במקביל, אחת מהן נכשלת על unique - אז פשוט קוראים שוב את המשתמש שכבר נוצר
@@ -515,6 +517,7 @@ async def moodle_connect(req: MoodleConnectRequest, request: Request):
 
     return {
         **session,
+        "new_user": new_user,              # the first time this student reaches us: the app shows its welcome tour and the chat walk-through
         "moodle": {
             "userid": moodle_user_id,
             "username": data.get("username"),
@@ -1107,6 +1110,15 @@ async def list_my_memories(session=Depends(require_student)):
     return {"memories": [{"id": m["id"], "content": m["content"], "kind": m["kind"], "course": m.get("course"),
                           "created_at": m["created_at"].isoformat() if m.get("created_at") else None} for m in items],
             "max": db.MAX_MEMORIES_PER_USER}
+
+
+@app.delete("/api/me")
+async def delete_me(request: Request, session=Depends(require_student)):
+    """Deletes EVERYTHING we hold about the signed-in student (account, conversations, messages, memory, subscriptions), as if the chat was never opened.
+    The Moodle token is never stored here, so there is nothing else to remove. Cannot be undone."""
+    _rate_limit("deleteme:" + session["user_id"], 5, 3600)
+    counts = await db.delete_user_everything(session["user_id"])
+    return {"deleted": True, "counts": counts}
 
 
 @app.delete("/api/memory/{memory_id}")

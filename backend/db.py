@@ -777,6 +777,30 @@ class Database:
                 await cur.execute("delete from conversations where user_id = %s;", (user_id,))
                 return cur.rowcount or 0
 
+    async def delete_user_everything(self, user_id: str) -> Dict[str, int]:
+        """Erases the student completely, as if they had never opened the chat: messages, conversations, memories, notification
+        subscriptions, every other table that holds a user_id, and finally the account row itself. Cannot be undone."""
+        counts: Dict[str, int] = {}
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "delete from messages where conversation_id in (select id from conversations where user_id = %s);", (user_id,)
+                )
+                counts["messages"] = cur.rowcount or 0
+                await cur.execute(
+                    "select table_name from information_schema.columns where table_schema = 'public' and column_name = 'user_id' "
+                    "and table_name not in ('app_users', 'messages') order by (table_name = 'conversations');"
+                )
+                tables = [r[0] for r in await cur.fetchall()]
+                for t in tables:                                     # conversations is last (its messages are already gone)
+                    if not t.replace("_", "").isalnum():
+                        continue
+                    await cur.execute(f'delete from "{t}" where user_id = %s;', (user_id,))
+                    counts[t] = cur.rowcount or 0
+                await cur.execute("delete from app_users where id = %s;", (user_id,))
+                counts["account"] = cur.rowcount or 0
+        return counts
+
     async def get_conversation_owner(self, conversation_id: str) -> Optional[str]:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
