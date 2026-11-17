@@ -15,6 +15,7 @@
 import asyncio
 import base64
 import contextvars
+from hebdate import describe_ts
 import html
 import re
 import time
@@ -187,13 +188,8 @@ async def _resolve_course(wstoken: str, moodle_user_id: Any, course_name: str) -
 
 
 def _fmt_ts(ts: Any) -> str:
-    try:
-        ts = int(ts)
-        if not ts:
-            return "ללא מועד"
-        return time.strftime("%d/%m/%Y %H:%M", time.localtime(ts))
-    except Exception:
-        return "ללא מועד"
+    """תאריך מלא בשעון ישראל (השרת רץ ב-UTC, ולכן לא משתמשים בשעון המקומי שלו), עם יום בשבוע, תאריך עברי והזמן היחסי: בעוד X / עבר המועד לפני X."""
+    return describe_ts(ts)
 
 
 # =====================================================================
@@ -692,12 +688,25 @@ def _clean_course_name(name: str) -> str:
     return re.sub(r"\s*[-–]?\s*\d{4,}(?:\.\d+)*\s*$", "", n).strip(" -–")
 
 
+def _plain_html(html: Any, n: int = 240) -> str:
+    return " ".join(re.sub(r"<[^>]+>", " ", str(html or "")).replace("&nbsp;", " ").replace("&amp;", "&").split())[:n]
+
+
+def _moodle_url(u: Any) -> str:
+    u = str(u or "")
+    return u if u.startswith("https://moodle.jct.ac.il/") else ""
+
+
 def _deadline_items(events) -> list:
+    now = int(time.time())
     rows = []
+    extras: dict = {}
     for e in events:
         t = int(e.get("timesort") or 0)
         if t:
-            rows.append((_clean_event_name(e.get("name")), _clean_course_name((e.get("course") or {}).get("fullname", "")), t))
+            name, course = _clean_event_name(e.get("name")), _clean_course_name((e.get("course") or {}).get("fullname", ""))
+            rows.append((name, course, t))
+            extras.setdefault((name, course, t), {"d": _plain_html(e.get("description")), "u": _moodle_url(e.get("url") or (e.get("action") or {}).get("url")), "o": 1 if t < now else 0})
     # אותו תרגיל עם כמה שאלות באותו מועד -> שורה אחת ("תרגיל 4 - שאלות 3, 4, 5")
     merged: dict = {}
     order: list = []
@@ -714,7 +723,15 @@ def _deadline_items(events) -> list:
         base, course, t, is_q = key
         qs = sorted(set(merged[key]))
         label = base if not is_q else (f"{base} - שאלה {qs[0]}" if len(qs) == 1 else f"{base} - שאלות {', '.join(str(q) for q in qs)}")
-        out.append({"n": label[:90], "c": course[:60], "t": t})
+        ex = extras.get((base if not is_q else "", course, t)) or next((v for k, v in extras.items() if k[1] == course and k[2] == t), {})
+        item = {"n": label[:90], "c": course[:60], "t": t}
+        if ex.get("d"):
+            item["d"] = ex["d"]
+        if ex.get("u"):
+            item["u"] = ex["u"]
+        if ex.get("o"):
+            item["o"] = 1
+        out.append(item)
     seen = set()
     uniq = []
     for it in sorted(out, key=lambda x: x["t"]):
@@ -762,7 +779,7 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
     now = int(time.time())
     data = await _cached_moodle_call(
         (moodle_user_id, "upcoming"), wstoken, "core_calendar_get_action_events_by_timesort",
-        {"timesortfrom": now, "limitnum": 15},
+        {"timesortfrom": now - 14 * 86400, "limitnum": 30},
     )
     events = (data or {}).get("events", [])
     if _HIDDEN_COURSES.get():
@@ -770,8 +787,10 @@ async def _exec_get_upcoming_deadlines(wstoken, moodle_user_id, args) -> Tuple[A
     if not events:
         return data, "אין כרגע דברים דחופים ממתינים."
     items = _deadline_items(events)
-    lines = [f"- [{_reg('d', **it)}] {it['n']} ({it['c']}) - {_fmt_ts(it['t'])}" for it in items]
-    return data, "דברים דחופים שממתינים (כל הקורסים):\n" + "\n".join(lines)
+    lines = [f"- [{_reg('d', **it)}] {it['n']} ({it['c']}) - {_fmt_ts(it['t'])}" + (" [באיחור - טרם הוגש]" if it.get("o") else "") for it in items]
+    note = ("(הרשימה כוללת רק פריטים שעדיין דורשים פעולה, כלומר טרם הוגשו. פריט שמועדו כבר עבר ועדיין ברשימה הוא באיחור. "
+            "פריט שאינו ברשימה כבר הוגש או שאינו דורש הגשה. הזמנים כבר בשעון ישראל, ה'עבר המועד'/'בעוד' מחושבים מראש - אל תחשב מחדש.)")
+    return data, "דברים שממתינים לסטודנט (כל הקורסים):\n" + note + "\n" + "\n".join(lines)
 
 
 @_register(

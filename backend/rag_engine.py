@@ -7,6 +7,7 @@ from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
 from http_client import shared_client
 import gemini_stats
+from hebdate import hebrew_date_str
 from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks
 
 from db import db
@@ -318,7 +319,7 @@ _HEBREW_WEEKDAYS = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמיש�
 def _current_israel_time_block() -> str:
     now = datetime.now(ISRAEL_TZ)
     day_name = _HEBREW_WEEKDAYS[now.weekday()]
-    return f"יום {day_name}, {now.strftime('%d/%m/%Y %H:%M')} (שעון ישראל)"
+    return f"יום {day_name}, {now.strftime('%d/%m/%Y %H:%M')} (שעון ישראל), {hebrew_date_str(now.date())}"
 
 
 def _build_chat_user_turn(
@@ -385,6 +386,8 @@ RICH_ADDENDUM = """
 
 MOODLE_SYSTEM_ADDENDUM = """
 
+תאריכים והגשות - חשוב: כל תאריך בתוצאות הכלים מגיע בשעון ישראל עם יום בשבוע, תאריך עברי והזמן היחסי ("בעוד 5 שעות" / "עבר המועד לפני 3 ימים"). השתמש בזה כמו שהוא ואל תחשב מחדש. מטלה שמועדה עבר ועדיין ברשימת הדברים הממתינים = באיחור וטרם הוגשה; מטלה שאינה ברשימה = כנראה כבר הוגשה (לוודאות מלאה אפשר get_assignment_submission_status). תמיד הבחן בבירור בין: באיחור (עבר ולא הוגש), דחוף (עד 24 שעות), השבוע, ובעתיד. כשאתה כותב תאריך בטקסט, כתוב יום ותאריך קצר, ואם הסטודנט שאל על מועדים אפשר להוסיף את התאריך העברי.
+כשהסטודנט שואל על פריט שהוא לחץ עליו בכרטיס, מגיע בסוף ההודעה בלוק "[הסטודנט לחץ על הפריט הזה...]" עם השם, הקורס, המועד והתיאור מהמערכת: זה ההקשר המלא שלך. אל תאמר "לא מצאתי מידע" כשהבלוק כבר נותן אותו; ענה לפיו, ואם צריך עוד פרטים חפש בקורס הנכון (get_course_assignments, get_assignment_submission_status).
 כלל קריטי: אם אתה קורא לכלי, אל תכתוב שום טקסט לפני הקריאה (בלי "רגע אבדוק", בלי הקדמה) - קרא לכלי מיד. את התשובה כותבים רק אחרי שהתוצאה חזרה.
 
 === מידע אישי מ-Moodle (קורסים/מטלות/ציונים/יומן) ===

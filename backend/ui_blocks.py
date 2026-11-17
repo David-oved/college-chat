@@ -92,7 +92,7 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]]) -> Tuple[List[
             for i in ids:
                 it = items.get(i)
                 if it and it.get("k") == want:
-                    rows.append({k: v for k, v in it.items() if k != "k"})
+                    rows.append({k: v for k, v in it.items() if k != "k" and k in ("n", "c", "t", "v", "d", "u", "o")})
             if not rows:
                 problems.append(f"בלוק {kind}: לא נמצאו פריטים לפי ה-ids שנשלחו (השתמש רק במזהים שהכלים החזירו).")
                 continue
