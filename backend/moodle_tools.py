@@ -15,6 +15,7 @@
 import asyncio
 import base64
 import contextvars
+import html
 from hebdate import describe_ts
 import html
 import re
@@ -682,7 +683,7 @@ async def _exec_get_assignment_submission_status(wstoken, moodle_user_id, args) 
 
 def _clean_event_name(name: str) -> str:
     """שמות אירועי היומן של Moodle מלאים ברעש ("... submission is due", "יש להגיש את '...'") - מנקים כדי שהכרטיס יהיה קריא."""
-    n = str(name or "")
+    n = html.unescape(str(name or ""))
     n = re.sub(r"\s*[-–]?\s*(submission\s+)?is due\s*$", "", n, flags=re.I)
     n = re.sub(r"^\s*(יש להגיש את|תאריך הגשה)\s*", "", n)
     n = re.sub(r"\s*[-–]\s*בודק אוטומטי\s*$", "", n)
