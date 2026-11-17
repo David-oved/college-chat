@@ -889,6 +889,173 @@ async def _exec_get_quiz_attempts(wstoken, moodle_user_id, args) -> Tuple[Any, s
     return data, f"ניסיונות ב-'{match.get('name')}':\n" + "\n".join(lines)
 
 
+_EXAM_RE = re.compile(r"מבחן|בחינה|בחינת|בוחן|מועד\s*[אבג](?![א-ת])|exam|midterm|\bfinal\b|quiz|\btest\b", re.I)
+_PRACTICE_RE = re.compile(r"תרגול|דוגמה|דוגמא|סימולציה|practice|sample|mock|demo", re.I)
+
+
+def _short_dt(ts: Any) -> str:
+    try:
+        from hebdate import ISRAEL_TZ
+        from datetime import datetime as _dt
+        return _dt.fromtimestamp(int(ts), ISRAEL_TZ).strftime("%d/%m %H:%M")
+    except Exception:
+        return ""
+
+
+@_register(
+    name="get_my_exams", moodle_function="mod_quiz_get_quizzes_by_courses",
+    icon="🎓", label="מבחנים ובחנים שלי",
+    description_admin="מחזיר את המבחנים והבחנים של הסטודנט בכל הקורסים (או בקורס אחד): מבחנים מקוונים (Quiz) עם מועד פתיחה וסגירה, משך וניסיונות (כולל אם כבר ניסה ומה הציון), ואירועי יומן שהם מבחנים (מועד א/ב וכדומה). לא מחליף את לוח המבחנים הרשמי של המכללה אם הוא מתפרסם מחוץ ל-Moodle.",
+    description_ai="מחזיר את המבחנים והבחנים של הסטודנט מ-Moodle: מבחנים מקוונים (Quiz) עם מועד פתיחה/סגירה, משך וניסיונות, ואירועי יומן שהם מבחנים. השתמש כשהסטודנט שואל מתי המבחן, כמה זמן יש לו, מה קרוב, האם כבר הגיש או מה הציון. בלי course_name - בכל הקורסים; עם course_name - רק בקורס הזה.",
+    params=[{"name": "course_name", "type": "STRING", "description": "שם הקורס (לא חובה - ריק = כל הקורסים)", "required": False}],
+)
+async def _exec_get_my_exams(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    now = int(time.time())
+    course_name = str(args.get("course_name") or "").strip()
+    if course_name:
+        c = await _resolve_course(wstoken, moodle_user_id, course_name)
+        if not c:
+            return None, f"לא נמצא קורס בשם '{course_name}' ברשימת הקורסים."
+        courses = [c]
+    else:
+        courses = await _get_courses(wstoken, moodle_user_id) or []
+    if not courses:
+        return None, "לא נמצאו קורסים רשומים."
+    cmap = {c["id"]: _clean_course_name(c.get("fullname")) for c in courses}
+    ids = list(cmap)[:40]
+
+    async def get_quizzes():
+        try:
+            d = await _cached_moodle_call((moodle_user_id, "exams-quizzes", tuple(ids)), wstoken, "mod_quiz_get_quizzes_by_courses",
+                                          {f"courseids[{i}]": cid for i, cid in enumerate(ids)})
+            return (d or {}).get("quizzes", [])
+        except MoodleTokenInvalid:
+            raise
+        except Exception:
+            return None                                   # the function may be off on the Moodle side: the calendar still helps
+
+    async def get_events():
+        try:
+            ep = {f"events[courseids][{i}]": cid for i, cid in enumerate(ids)}
+            ep.update({"options[userevents]": 1, "options[siteevents]": 0, "options[timestart]": now - 14 * 86400, "options[timeend]": now + 150 * 86400})
+            d = await _cached_moodle_call((moodle_user_id, "exams-events", tuple(ids)), wstoken, "core_calendar_get_calendar_events", ep)
+            return (d or {}).get("events", [])
+        except MoodleTokenInvalid:
+            raise
+        except Exception:
+            return []
+
+    quizzes, events = await asyncio.gather(get_quizzes(), get_events())
+
+    exams = []                                            # things that are still ahead (or open right now)
+    recent = []                                           # finished in the last two weeks: told in words, not as a date card
+    quiz_rows = []
+    for q in quizzes or []:
+        cid = q.get("course")
+        if cid not in cmap:
+            continue
+        name = html.unescape(str(q.get("name") or "")).strip()
+        topen, tclose = int(q.get("timeopen") or 0), int(q.get("timeclose") or 0)
+        is_exam = bool(_EXAM_RE.search(name)) and not _PRACTICE_RE.search(name)
+        if not (topen or tclose) and not is_exam:
+            continue                                       # an always-open quiz that does not look like an exam: practice, skipped
+        if tclose and tclose < now - 14 * 86400:
+            continue
+        status = "closed" if (tclose and tclose < now) else ("upcoming" if (topen and topen > now) else "open")
+        quiz_rows.append({"q": q, "name": name, "course": cmap[cid], "open": topen, "close": tclose, "status": status, "exam": is_exam})
+    quiz_rows.sort(key=lambda r: (r["status"] == "closed", r["open"] if r["status"] == "upcoming" else (r["close"] or r["open"] or now)))
+    quiz_rows = quiz_rows[:12]
+
+    async def attempts_for(r):
+        try:
+            d = await _moodle_call(wstoken, "mod_quiz_get_user_attempts", {"quizid": r["q"]["id"], "userid": moodle_user_id, "status": "all"})
+            return (d or {}).get("attempts", [])
+        except MoodleTokenInvalid:
+            raise
+        except Exception:
+            return None
+
+    attempts = await asyncio.gather(*[attempts_for(r) for r in quiz_rows])
+    for r, att in zip(quiz_rows, attempts):
+        q = r["q"]
+        allowed = int(q.get("attempts") or 0)
+        done = [a for a in (att or []) if a.get("state") == "finished"]
+        score = ""
+        try:
+            sg, tot, mx = float(q.get("sumgrades") or 0), float(q.get("grade") or 0), None
+            best = max((float(a.get("sumgrade")) for a in done if a.get("sumgrade") is not None), default=None)
+            if best is not None and sg > 0 and tot > 0:
+                score = f"{round(best / sg * tot, 1):g} מתוך {tot:g}"
+        except Exception:
+            score = ""
+        parts = [("מבחן מקוון" if r["exam"] else "בוחן מקוון")]
+        if r["open"]:
+            parts.append(f"נפתח {_short_dt(r['open'])}")
+        if r["close"]:
+            parts.append(f"נסגר {_short_dt(r['close'])}")
+        if q.get("timelimit"):
+            parts.append(f"משך {int(q['timelimit']) // 60} דקות")
+        parts.append("ניסיונות: " + (f"עד {allowed}" if allowed else "ללא הגבלה"))
+        if att is not None:
+            started = [a for a in att if a.get("state") in ("inprogress", "overdue")]
+            parts.append((f"הוגש {len(done)}" + (f" (ציון {score})" if score else "")) if done else ("ניסיון פתוח - טרם הוגש" if started else "טרם נוסה"))
+        r["detail"] = " · ".join(parts)
+        r["done"] = len(done)
+        r["score"] = score
+        r["url"] = _moodle_url(f"https://moodle.jct.ac.il/mod/quiz/view.php?id={q.get('coursemodule')}") if q.get("coursemodule") else ""
+        if r["status"] == "closed":
+            recent.append(r)
+        else:
+            exams.append(r)
+
+    # exam-like events of the calendar (course events, "מועד א", ...) that are not the quizzes above
+    seen = {(r["name"], r["course"]) for r in quiz_rows}
+    for e in events or []:
+        name = _clean_event_name(e.get("name"))
+        text = f"{name} {_plain_html(e.get('description'), 160)}"
+        t = int(e.get("timestart") or 0)
+        if not t or t < now - 14 * 86400:
+            continue
+        if str(e.get("modulename") or "") == "quiz" and quizzes is not None:
+            continue                                       # already covered by the quiz list
+        if not _EXAM_RE.search(text) or _PRACTICE_RE.search(name):
+            continue
+        course = cmap.get(e.get("courseid"), "")
+        if course_name and e.get("courseid") not in cmap:
+            continue                                       # asked about one course: only its events
+        if (name, course) in seen:
+            continue
+        seen.add((name, course))
+        extra = ["אירוע ביומן"]
+        if e.get("timeduration"):
+            extra.append(f"משך {int(e['timeduration']) // 60} דקות")
+        if e.get("location"):
+            extra.append(f"מיקום: {_plain_html(e.get('location'), 60)}")
+        row = {"name": name, "course": course, "open": t, "close": 0, "status": "closed" if t < now else "upcoming", "exam": True,
+               "detail": " · ".join(extra), "url": _moodle_url(e.get("url")), "done": 0, "score": ""}
+        (recent if row["status"] == "closed" else exams).append(row)
+
+    if not exams and not recent:
+        return {"quizzes": quizzes, "events": events}, (
+            "לא נמצאו ב-Moodle מבחנים או בחנים מתוזמנים בקורסים של הסטודנט. "
+            "(לוח המבחנים הרשמי של המכללה לא תמיד מתפרסם ב-Moodle - אל תמציא מועדים; כדאי להפנות את הסטודנט ללוח המבחנים של המכללה או למזכירות.)")
+
+    exams.sort(key=lambda r: (r["open"] if r["status"] == "upcoming" else (r["close"] or r["open"])))
+    lines = []
+    for r in exams:
+        t = r["open"] if r["status"] == "upcoming" else (r["close"] or r["open"])
+        item = {"n": r["name"][:90], "c": r["course"][:60], "t": t, "d": r["detail"][:220]}
+        if r.get("url"):
+            item["u"] = r["url"]
+        lines.append(f"- [{_reg('d', **item)}] {r['name']} ({r['course']}) - {'מתחיל ' if r['status'] == 'upcoming' else 'פתוח עכשיו, נסגר '}{_fmt_ts(t)} | {r['detail']}")
+    out = "המבחנים והבחנים של הסטודנט (מ-Moodle):\n" + (
+        "(הזמנים כבר בשעון ישראל עם יום, תאריך עברי ו'בעוד X' - אל תחשב מחדש. כל פריט עם מזהה בסוגריים ניתן להצגה בכרטיס deadlines.)\n" + "\n".join(lines) if lines else "אין מבחנים קרובים.")
+    if recent:
+        out += "\n\nהסתיימו בשבועיים האחרונים (לספר במילים, לא ככרטיס מועד):\n" + "\n".join(
+            f"- {r['name']} ({r['course']}): " + (f"הוגש, ציון {r['score']}" if r.get("score") else ("הוגש" if r.get("done") else "לא הוגש/לא נוסה")) for r in recent)
+    return {"quizzes": quizzes, "events": events}, out
+
+
 @_register(
     name="get_completion_status", moodle_function="core_completion_get_activities_completion_status",
     icon="☑️", label="מה הושלם בקורס",
