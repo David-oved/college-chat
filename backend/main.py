@@ -753,7 +753,7 @@ async def set_active_provider(req: ProviderActiveRequest):
     return {"message": "הבוט עובד עכשיו עם " + ai_providers.LABELS[p]}
 
 
-_MODEL_NAME = re.compile(r"^[A-Za-z0-9._\-]{3,90}$")
+_MODEL_NAME = re.compile(r"^[A-Za-z0-9._:/\-]{3,90}$")
 
 
 @app.get("/api/admin/models", dependencies=[Depends(require_admin)])
