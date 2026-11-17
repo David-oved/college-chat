@@ -702,6 +702,8 @@ def _deadline_items(events) -> list:
     rows = []
     extras: dict = {}
     for e in events:
+        if str(e.get("eventtype") or "") in ("open", "gradingdue"):
+            continue                       # "נפתח ב..." (פתיחת הגשה) ו"מועד בדיקה" אינם מועדי הגשה של הסטודנט
         t = int(e.get("timesort") or 0)
         if t:
             name, course = _clean_event_name(e.get("name")), _clean_course_name((e.get("course") or {}).get("fullname", ""))
