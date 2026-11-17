@@ -662,7 +662,7 @@ async def _exec_get_assignment_submission_status(wstoken, moodle_user_id, args) 
     )
     courses_data = (assignments_data or {}).get("courses", [])
     assignments = courses_data[0].get("assignments", []) if courses_data else []
-    match = next((a for a in assignments if assignment_name in (a.get("name") or "").lower()), None)
+    match = _best_assignment(assignments, assignment_name)
     if not match:
         return assignments_data, f"לא נמצאה מטלה בשם '{args.get('assignment_name')}' בקורס '{course.get('fullname')}'."
 
@@ -670,7 +670,14 @@ async def _exec_get_assignment_submission_status(wstoken, moodle_user_id, args) 
     submission = (data or {}).get("lastattempt", {}).get("submission", {})
     status = submission.get("status")
     status_he = {"submitted": "הוגשה", "new": "טרם הוגשה", "draft": "טיוטה בלבד, עדיין לא הוגשה סופית"}.get(status, status or "לא ידוע")
-    return data, f"סטטוס הגשת '{match.get('name')}' בקורס '{course.get('fullname')}': {status_he}."
+    due = int(match.get("duedate") or 0)
+    text = f"סטטוס הגשת '{match.get('name')}' בקורס '{course.get('fullname')}': {status_he}."
+    text += f" מועד ההגשה: {_fmt_ts(due)}." if due else " אין מועד הגשה מוגדר."
+    if status == "submitted" and submission.get("timemodified"):
+        text += f" הוגשה ב: {_fmt_ts(submission.get('timemodified'))}."
+    elif due and due < int(time.time()):
+        text += " המטלה באיחור: מועד ההגשה עבר והיא טרם הוגשה."
+    return data, text
 
 
 def _clean_event_name(name: str) -> str:
@@ -686,6 +693,27 @@ def _clean_course_name(name: str) -> str:
     """מסיר את קוד הקורס ("150005.2.5787 - ...") מההתחלה או מהסוף."""
     n = re.sub(r"^\s*\d{4,}(?:\.\d+)*\s*[-–]\s*", "", str(name or ""))
     return re.sub(r"\s*[-–]?\s*\d{4,}(?:\.\d+)*\s*$", "", n).strip(" -–")
+
+
+def _norm_words(s: Any) -> set:
+    return {w for w in re.sub(r"[^\w\s]", " ", str(s or "").lower()).split() if len(w) > 1}
+
+
+def _best_assignment(assignments: list, wanted: str):
+    """התאמת מטלה לפי שם: תת-מחרוזת, ואם אין - החפיפה הגבוהה ביותר של מילים (השם בכרטיס מנוקה ולכן לא תמיד זהה לשם ב-Moodle)."""
+    w = str(wanted or "").strip().lower()
+    for a in assignments:
+        if w and w in (a.get("name") or "").lower():
+            return a
+    ww = _norm_words(w)
+    best, score = None, 0.0
+    for a in assignments:
+        aw = _norm_words(a.get("name"))
+        if ww and aw:
+            sc = len(ww & aw) / len(ww | aw)
+            if sc > score:
+                best, score = a, sc
+    return best if score >= 0.5 else None
 
 
 def _plain_html(html: Any, n: int = 240) -> str:
@@ -708,7 +736,7 @@ def _deadline_items(events) -> list:
         if t:
             name, course = _clean_event_name(e.get("name")), _clean_course_name((e.get("course") or {}).get("fullname", ""))
             rows.append((name, course, t))
-            extras.setdefault((name, course, t), {"d": _plain_html(e.get("description")), "u": _moodle_url(e.get("url") or (e.get("action") or {}).get("url")), "o": 1 if t < now else 0})
+            extras.setdefault((name, course, t), {"d": _plain_html(e.get("description")), "u": _moodle_url(e.get("url") or (e.get("action") or {}).get("url")), "o": 1 if t < now else 0, "g": 1 if str(e.get("modulename") or "") in ("zoom", "bigbluebuttonbn", "webex", "teams", "googlemeet") else 0})
     # אותו תרגיל עם כמה שאלות באותו מועד -> שורה אחת ("תרגיל 4 - שאלות 3, 4, 5")
     merged: dict = {}
     order: list = []
@@ -733,6 +761,8 @@ def _deadline_items(events) -> list:
             item["u"] = ex["u"]
         if ex.get("o"):
             item["o"] = 1
+        if ex.get("g"):
+            item["g"] = 1
         out.append(item)
     seen = set()
     uniq = []
