@@ -41,6 +41,7 @@ from rag_engine import (
     status_event,
     STATUS_OPEN,
     VISUAL_TOKEN,
+    personal_route,
     stream_knowledge_draft,
     summarize_conversation,
 )
@@ -1006,10 +1007,13 @@ async def _stream_chat_response(
             await db.add_message(conversation_id, "assistant", text_out)
             return
 
+        route = personal_route(question, bool(moodle_token and moodle_user_id))
         if emit_status:
-            yield status_event(s="kb")
+            yield status_event(s="moodle" if route["skip_kb"] else "kb")
 
         async def search():
+            if route["skip_kb"]:
+                return []                                          # personal Moodle question: nothing to look up in the college's information
             try:
                 embedding = await get_embedding(question, api_key)
                 return await db.search_similar_chunks(embedding, top_k=3)

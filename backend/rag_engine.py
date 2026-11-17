@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import re
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, AsyncGenerator, Optional
@@ -153,131 +154,154 @@ async def _stream_from_gemini(
     max_output_tokens: int = 600,
     call_type: str = "other",
 ) -> AsyncGenerator[str, None]:
-    """
-    ליבת ההזרמה מול Gemini: מנגנון תורים (Semaphore) + Retry אוטומטי לשגיאות 429/5xx,
-    ומזרים את התשובה טוקן-טוקן בזמן אמת. משותף לכל קריאה שצריכה תשובת AI מוזרמת
-    (גם תשובת הצ'אט לסטודנט וגם ניסוח AI למנהל).
-    `contents` יכול להיות מחרוזת (פרומפט שטוח, הדרך הרגילה) או כבר רשימת turns מוכנה
-    (למשל כש-Moodle function calling צריך לשלוח גם את תור ה-functionCall/functionResponse).
-    """
-    models_to_try = models_to_try or DEFAULT_MODELS_TO_TRY
-    turns = contents if isinstance(contents, list) else [{"role": "user", "parts": [{"text": contents}]}]
-    payload = {
-        "contents": turns,
-        "generationConfig": {
-            "temperature": 0.1,  # טמפרטורה נמוכה מאוד למניעת המצאות והזיות!
-            "maxOutputTokens": max_output_tokens,
-        },
-    }
+    """A plain streamed answer (no tools): the same hedged, fail-fast engine as the chat. `contents` is a prompt string or ready turns."""
+    async for kind, value in _stream_gemini_events(contents, api_key, tools=None, max_output_tokens=max_output_tokens, call_type=call_type, models=models_to_try):
+        if kind == "text":
+            yield value
+        elif kind == "failed":
+            yield "המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
 
-    # כניסה לתור (Semaphore) כדי למנוע הצפה של ה-API החינמי
-    async with gemini_queue_semaphore:
-        max_retries = 3
-        for attempt in range(max_retries):
-            for model_name in models_to_try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
-                try:
-                    db.bump_api_usage(call_type)
-                    async with shared_client(30.0) as client:
-                        async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
-                            gemini_stats.record(model_name, response.status_code)
-                            if response.status_code == 200:
-                                async for line in response.aiter_lines():
-                                    if line.startswith("data: "):
-                                        data_str = line[6:].strip()
-                                        if not data_str or data_str == "[DONE]":
-                                            continue
-                                        try:
-                                            data_obj = json.loads(data_str)
-                                            candidates = data_obj.get("candidates", [])
-                                            if candidates:
-                                                parts = candidates[0].get("content", {}).get("parts", [])
-                                                for part in parts:
-                                                    text_piece = part.get("text", "")
-                                                    if text_piece:
-                                                        yield text_piece
-                                        except Exception:
-                                            continue
-                                return  # סיימנו להזרים בהצלחה!
 
-                            elif response.status_code == 429 or response.status_code >= 500:
-                                # עומס (429) או שגיאת שרת זמנית של גוגל (5xx) - מנסים מיד את המודל הבא (והסבב כולו שוב רק אם כולם נכשלו)
+# The speed of each model changes through the day (Google's free capacity): what the server learned about it recently decides who is asked first.
+_SPEED: Dict[str, float] = {}
+
+
+def _speed_note(model: str, secs: float) -> None:
+    old = _SPEED.get(model, 4.0)
+    _SPEED[model] = round(0.6 * old + 0.4 * min(float(secs), 30.0), 2)
+
+
+def _ordered(models: List[str]) -> List[str]:
+    return sorted(models, key=lambda m: _SPEED.get(m, 4.0) + (0.0 if "lite" in m else 6.0))
+
+
+HEDGE_AFTER = 5.0            # a model that has not answered after this many seconds is not waited for alone: the next one is asked too, the first to answer wins
+ATTEMPT_LIMIT = 22.0         # no answer at all from anyone within this time: that round is given up
+
+
+async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_type: str):
+    """One request to one model (no retry here). Yields ("text", piece) / ("calls", [functionCall...]); simply ends when it fails or has nothing."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
+    calls: List[dict] = []
+    try:
+        db.bump_api_usage(call_type)
+        async with shared_client(30.0) as client:
+            async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
+                gemini_stats.record(model_name, response.status_code)
+                if response.status_code == 200:
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if not data_str or data_str == "[DONE]":
+                            continue
+                        try:
+                            cand = json.loads(data_str).get("candidates", [])
+                        except Exception:
+                            continue
+                        if not cand:
+                            continue
+                        for part in cand[0].get("content", {}).get("parts", []):
+                            if not isinstance(part, dict):
                                 continue
-                            elif response.status_code in (400, 403):
-                                err_body = await response.aread()
-                                err_msg = err_body.decode("utf-8", errors="ignore")
-                                if "API_KEY_INVALID" in err_msg or response.status_code == 403:
-                                    yield "שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל."
-                                    return
-                except Exception:
-                    continue
+                            if part.get("functionCall"):
+                                calls.append(part)
+                            elif part.get("text"):
+                                yield ("text", part["text"])
+                    if calls:
+                        yield ("calls", calls)
+                    return
+                if response.status_code in (400, 403):
+                    err = (await response.aread()).decode("utf-8", errors="ignore")
+                    if "API_KEY_INVALID" in err or response.status_code == 403:
+                        yield ("text", "שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל.")
+                        return
+                    print(f"[chat] Gemini {response.status_code} with {model_name}: {err[:300]}")
+                # 429 / 5xx / schema error: this model gave nothing
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"[chat] Gemini stream error with {model_name}: {type(e).__name__}: {e}")
 
-            # אם קיבלנו עומס, נחכה לפני ניסיון חוזר
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2 * (attempt + 1))
 
-        yield "המערכת בעומס רגעי מול שרתי ה-AI או שמפתח ה-API אינו זמין. אנא נסה שוב בעוד מספר שניות."
-
-
-async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer"):
+async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer", models: Optional[List[str]] = None):
     """
-    קריאה מוזרמת אחת ל-Gemini, עם כלים אם ביקשו: מזרים ("text", קטע) ברגע שמגיע, ובסוף ("calls", [functionCall...]) אם המודל ביקש כלים,
-    או ("failed", None) אם כל הניסיונות נכשלו בלי שיצא כלום. זה מחליף את הסבב "החלטה" הנפרד: שאלה רגילה מתחילה להיענות מיד,
-    ורק כשצריך כלי יש סבב שני. כמו ההזרמה הרגילה: ניסיון חוזר על 429/5xx והחלפת מודל, אבל בלי כפילות אחרי שכבר יצא טקסט.
+    One streamed call to Gemini (with tools if asked): yields ("text", piece) as it arrives and at the end ("calls", [functionCall...]) if the model asked for tools,
+    or ("failed", None) when nobody answered. Speed under load: the models are asked in order, but a model that is slow (HEDGE_AFTER seconds) does not block -
+    the next one is asked at the same time and the first to produce anything wins (the others are cancelled). Nothing is repeated once text has started.
     """
     turns = contents if isinstance(contents, list) else [{"role": "user", "parts": [{"text": contents}]}]
     payload = {"contents": turns, "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens}}
     if tools:
         payload["tools"] = tools
+    order = _ordered(list(models or DEFAULT_MODELS_TO_TRY))
     async with gemini_queue_semaphore:
-        for attempt in range(3):
-            for model_name in DEFAULT_MODELS_TO_TRY:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
-                emitted = False
-                calls = []
+        for attempt in range(2):
+            q: asyncio.Queue = asyncio.Queue()
+            tasks: List[asyncio.Task] = []
+            nxt = 0
+            active = 0
+            started: Dict[str, float] = {}
+
+            async def pump(model_name: str):
                 try:
-                    db.bump_api_usage(call_type)
-                    async with shared_client(30.0) as client:
-                        async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
-                            gemini_stats.record(model_name, response.status_code)
-                            if response.status_code == 200:
-                                async for line in response.aiter_lines():
-                                    if not line.startswith("data: "):
-                                        continue
-                                    data_str = line[6:].strip()
-                                    if not data_str or data_str == "[DONE]":
-                                        continue
-                                    try:
-                                        cand = json.loads(data_str).get("candidates", [])
-                                    except Exception:
-                                        continue
-                                    if not cand:
-                                        continue
-                                    for part in cand[0].get("content", {}).get("parts", []):
-                                        if not isinstance(part, dict):
-                                            continue
-                                        if part.get("functionCall"):
-                                            calls.append(part)
-                                        elif part.get("text"):
-                                            emitted = True
-                                            yield ("text", part["text"])
-                                if calls:
-                                    yield ("calls", calls)
-                                return
-                            if response.status_code in (400, 403):
-                                err = (await response.aread()).decode("utf-8", errors="ignore")
-                                if "API_KEY_INVALID" in err or response.status_code == 403:
-                                    yield ("text", "שגיאה: מפתח ה-API של Gemini שהוזן בפאנל הניהול אינו תקין. אנא בדוק אותו במסך המנהל.")
-                                    return
-                                print(f"[chat] Gemini {response.status_code} with {model_name}: {err[:300]}")
-                            # 429 / 5xx / שגיאת סכמה: מנסים את המודל הבא מיד
-                except Exception as e:
-                    print(f"[chat] Gemini stream error with {model_name}: {type(e).__name__}: {e}")
-                    if emitted:
-                        return                      # כבר יצא טקסט - לא מתחילים מחדש על מודל אחר (היה כפול)
-                    continue
-            if attempt < 2:
-                await asyncio.sleep(1.2 * (attempt + 1))
+                    async for ev in _one_model_stream(model_name, payload, api_key, call_type):
+                        await q.put((model_name, ev))
+                finally:
+                    await q.put((model_name, None))                    # this model is finished (with or without an answer)
+
+            def start_next():
+                nonlocal nxt, active
+                if nxt >= len(order):
+                    return False
+                started[order[nxt]] = time.monotonic()
+                tasks.append(asyncio.create_task(pump(order[nxt])))
+                nxt += 1
+                active += 1
+                return True
+
+            start_next()
+            winner = None
+            t_start = time.monotonic()
+            hedge_at = t_start + HEDGE_AFTER
+            try:
+                while True:
+                    wait = None
+                    if winner is None:
+                        wait = max(0.05, min(hedge_at, t_start + ATTEMPT_LIMIT) - time.monotonic())
+                    try:
+                        model_name, ev = await asyncio.wait_for(q.get(), wait)
+                    except asyncio.TimeoutError:
+                        if time.monotonic() >= t_start + ATTEMPT_LIMIT:
+                            break                                       # nobody answered in time: give this round up
+                        start_next()                                    # slow: ask the next model too, keep waiting for both
+                        hedge_at = time.monotonic() + HEDGE_AFTER
+                        continue
+                    if ev is None:
+                        active -= 1
+                        if winner is None:
+                            _speed_note(model_name, max(20.0, time.monotonic() - started.get(model_name, time.monotonic())))      # it gave nothing: it counts as slow
+                        if winner is not None and model_name == winner:
+                            return                                      # the winner finished: done
+                        if winner is None and active == 0:
+                            if not start_next():
+                                break                                   # everyone failed
+                            hedge_at = time.monotonic() + HEDGE_AFTER
+                        continue
+                    if winner is None:
+                        winner = model_name                             # the first to produce anything: the others are not needed
+                        _speed_note(winner, time.monotonic() - started.get(winner, time.monotonic()))
+                        for t, m in zip(tasks, order[:len(tasks)]):
+                            if m != winner and not t.done():
+                                t.cancel()
+                    if model_name == winner:
+                        yield ev
+            finally:
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+            if attempt < 1:
+                await asyncio.sleep(1.0)
     yield ("failed", None)
 
 
@@ -522,7 +546,21 @@ async def _stream_chat_inner(
     if _is_smalltalk(question):
         tools = []                     # "hi" / "thanks": a plain, fast answer - no tools, no cards
 
-    extra = RICH_ADDENDUM + UI_ADDENDUM
+    # the obvious data of a personal question is fetched right now, in parallel, so the model's first move can already be the cards (one model round instead of two)
+    prefetch_text = ""
+    pre = []
+    if moodle_token and moodle_user_id and not _is_smalltalk(question):
+        pre = [n for n in personal_route(question, True)["tools"] if n in moodle_names]
+    if pre:
+        from moodle_tools import execute_moodle_function as _exec_pre
+        if emit_status:
+            for n in pre:
+                yield status_event(s="tool", name=n, arg="", detail="")
+        pre_results = await asyncio.gather(*[_exec_pre(n, {}, moodle_token, moodle_user_id) for n in pre])
+        db.bump_api_usage("prefetch")
+        prefetch_text = "\n\n=== נתוני Moodle שכבר נשלפו עבורך עכשיו (אל תקרא שוב לאותם כלים; הצג מהם ישר ב-show_ui, והמזהים d/g/c בסוגריים) ===\n" + "\n\n".join(str(x) for x in pre_results)
+
+    extra = RICH_ADDENDUM + UI_ADDENDUM + prefetch_text
     if moodle_names:
         extra += MOODLE_SYSTEM_ADDENDUM
     if user_id:
@@ -674,6 +712,39 @@ async def _stream_chat_inner(
         yield "לא הצלחתי להשלים את הבקשה כרגע. נסה שוב בעוד רגע."
 
 
+# A question about the student's own Moodle data (tasks, grades, exams, courses) needs no search in the college's information - that search costs 1-2 seconds
+# (an embedding call and a database search) for nothing. And its data is known in advance, so it is fetched at once instead of after a model round.
+_KB_MARKERS = re.compile(r"נוהל|נהלי|תקנון|ערעור|נרשמ|רישום|כמה עולה|מחיר|עלות|מלגה|שכר לימוד|מעונות|שעות (?:פתיחה|פעילות|קבלה)|טלפון|מייל|כתובת|איך מגיעים|חניה|קמפוס|מזכירות|יצירת קשר|לוח שנה|סמסטר|חופשה")
+_PERSONAL = re.compile(r"(?<![א-ת])(?:שלי|לי|אצלי|בשבילי)(?![א-ת])")
+_INTENTS = (
+    (re.compile(r"מבחן|מבחנים|בוחן|בחנים|בחינה|בחינות"), "get_my_exams", True),                       # (pattern, tool, needs a personal word like "שלי")
+    (re.compile(r"מטלה|מטלות|הגשה|הגשות|מועדי הגשה|דחוף|דחופות|באיחור|איחור|מה קרוב|מה יש לי|מה לא הגשתי"), "get_upcoming_deadlines", False),
+    (re.compile(r"ציון|ציונים|ממוצע"), "get_overall_grades", False),
+    (re.compile(r"הקורסים|קורסים שלי|איזה קורסים|מה אני לומד"), "get_my_courses", False),
+)
+
+
+def personal_route(question: str, connected: bool) -> Dict[str, Any]:
+    """{"skip_kb": bool, "tools": [names]}: decided from the words alone (instant, no model)."""
+    q = str(question or "")
+    if not connected:
+        return {"skip_kb": False, "tools": []}
+    head = q.split("\n\n[")[0].strip()
+    if "\n\n[הסטודנט לחץ" in q:                              # a question about an item he pressed: the item's details come with it
+        return {"skip_kb": True, "tools": []}
+    if _KB_MARKERS.search(head) or len(head) > 160:
+        return {"skip_kb": False, "tools": []}
+    personal = bool(_PERSONAL.search(head))
+    mentions_course = "קורס" in head and "הקורסים" not in head
+    hit, tools = False, []
+    for pat, tool, need_personal in _INTENTS:
+        if pat.search(head) and (personal or not need_personal):
+            hit = True
+            if tool == "get_my_courses" or not mentions_course:     # about one named course: the model picks the course tool itself
+                tools.append(tool)
+    return {"skip_kb": hit, "tools": tools[:2]}
+
+
 _SMALLTALK = re.compile(r"^(?:היי+|הי|שלום|אהלן|אהלא|בוקר טוב|ערב טוב|צהריים טובים|תודה(?: רבה| לך)?|תודה!+|סבבה|אוקי|אוקיי|אחלה|מעולה|יופי|מצוין|ביי|להתראות|לילה טוב|hi|hello|hey|thanks|thank you|ok|okay|merci|bonjour|salut)[\s!.,?]*$", re.I)
 
 
@@ -789,7 +860,7 @@ async def _followups(question: str, digest: str, api_key: str) -> List[str]:
         content = await asyncio.wait_for(_generate_once(
             [{"role": "user", "parts": [{"text": prompt}]}], api_key, max_output_tokens=180, call_type="followups",
             gen_extra={"responseMimeType": "application/json", "responseSchema": {"type": "ARRAY", "items": {"type": "STRING"}}},
-        ), timeout=7.0)
+        ), timeout=3.5)
         txt = "".join(part.get("text", "") for part in (content or {}).get("parts", []) if isinstance(part, dict))
         arr = json.loads(txt)
         out: List[str] = []
