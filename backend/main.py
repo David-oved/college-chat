@@ -702,7 +702,7 @@ class ProviderActiveRequest(BaseModel):
 
 
 def _prov(p: str) -> str:
-    if p not in ("google", "openai", "xai"):
+    if p not in ("google", "openai", "xai", "groq"):
         raise HTTPException(status_code=400, detail="ספק לא מוכר")
     return p
 
@@ -720,7 +720,7 @@ async def get_providers():
     """The keys that are saved (masked), and which provider the bot uses now."""
     cfg = await db.get_ai_provider_cfg()
     gk = await db.get_api_key()
-    keys = {"google": gk, "openai": cfg.get("openai_key", ""), "xai": cfg.get("xai_key", "")}
+    keys = {"google": gk, "openai": cfg.get("openai_key", ""), "xai": cfg.get("xai_key", ""), "groq": cfg.get("groq_key", "")}
     return {"active": cfg.get("active", "google"), "providers": {p: {"label": ai_providers.LABELS[p], "has_key": bool(k), "masked": _mask(k)} for p, k in keys.items()}}
 
 
@@ -731,6 +731,12 @@ async def set_provider_key(req: ProviderKeyRequest):
     if p == "google":
         raise HTTPException(status_code=400, detail="מפתח Google נשמר בשדה המפתח שלמעלה")
     key = req.api_key.strip()
+    if key.startswith("gsk_") and p != "groq":
+        raise HTTPException(status_code=400, detail="זה מפתח של Groq (gsk_...), לא של " + ai_providers.LABELS[p] + ". שמור אותו בשורת Groq.")
+    if key.startswith("xai-") and p != "xai":
+        raise HTTPException(status_code=400, detail="זה מפתח של xAI Grok (xai-...). שמור אותו בשורת xAI Grok.")
+    if key.startswith("sk-") and p not in ("openai",):
+        raise HTTPException(status_code=400, detail="זה נראה כמו מפתח OpenAI (sk-...). שמור אותו בשורת OpenAI.")
     await db.set_ai_provider_value(p + "_api_key", key or None)
     if not key and (await db.get_ai_provider_cfg()).get("active") == p:
         await db.set_ai_provider_value("ai_provider", None)          # its key is gone: back to Google

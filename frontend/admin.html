@@ -344,12 +344,12 @@
           </div>
           <div class="card-pro p-6">
             <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span>🤖 ספק ומודל ה-AI של הצ'אט</span></h2>
-            <div class="text-xs text-slate-500 mb-3">אפשר לשמור כמה מפתחות במקביל (Google, OpenAI, Grok) ולבחור איזה מהם עונה לסטודנטים. לכל ספק יש בדיקה משלו. חיפוש המידע של המכללה (embeddings) נשאר תמיד על מפתח Google, ולכן הוא חייב להישאר שמור. אם הספק שנבחר לא מגיב, Google משמש כגיבוי אוטומטי.</div>
+            <div class="text-xs text-slate-500 mb-3">אפשר לשמור כמה מפתחות במקביל (Google, OpenAI, xAI Grok, Groq) ולבחור איזה מהם עונה לסטודנטים. לכל ספק יש בדיקה משלו. חיפוש המידע של המכללה (embeddings) נשאר תמיד על מפתח Google, ולכן הוא חייב להישאר שמור. אם הספק שנבחר לא מגיב, Google משמש כגיבוי אוטומטי.</div>
             <div id="provRows" class="space-y-2 mb-4"></div>
             <div class="mb-3 flex items-center gap-2">
               <label class="text-xs font-bold text-slate-600 shrink-0">בחירת מודלים עבור:</label>
               <select id="modelProvider" onchange="loadModelPanel()" class="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500">
-                <option value="google">Google Gemini</option><option value="openai">OpenAI</option><option value="xai">xAI Grok</option>
+                <option value="google">Google Gemini</option><option value="openai">OpenAI</option><option value="xai">xAI Grok</option><option value="groq">Groq</option>
               </select>
             </div>
             <p class="text-xs text-slate-500 mb-3">בוחרים מהמודלים שהמפתח השמור כבר מסוגל להריץ (אין צורך להקליד את המפתח שוב). המודל הראשי נשאל קודם; אם הוא איטי או נכשל, הגיבויים נשאלים בסדר שנבחר, ובסוף המודלים המובנים כרשת ביטחון. השינוי נכנס לפעולה תוך כדקה.</p>

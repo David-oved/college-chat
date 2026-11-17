@@ -67,7 +67,7 @@ class Database:
         except Exception as e:
             print(f"[db] could not ensure system_config.gemini_models: {e}")
         # other AI providers (OpenAI, xAI Grok): their keys, their chosen models, and which provider the bot uses ("google" by default)
-        for col in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models"):
+        for col in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models", "groq_api_key", "groq_models"):
             try:
                 async with pool.connection() as conn:
                     async with conn.cursor() as cur:
@@ -190,16 +190,18 @@ class Database:
         self.invalidate_config_cache()
 
     async def _get_ai_provider_cfg_raw(self) -> Dict[str, Any]:
-        out = {"active": "google", "openai_key": "", "xai_key": "", "openai_models": [], "xai_models": []}
+        out = {"active": "google", "openai_key": "", "xai_key": "", "groq_key": "", "openai_models": [], "xai_models": [], "groq_models": []}
         try:
             async with _get_pool().connection() as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute("select ai_provider, openai_api_key, xai_api_key, openai_models, xai_models from system_config where id = 1;")
+                    await cur.execute("select ai_provider, openai_api_key, xai_api_key, openai_models, xai_models, groq_api_key, groq_models from system_config where id = 1;")
                     row = await cur.fetchone()
         except Exception:
             return out
         if row:
-            out["active"] = row[0] if row[0] in ("google", "openai", "xai") else "google"
+            out["active"] = row[0] if row[0] in ("google", "openai", "xai", "groq") else "google"
+            out["groq_key"] = row[5] or ""
+            out["groq_models"] = [n for n in (row[6] or "").split(",") if n.strip()]
             out["openai_key"], out["xai_key"] = row[1] or "", row[2] or ""
             out["openai_models"] = [n for n in (row[3] or "").split(",") if n.strip()]
             out["xai_models"] = [n for n in (row[4] or "").split(",") if n.strip()]
@@ -209,7 +211,7 @@ class Database:
         return await self._cfg("get_ai_provider_cfg")
 
     async def set_ai_provider_value(self, column: str, value: Optional[str]):
-        if column not in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models"):
+        if column not in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models", "groq_api_key", "groq_models"):
             raise ValueError("bad column")
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:

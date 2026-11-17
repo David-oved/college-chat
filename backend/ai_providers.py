@@ -13,11 +13,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from http_client import shared_client
 
-BASES = {"openai": "https://api.openai.com/v1", "xai": "https://api.x.ai/v1"}
-LABELS = {"google": "Google Gemini", "openai": "OpenAI", "xai": "xAI Grok"}
-DEFAULT_MODELS = {"openai": ["gpt-4.1-mini", "gpt-4o-mini"], "xai": ["grok-3-mini", "grok-3"]}
-_NOT_CHAT = ("embedding", "audio", "tts", "whisper", "image", "dall", "realtime", "transcribe", "moderation", "search", "imagine", "davinci", "babbage", "computer", "codex", "instruct", "vision-preview")
-_CHAT_PREFIX = {"openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"), "xai": ("grok",)}
+BASES = {"openai": "https://api.openai.com/v1", "xai": "https://api.x.ai/v1", "groq": "https://api.groq.com/openai/v1"}
+LABELS = {"google": "Google Gemini", "openai": "OpenAI", "xai": "xAI Grok", "groq": "Groq"}
+DEFAULT_MODELS = {"openai": ["gpt-4.1-mini", "gpt-4o-mini"], "xai": ["grok-3-mini", "grok-3"], "groq": ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]}
+_NOT_CHAT = ("embedding", "audio", "tts", "whisper", "image", "dall", "realtime", "transcribe", "moderation", "guard", "playai", "orpheus", "distil-whisper", "search", "imagine", "davinci", "babbage", "computer", "codex", "instruct", "vision-preview")
+_CHAT_PREFIX = {"openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"), "xai": ("grok",), "groq": ("",)}
 
 
 def _lower_schema(x: Any) -> Any:
@@ -72,7 +72,12 @@ def _body(kind: str, model: str, payload: dict, stream: bool) -> dict:
     if kind == "openai":
         body["max_completion_tokens"] = maxt * 5 if reasoning else maxt
     else:
-        body["max_tokens"] = maxt
+        thinking = kind == "groq" and ("gpt-oss" in model or "qwen3" in model)       # reasoning models: they need room to think
+        body["max_tokens"] = maxt * 4 if thinking else maxt
+        if kind == "groq" and "gpt-oss" in model:
+            body["reasoning_effort"] = "low"
+        elif kind == "groq" and "qwen3" in model:
+            body["reasoning_effort"] = "none"
     if not reasoning and "temperature" in gc:
         body["temperature"] = gc["temperature"]
     tools = to_tools(payload.get("tools"))
