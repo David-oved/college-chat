@@ -24,6 +24,14 @@ _CHAT_PREFIX = {"openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"), "xai": ("grok"
 _BAD: Dict[tuple, float] = {}
 
 
+def _count(prefix: str, kind: str, model: str) -> None:
+    try:
+        from db import db
+        db.bump_api_usage(f"{prefix}:{kind}/{model}")                    # usage per model: model: = asked, win: = it gave the answer
+    except Exception:
+        pass
+
+
 def _usable(kind: str, model: str) -> bool:
     return _BAD.get((kind, model), 0) < time.time()
 
@@ -113,6 +121,7 @@ def _loads(s: str) -> dict:
 async def oa_stream(kind: str, key: str, model: str, payload: dict) -> AsyncGenerator[tuple, None]:
     """("text", piece) as it arrives, then ("calls", [functionCall parts]). Ends silently on any failure."""
     calls: Dict[int, Dict[str, str]] = {}
+    _count("model", kind, model)
     try:
         async with shared_client(30.0) as client:
             async with client.stream("POST", BASES[kind] + "/chat/completions", json=_body(kind, model, payload, True),
@@ -157,6 +166,7 @@ async def stream_with_fallback(cfg: dict, payload: dict) -> AsyncGenerator[tuple
             got = True
             yield ev
         if got:
+            _count("win", cfg["kind"], model)
             return
 
 
@@ -165,6 +175,7 @@ async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
     for model in cfg["models"]:
         if not _usable(cfg["kind"], model):
             continue
+        _count("model", cfg["kind"], model)
         try:
             async with shared_client(30.0) as client:
                 r = await client.post(BASES[cfg["kind"]] + "/chat/completions", json=_body(cfg["kind"], model, payload, False),
@@ -182,6 +193,7 @@ async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
                 if fn.get("name"):
                     parts.append({"functionCall": {"name": fn["name"], "args": _loads(fn.get("arguments"))}})
             if parts:
+                _count("win", cfg["kind"], model)
                 return {"parts": parts}
         except asyncio.CancelledError:
             raise

@@ -200,6 +200,7 @@ async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_t
     calls: List[dict] = []
     try:
         db.bump_api_usage(call_type)
+        db.bump_api_usage("model:google/" + model_name)
         async with shared_client(30.0) as client:
             async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
                 gemini_stats.record(model_name, response.status_code)
@@ -340,6 +341,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                         continue
                     if winner is None:
                         winner = model_name                             # the first to produce anything: the others are not needed
+                        db.bump_api_usage("win:google/" + winner)
                         _speed_note(winner, time.monotonic() - started.get(winner, time.monotonic()))
                         for t, m in zip(tasks, order[:len(tasks)]):
                             if m != winner and not t.done():
@@ -393,9 +395,11 @@ async def _generate_once(
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
                 db.bump_api_usage(call_type)
+                db.bump_api_usage("model:google/" + model_name)
                 async with shared_client(30.0) as client:
                     resp = await client.post(url, json=payload, timeout=_model_timeout(model_name))
                 if resp.status_code == 200:
+                    db.bump_api_usage("win:google/" + model_name)
                     candidates = resp.json().get("candidates", [])
                     return candidates[0].get("content") if candidates else None
                 if resp.status_code not in (429, 500, 502, 503, 504):

@@ -504,7 +504,7 @@ class Database:
                 )
                 rows = await cur.fetchall()
         by_type = {r["call_type"]: r["count"] for r in rows}
-        by_type["total"] = sum(v for k, v in by_type.items() if not k.startswith(("tool:", "ui:")))      # רק קריאות Gemini, לא מוני הכלים והתצוגות
+        by_type["total"] = sum(v for k, v in by_type.items() if not k.startswith(("tool:", "ui:", "model:", "win:")))      # רק קריאות Gemini, לא מוני הכלים והתצוגות
         return by_type
 
     async def get_student_usage_summary(self) -> Dict[str, Any]:

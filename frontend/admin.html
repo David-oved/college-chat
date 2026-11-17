@@ -1800,7 +1800,13 @@
             <span class="flex gap-px items-end h-4">${days.map(d => `<i style="height:${Math.max(2, Math.round((v.days[d] || 0) / Math.max(1, ...Object.values(v.days)) * 16))}px" class="w-1 bg-indigo-300 rounded-sm"></i>`).join('')}</span></div>`).join('')
             : '<div class="text-xs text-slate-400">עדיין אין נתונים (מתחיל להצטבר מעכשיו)</div>';
         };
-        box.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        const PROV = { google: 'Google', openai: 'OpenAI', xai: 'xAI Grok', groq: 'Groq' };
+        const mlabels = {};
+        rows.filter(r => /^(model|win):/.test(r.call_type)).forEach(r => { const id = r.call_type.replace(/^(model|win):/, ''); const i = id.indexOf('/'); mlabels[id] = (PROV[id.slice(0, i)] || id.slice(0, i)) + ' · ' + id.slice(i + 1); });
+        const modelsHtml = `<div class="bg-slate-50 rounded-xl p-4 border border-slate-200 md:col-span-2"><div class="font-bold text-sm mb-1">לפי מודל ו-AI ספק (7 ימים)</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><div class="text-[11px] text-slate-500 mb-1">בקשות שנשלחו למודל (כולל ניסיונות גיבוי שלא ענו)</div>${agg('model:', mlabels)}</div>
+          <div><div class="text-[11px] text-slate-500 mb-1">תשובות שהמודל באמת סיפק</div>${agg('win:', mlabels)}</div></div></div>`;
+        box.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${modelsHtml}
           <div class="bg-slate-50 rounded-xl p-4 border border-slate-200"><div class="font-bold text-sm mb-2">במה הסטודנטים עוסקים - כלים (7 ימים)</div>${agg('tool:', TOOL_LABELS)}</div>
           <div class="bg-slate-50 rounded-xl p-4 border border-slate-200"><div class="font-bold text-sm mb-2">איך הבוט בוחר להציג - סוגי תצוגה (7 ימים)</div>${agg('ui:', UI_LABELS)}</div></div>
           <div class="text-[11px] text-slate-400 mt-2">מספרים בלבד: כמה פעמים הופעל כל כלי וכל סוג תצוגה. תוכן השיחות פרטי ואינו נשמר כאן.</div>`;
