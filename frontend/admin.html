@@ -829,6 +829,8 @@
         } else { const sp = document.createElement('span'); sp.className = 'flex-1 text-slate-400'; sp.textContent = '(המפתח נשמר בשדה למעלה)'; row.appendChild(sp); }
         if (info.has_key) {
           const t = document.createElement('button'); t.type = 'button'; t.textContent = 'בדוק'; t.className = 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5'; t.onclick = () => testProvider(p, row); row.appendChild(t);
+          const pick = document.createElement('button'); pick.type = 'button'; pick.textContent = 'בחר מודלים'; pick.className = 'font-bold text-slate-700 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5';
+          pick.onclick = () => { document.getElementById('modelProvider').value = p; loadModelPanel().then(() => document.getElementById('modelStatus').scrollIntoView({ behavior: 'smooth', block: 'center' })); }; row.appendChild(pick);
           const on = document.createElement('button'); on.type = 'button';
           on.textContent = d.active === p ? '✅ פעיל לבוט' : 'הפעל לבוט'; on.disabled = d.active === p;
           on.className = 'font-bold rounded-lg px-2.5 py-1.5 ' + (d.active === p ? 'text-emerald-800 bg-emerald-100' : 'text-white bg-emerald-600'); on.onclick = () => setActiveProv(p); row.appendChild(on);
@@ -891,10 +893,10 @@
         statusEl.textContent = data.error;
         statusEl.className = 'text-sm mb-3 text-rose-700';
       } else if (data.using_defaults) {
-        statusEl.textContent = 'כרגע: הסדר המובנה (' + (data.defaults || []).join(' ← ') + '), והמערכת מקדימה את המודל שענה הכי מהר לאחרונה.';
+        statusEl.textContent = ({google:'Google',openai:'OpenAI',xai:'xAI Grok',groq:'Groq'}[curProv()]) + ' · כרגע: הסדר המובנה (' + (data.defaults || []).join(' ← ') + '), והמערכת מקדימה את המודל שענה הכי מהר לאחרונה.';
         statusEl.className = 'text-sm mb-3 text-slate-600';
       } else {
-        statusEl.textContent = 'כרגע ראשי: ' + data.chosen[0] + (data.chosen.length > 1 ? ' · גיבויים: ' + data.chosen.slice(1).join(' ← ') : '') + ' · ואחריהם המודלים המובנים כרשת ביטחון.';
+        statusEl.textContent = ({google:'Google',openai:'OpenAI',xai:'xAI Grok',groq:'Groq'}[curProv()]) + ' · כרגע ראשי: ' + data.chosen[0] + (data.chosen.length > 1 ? ' · גיבויים: ' + data.chosen.slice(1).join(' ← ') : '') + ' · ואחריהם המודלים המובנים כרשת ביטחון.';
         statusEl.className = 'text-sm mb-3 text-emerald-800 font-bold';
       }
     }
