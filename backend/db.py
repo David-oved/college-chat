@@ -59,6 +59,13 @@ class Database:
                     await cur.execute("alter table app_users add column if not exists display_name text;")
         except Exception as e:
             print(f"[db] could not ensure app_users.display_name: {e}")
+        # the models the admin chose for the chat (comma separated; the first is the main one; empty = the built-in order)
+        try:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("alter table system_config add column if not exists gemini_models text;")
+        except Exception as e:
+            print(f"[db] could not ensure system_config.gemini_models: {e}")
         # זיכרון הבוט לכל משתמש: עובדות שהסטודנט סיפר (למשל "עזבתי את הקורס X") - נשמרות בשרת, לכל משתמש לחוד
         try:
             async with pool.connection() as conn:
@@ -154,6 +161,25 @@ class Database:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("update system_config set admin_password_hash = %s where id = 1;", (password_hash,))
+
+    async def _get_gemini_models_raw(self) -> Optional[List[str]]:
+        """None = the built-in order. Otherwise the admin's list: the first is the main model, the rest are the fallbacks in order."""
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("select gemini_models from system_config where id = 1;")
+                    row = await cur.fetchone()
+        except Exception:
+            return None
+        raw = (row[0] if row else None) or ""
+        names = [n.strip() for n in raw.split(",") if n.strip()]
+        return names or None
+
+    async def set_gemini_models(self, names: Optional[List[str]]):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("update system_config set gemini_models = %s where id = 1;", (",".join(names) if names else None,))
+        self.invalidate_config_cache()
 
     async def _get_moodle_enabled_functions_raw(self) -> Optional[List[str]]:
         """None = כל הפונקציות דלוקות (ברירת מחדל). רשימה (אפילו ריקה) = בדיוק מה שהמנהל בחר."""
@@ -398,6 +424,9 @@ class Database:
 
     async def get_moodle_enabled_functions(self) -> Optional[List[str]]:
         return await self._cfg("get_moodle_enabled_functions")
+
+    async def get_gemini_models(self) -> Optional[List[str]]:
+        return await self._cfg("get_gemini_models")
 
     async def get_catalog(self) -> List[Dict[str, Any]]:
         return await self._cfg("get_catalog")

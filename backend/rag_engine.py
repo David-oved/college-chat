@@ -175,6 +175,20 @@ def _ordered(models: List[str]) -> List[str]:
     return sorted(models, key=lambda m: _SPEED.get(m, 4.0) + (0.0 if "lite" in m else 6.0))
 
 
+async def _model_order(models: Optional[List[str]] = None) -> List[str]:
+    """Who is asked, in order. The admin's list (main model first) is used exactly as chosen; the built-in models follow only as a safety net.
+    Without an admin choice: the built-in models, fastest recently first."""
+    if models:
+        return list(models)
+    try:
+        cfg = await db.get_gemini_models()
+    except Exception:
+        cfg = None
+    if cfg:
+        return list(cfg) + [m for m in _ordered(list(DEFAULT_MODELS_TO_TRY)) if m not in cfg]
+    return _ordered(list(DEFAULT_MODELS_TO_TRY))
+
+
 HEDGE_AFTER = 5.0            # a model that has not answered after this many seconds is not waited for alone: the next one is asked too, the first to answer wins
 ATTEMPT_LIMIT = 22.0         # no answer at all from anyone within this time: that round is given up
 
@@ -234,7 +248,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
     payload = {"contents": turns, "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens}}
     if tools:
         payload["tools"] = tools
-    order = _ordered(list(models or DEFAULT_MODELS_TO_TRY))
+    order = await _model_order(models)
     async with gemini_queue_semaphore:
         for attempt in range(2):
             q: asyncio.Queue = asyncio.Queue()
@@ -330,8 +344,9 @@ async def _generate_once(
     if gen_extra:
         payload["generationConfig"].update(gen_extra)
 
+    order = await _model_order()
     async with gemini_queue_semaphore:
-        for model_name in DEFAULT_MODELS_TO_TRY:
+        for model_name in order:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
                 db.bump_api_usage(call_type)

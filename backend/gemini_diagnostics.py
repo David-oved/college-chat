@@ -74,6 +74,24 @@ async def list_available_models(api_key: str) -> Dict[str, Any]:
         }
 
 
+_NOT_CHAT = ("image", "tts", "live", "audio", "embedding", "robotics", "computer", "vision", "veo", "imagen", "lyria", "transcribe", "omni", "aqa", "banana")
+
+
+async def list_chat_models(api_key: str) -> Dict[str, Any]:
+    """The models of THIS key that can chat (text in, text out), for the admin's model picker."""
+    res = await list_available_models(api_key)
+    if not res.get("success"):
+        return res
+    out = []
+    for m in res["models"]:
+        n = m["name"]
+        if not m["supports_generate_content"] or not n.startswith("gemini") or any(x in n.lower() for x in _NOT_CHAT):
+            continue
+        out.append({"name": n, "display_name": m["display_name"], "input_token_limit": m.get("input_token_limit"), "output_token_limit": m.get("output_token_limit")})
+    out.sort(key=lambda x: (0 if "lite" in x["name"] else 1, x["name"]))
+    return {"success": True, "models": out}
+
+
 async def test_connectivity(api_key: str, model: str = "gemini-flash-lite-latest") -> Dict[str, Any]:
     """שולח בקשה אמיתית וקטנה למודל כדי לבדוק שהמפתח בפועל מגיב."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"

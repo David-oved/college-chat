@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import base64
@@ -28,7 +29,7 @@ from pypdf import PdfReader
 
 from db import db
 from auth import admin_auth, require_admin, hash_password, student_auth, require_student
-from gemini_diagnostics import run_full_diagnostics, test_connectivity
+from gemini_diagnostics import run_full_diagnostics, test_connectivity, list_chat_models
 from push import send_push_to_subscription, VAPID_PUBLIC_KEY
 from moodle_tools import decode_file_ref, MOODLE_FILE_BASE
 from rag_engine import (
@@ -675,6 +676,70 @@ async def test_api_key(req: TestApiKeyRequest):
 async def test_key_connectivity(req: TestConnectivityRequest):
     """בדיקת חיבור חוזרת מול מודל ספציפי שהמנהל בחר, בלי לשלוף שוב את כל רשימת המודלים."""
     return await test_connectivity(req.api_key, req.model)
+
+
+# ---- the chat's AI model: chosen from the models of the key that is already saved (no need to type the key again)
+class ModelChoiceRequest(BaseModel):
+    primary: Optional[str] = Field(None, max_length=90)
+    fallbacks: List[str] = Field(default_factory=list, max_length=4)
+
+
+class ModelTestRequest(BaseModel):
+    model: str = Field(..., min_length=3, max_length=90)
+
+
+_MODEL_NAME = re.compile(r"^[A-Za-z0-9._\-]{3,90}$")
+
+
+@app.get("/api/admin/models", dependencies=[Depends(require_admin)])
+async def get_models():
+    """What the saved key can run, what is chosen now, and how fast each model answered lately."""
+    from rag_engine import DEFAULT_MODELS_TO_TRY, _SPEED
+    key = await db.get_api_key()
+    chosen = await db.get_gemini_models()
+    out = {"has_key": bool(key), "chosen": chosen or [], "using_defaults": not chosen, "defaults": list(DEFAULT_MODELS_TO_TRY),
+           "speeds": dict(_SPEED), "models": [], "error": ""}
+    if not key:
+        out["error"] = "טרם נשמר מפתח API"
+        return out
+    res = await list_chat_models(key)
+    if res.get("success"):
+        out["models"] = res["models"]
+    else:
+        out["error"] = f"לא ניתן לשלוף את רשימת המודלים (קוד {res.get('status_code')}): {str(res.get('error'))[:200]}"
+    return out
+
+
+@app.post("/api/admin/models", dependencies=[Depends(require_admin)])
+async def set_models(req: ModelChoiceRequest):
+    """Saves the main model and its fallbacks (all must be models of the saved key). An empty choice returns to the built-in order."""
+    names = [n.strip() for n in ([req.primary or ""] + list(req.fallbacks)) if n and n.strip()]
+    if not names:
+        await db.set_gemini_models(None)
+        return {"message": "חזרנו לסדר המודלים המובנה", "chosen": []}
+    if len(set(names)) != len(names) or not all(_MODEL_NAME.match(n) for n in names):
+        raise HTTPException(status_code=400, detail="שמות מודלים לא תקינים או כפולים")
+    key = await db.get_api_key()
+    if key:
+        res = await list_chat_models(key)
+        if res.get("success"):
+            ok = {m["name"] for m in res["models"]}
+            bad = [n for n in names if n not in ok]
+            if bad:
+                raise HTTPException(status_code=400, detail="המודלים האלה לא זמינים למפתח השמור: " + ", ".join(bad))
+    await db.set_gemini_models(names)
+    return {"message": "המודל נשמר: " + names[0] + (" (גיבויים: " + ", ".join(names[1:]) + ")" if len(names) > 1 else ""), "chosen": names}
+
+
+@app.post("/api/admin/models/test", dependencies=[Depends(require_admin)])
+async def test_model(req: ModelTestRequest):
+    """A real small request to one model with the saved key: does it answer, and how fast."""
+    if not _MODEL_NAME.match(req.model):
+        raise HTTPException(status_code=400, detail="שם מודל לא תקין")
+    key = await db.get_api_key()
+    if not key:
+        raise HTTPException(status_code=400, detail="טרם נשמר מפתח API")
+    return await test_connectivity(key, req.model)
 
 
 @app.get("/api/admin/knowledge", dependencies=[Depends(require_admin)])

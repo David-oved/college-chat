@@ -342,6 +342,39 @@
               </div>
             </form>
           </div>
+          <div class="card-pro p-6">
+            <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span>🤖 מודל ה-AI של הצ'אט</span></h2>
+            <p class="text-xs text-slate-500 mb-3">בוחרים מהמודלים שהמפתח השמור כבר מסוגל להריץ (אין צורך להקליד את המפתח שוב). המודל הראשי נשאל קודם; אם הוא איטי או נכשל, הגיבויים נשאלים בסדר שנבחר, ובסוף המודלים המובנים כרשת ביטחון. השינוי נכנס לפעולה תוך כדקה.</p>
+            <div id="modelStatus" class="text-sm mb-3 text-slate-600">טוען...</div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">מודל ראשי</label>
+                <div class="flex gap-1">
+                  <select id="modelPrimary" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
+                  <button type="button" onclick="testModelSlot('modelPrimary')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">גיבוי 1</label>
+                <div class="flex gap-1">
+                  <select id="modelFb1" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
+                  <button type="button" onclick="testModelSlot('modelFb1')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">גיבוי 2</label>
+                <div class="flex gap-1">
+                  <select id="modelFb2" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
+                  <button type="button" onclick="testModelSlot('modelFb2')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
+                </div>
+              </div>
+            </div>
+            <div id="modelTestOut" class="mt-3 space-y-1 text-xs"></div>
+            <div class="flex flex-wrap justify-end gap-2 mt-4">
+              <button type="button" onclick="resetModelChoice()" class="bg-slate-500 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-sm">↩️ חזרה לסדר המובנה</button>
+              <button type="button" onclick="saveModelChoice()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition shadow-sm">💾 שמור בחירת מודל</button>
+            </div>
+          </div>
         </section>
 
         <!-- ===================== טאב 2: מאגר ידע ===================== -->
@@ -767,6 +800,86 @@
       el.innerHTML = html;
     }
 
+    // ===================== מודל ה-AI של הצ'אט =====================
+    let MODEL_STATE = null;
+    function modelOptionLabel(m, speeds) {
+      const sp = speeds && speeds[m.name];
+      return `${m.display_name || m.name} · ${m.name}` + (sp ? ` · ~${sp}ש'` : '');
+    }
+    async function loadModelPanel() {
+      const statusEl = document.getElementById('modelStatus');
+      if (!statusEl) return;
+      const res = await adminFetch(`${API_BASE}/api/admin/models`);
+      const data = await res.json();
+      MODEL_STATE = data;
+      const slots = [['modelPrimary', '(ברירת המחדל המובנית)'], ['modelFb1', '(ללא)'], ['modelFb2', '(ללא)']];
+      const names = new Set((data.models || []).map(m => m.name));
+      slots.forEach(([id, emptyLabel], i) => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '';
+        const o0 = document.createElement('option'); o0.value = ''; o0.textContent = emptyLabel; sel.appendChild(o0);
+        (data.models || []).forEach(m => {
+          const o = document.createElement('option'); o.value = m.name; o.textContent = modelOptionLabel(m, data.speeds); sel.appendChild(o);
+        });
+        const cur = (data.chosen || [])[i] || '';
+        if (cur && !names.has(cur)) { const o = document.createElement('option'); o.value = cur; o.textContent = cur + ' (שמור, לא ברשימה)'; sel.appendChild(o); }
+        sel.value = cur;
+      });
+      if (data.error) {
+        statusEl.textContent = data.error;
+        statusEl.className = 'text-sm mb-3 text-rose-700';
+      } else if (data.using_defaults) {
+        statusEl.textContent = 'כרגע: הסדר המובנה (' + (data.defaults || []).join(' ← ') + '), והמערכת מקדימה את המודל שענה הכי מהר לאחרונה.';
+        statusEl.className = 'text-sm mb-3 text-slate-600';
+      } else {
+        statusEl.textContent = 'כרגע ראשי: ' + data.chosen[0] + (data.chosen.length > 1 ? ' · גיבויים: ' + data.chosen.slice(1).join(' ← ') : '') + ' · ואחריהם המודלים המובנים כרשת ביטחון.';
+        statusEl.className = 'text-sm mb-3 text-emerald-800 font-bold';
+      }
+    }
+    async function testModelSlot(id) {
+      const model = document.getElementById(id).value;
+      const out = document.getElementById('modelTestOut');
+      if (!model) { showToast('בחר מודל לבדיקה', true); return; }
+      const line = document.createElement('div');
+      line.className = 'p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600';
+      line.textContent = '⏳ בודק את ' + model + ' עם המפתח השמור...';
+      out.prepend(line);
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }) });
+        const d = await res.json();
+        if (d.success) {
+          line.className = 'p-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800';
+          line.textContent = `✅ ${model}: ענה תוך ${(d.latency_ms / 1000).toFixed(1)} שניות`;
+        } else {
+          line.className = 'p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700';
+          line.textContent = `❌ ${model}: ${d.detail || ('שגיאה ' + (d.status_code ?? '') + ' ' + String(d.error || '').slice(0, 140))}`;
+        }
+      } catch (err) {
+        line.className = 'p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700';
+        line.textContent = `❌ ${model}: ${err.message}`;
+      }
+    }
+    async function saveModelChoice() {
+      const primary = document.getElementById('modelPrimary').value;
+      const fbs = [document.getElementById('modelFb1').value, document.getElementById('modelFb2').value].filter(v => v && v !== primary);
+      if (!primary && fbs.length) { showToast('בחר מודל ראשי לפני שבוחרים גיבויים', true); return; }
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ primary: primary || null, fallbacks: [...new Set(fbs)] }) });
+        const d = await res.json();
+        if (!res.ok) { showToast(d.detail || 'השמירה נכשלה', true); return; }
+        showToast(d.message);
+        await loadModelPanel();
+      } catch (err) { showToast('השמירה נכשלה: ' + err.message, true); }
+    }
+    async function resetModelChoice() {
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ primary: null, fallbacks: [] }) });
+        const d = await res.json();
+        showToast(d.message || 'אופס');
+        await loadModelPanel();
+      } catch (err) { showToast('האיפוס נכשל: ' + err.message, true); }
+    }
+
     async function loadConfig() {
       const res = await adminFetch(`${API_BASE}/api/admin/config`);
       const data = await res.json();
@@ -780,6 +893,7 @@
         badge.textContent = 'טרם הוזן מפתח API (מצב הדגמה פעיל)';
         badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold shrink-0';
       }
+      loadModelPanel().catch(() => {});
     }
 
     async function saveConfig(e) {
