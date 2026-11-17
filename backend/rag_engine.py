@@ -547,26 +547,26 @@ async def _stream_chat_inner(
             if name in MEMORY_TOOL_NAMES and user_id:
                 return await run_memory_tool(name, args, user_id, memories)
             if name == "show_ui":
-                blocks, msg = resolve_blocks(args.get("blocks"), (get_cards() or {}).get("items", {}), "\n".join(allowed_parts))
+                blocks, msg = resolve_blocks(args.get("blocks"), _cd().get("items", {}), "\n".join(allowed_parts))
                 if blocks:
-                    (get_cards() or {})["ui"] = blocks
+                    _cd()["ui"] = blocks
                 return msg, None
             if name in moodle_names:
                 return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
             return f"הכלי {name} לא זמין.", None
 
         outcomes = await asyncio.gather(*[run(p) for p in calls])
-        _fm = (get_cards() or {}).setdefault("file_markers", [])
+        _fm = _cd().setdefault("file_markers", [])
         for _t, _ in outcomes:
             allowed_parts.append(str(_t))
-            (get_cards() or {}).setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
+            _cd().setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
         _fm.extend(re.findall(r"\[\[file:[^\]\n]+\]\]", str(_t)))
         if emit_status:
             for _, event in outcomes:
                 if event:
                     yield status_event(**event)
 
-        card = get_cards() or {}
+        card = _cd()
         ui_blocks_out = card.pop("ui", None)
         if ui_blocks_out:
             yield f"[[ui:{encode_blocks(ui_blocks_out)}]]"          # the cards the model chose to show (validated by the server)
@@ -813,3 +813,10 @@ async def stream_knowledge_draft(instruction: str, api_key: str) -> AsyncGenerat
     full_prompt = f"{KNOWLEDGE_DRAFT_SYSTEM_PROMPT}\n\nתיאור המנהל:\n{instruction.strip()}"
     async for token in _stream_from_gemini(full_prompt, api_key, max_output_tokens=500, call_type="ai_draft"):
         yield token
+
+
+def _cd() -> dict:
+    """מילון הכרטיסים של הבקשה הנוכחית. חשוב: מילון ריק הוא "שקר" בפייתון, ולכן אסור לכתוב `get_cards() or {}` - זה היה יוצר מילון זמני ומאבד את מה שנשמר בו."""
+    from moodle_tools import get_cards
+    c = get_cards()
+    return c if c is not None else {}
