@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, AsyncGenerator, Optional
 import httpx
 from http_client import shared_client
+import ai_providers
 import gemini_stats
 from hebdate import hebrew_date_str
 from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks
@@ -238,6 +239,18 @@ async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_t
         print(f"[chat] Gemini stream error with {model_name}: {type(e).__name__}: {e}")
 
 
+async def _other_provider():
+    """The chosen non-Google provider with its key and models, or None (then Google is used)."""
+    try:
+        cfg = await db.get_ai_provider_cfg()
+    except Exception:
+        return None
+    kind = cfg.get("active")
+    if kind in ai_providers.BASES and cfg.get(kind + "_key"):
+        return {"kind": kind, "key": cfg[kind + "_key"], "models": cfg.get(kind + "_models") or ai_providers.DEFAULT_MODELS[kind]}
+    return None
+
+
 async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer", models: Optional[List[str]] = None):
     """
     One streamed call to Gemini (with tools if asked): yields ("text", piece) as it arrives and at the end ("calls", [functionCall...]) if the model asked for tools,
@@ -248,6 +261,14 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
     payload = {"contents": turns, "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens}}
     if tools:
         payload["tools"] = tools
+    other = await _other_provider()
+    if other:                                                  # the admin chose OpenAI / Grok: they go first; if they give nothing, Google below is the safety net
+        got = False
+        async for ev in ai_providers.stream_with_fallback(other, payload):
+            got = True
+            yield ev
+        if got:
+            return
     order = await _model_order(models)
     async with gemini_queue_semaphore:
         for attempt in range(2):
@@ -344,6 +365,11 @@ async def _generate_once(
     if gen_extra:
         payload["generationConfig"].update(gen_extra)
 
+    other = await _other_provider()
+    if other:
+        res = await ai_providers.oa_generate(other, payload)
+        if res:
+            return res
     order = await _model_order()
     async with gemini_queue_semaphore:
         for model_name in order:

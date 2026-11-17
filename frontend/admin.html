@@ -343,7 +343,15 @@
             </form>
           </div>
           <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span>🤖 מודל ה-AI של הצ'אט</span></h2>
+            <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span>🤖 ספק ומודל ה-AI של הצ'אט</span></h2>
+            <div class="text-xs text-slate-500 mb-3">אפשר לשמור כמה מפתחות במקביל (Google, OpenAI, Grok) ולבחור איזה מהם עונה לסטודנטים. לכל ספק יש בדיקה משלו. חיפוש המידע של המכללה (embeddings) נשאר תמיד על מפתח Google, ולכן הוא חייב להישאר שמור. אם הספק שנבחר לא מגיב, Google משמש כגיבוי אוטומטי.</div>
+            <div id="provRows" class="space-y-2 mb-4"></div>
+            <div class="mb-3 flex items-center gap-2">
+              <label class="text-xs font-bold text-slate-600 shrink-0">בחירת מודלים עבור:</label>
+              <select id="modelProvider" onchange="loadModelPanel()" class="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500">
+                <option value="google">Google Gemini</option><option value="openai">OpenAI</option><option value="xai">xAI Grok</option>
+              </select>
+            </div>
             <p class="text-xs text-slate-500 mb-3">בוחרים מהמודלים שהמפתח השמור כבר מסוגל להריץ (אין צורך להקליד את המפתח שוב). המודל הראשי נשאל קודם; אם הוא איטי או נכשל, הגיבויים נשאלים בסדר שנבחר, ובסוף המודלים המובנים כרשת ביטחון. השינוי נכנס לפעולה תוך כדקה.</p>
             <div id="modelStatus" class="text-sm mb-3 text-slate-600">טוען...</div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -800,6 +808,60 @@
       el.innerHTML = html;
     }
 
+    // ===================== ספקים ומפתחות (Google / OpenAI / Grok) =====================
+    const curProv = () => (document.getElementById('modelProvider') || {}).value || 'google';
+    async function loadProviders() {
+      const box = document.getElementById('provRows'); if (!box) return;
+      const res = await adminFetch(`${API_BASE}/api/admin/providers`);
+      const d = await res.json();
+      box.innerHTML = '';
+      Object.entries(d.providers).forEach(([p, info]) => {
+        const row = document.createElement('div');
+        row.className = 'p-3 rounded-xl border ' + (d.active === p ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50') + ' flex flex-wrap items-center gap-2 text-xs';
+        const name = document.createElement('b'); name.className = 'w-28 shrink-0 text-sm'; name.textContent = info.label; row.appendChild(name);
+        const st = document.createElement('span'); st.className = 'shrink-0 ' + (info.has_key ? 'text-emerald-700 font-bold' : 'text-slate-400');
+        st.textContent = info.has_key ? ('מפתח שמור ' + info.masked) : 'אין מפתח'; row.appendChild(st);
+        if (p !== 'google') {
+          const inp = document.createElement('input'); inp.type = 'password'; inp.id = 'provKey_' + p; inp.placeholder = 'הדבק מפתח ' + info.label;
+          inp.className = 'flex-1 min-w-[140px] border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500'; row.appendChild(inp);
+          const sv = document.createElement('button'); sv.type = 'button'; sv.textContent = 'שמור מפתח'; sv.className = 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5'; sv.onclick = () => saveProvKey(p, false); row.appendChild(sv);
+          if (info.has_key) { const del = document.createElement('button'); del.type = 'button'; del.textContent = 'מחק'; del.className = 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5'; del.onclick = () => saveProvKey(p, true); row.appendChild(del); }
+        } else { const sp = document.createElement('span'); sp.className = 'flex-1 text-slate-400'; sp.textContent = '(המפתח נשמר בשדה למעלה)'; row.appendChild(sp); }
+        if (info.has_key) {
+          const t = document.createElement('button'); t.type = 'button'; t.textContent = 'בדוק'; t.className = 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5'; t.onclick = () => testProvider(p, row); row.appendChild(t);
+          const on = document.createElement('button'); on.type = 'button';
+          on.textContent = d.active === p ? '✅ פעיל לבוט' : 'הפעל לבוט'; on.disabled = d.active === p;
+          on.className = 'font-bold rounded-lg px-2.5 py-1.5 ' + (d.active === p ? 'text-emerald-800 bg-emerald-100' : 'text-white bg-emerald-600'); on.onclick = () => setActiveProv(p); row.appendChild(on);
+        }
+        const out = document.createElement('div'); out.className = 'w-full text-xs'; out.id = 'provOut_' + p; row.appendChild(out);
+        box.appendChild(row);
+      });
+    }
+    async function saveProvKey(p, clear) {
+      const v = clear ? '' : (document.getElementById('provKey_' + p).value || '').trim();
+      if (!clear && !v) { showToast('הדבק מפתח לפני השמירה', true); return; }
+      if (clear && !confirm('למחוק את המפתח?')) return;
+      const res = await adminFetch(`${API_BASE}/api/admin/providers/key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p, api_key: v }) });
+      const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+      await loadProviders(); await loadModelPanel();
+    }
+    async function setActiveProv(p) {
+      const res = await adminFetch(`${API_BASE}/api/admin/providers/active`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p }) });
+      const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+      await loadProviders();
+    }
+    async function testProvider(p, row) {
+      const out = document.getElementById('provOut_' + p); out.className = 'w-full text-xs text-slate-500'; out.textContent = '⏳ בודק את המפתח (בקשה אמיתית קטנה)...';
+      try {
+        const m = await (await adminFetch(`${API_BASE}/api/admin/models?provider=${p}`)).json();
+        const model = (m.chosen && m.chosen[0]) || (m.models && m.models[0] && m.models[0].name) || (m.defaults && m.defaults[0]);
+        if (m.error && !(m.models || []).length) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '❌ ' + m.error; return; }
+        const r = await (await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p, model }) })).json();
+        out.className = 'w-full text-xs ' + (r.success ? 'text-emerald-800' : 'text-rose-700');
+        out.textContent = r.success ? `✅ המפתח עובד · ${model} · ${(r.latency_ms / 1000).toFixed(1)} שניות · ${(m.models || []).length} מודלים זמינים` : `❌ ${model}: ${r.detail || ('שגיאה ' + (r.status_code ?? '') + ' ' + String(r.error || '').slice(0, 160))}`;
+      } catch (e) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '❌ ' + e.message; }
+    }
+
     // ===================== מודל ה-AI של הצ'אט =====================
     let MODEL_STATE = null;
     function modelOptionLabel(m, speeds) {
@@ -809,7 +871,7 @@
     async function loadModelPanel() {
       const statusEl = document.getElementById('modelStatus');
       if (!statusEl) return;
-      const res = await adminFetch(`${API_BASE}/api/admin/models`);
+      const res = await adminFetch(`${API_BASE}/api/admin/models?provider=${curProv()}`);
       const data = await res.json();
       MODEL_STATE = data;
       const slots = [['modelPrimary', '(ברירת המחדל המובנית)'], ['modelFb1', '(ללא)'], ['modelFb2', '(ללא)']];
@@ -845,7 +907,7 @@
       line.textContent = '⏳ בודק את ' + model + ' עם המפתח השמור...';
       out.prepend(line);
       try {
-        const res = await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }) });
+        const res = await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: curProv(), model }) });
         const d = await res.json();
         if (d.success) {
           line.className = 'p-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -864,7 +926,7 @@
       const fbs = [document.getElementById('modelFb1').value, document.getElementById('modelFb2').value].filter(v => v && v !== primary);
       if (!primary && fbs.length) { showToast('בחר מודל ראשי לפני שבוחרים גיבויים', true); return; }
       try {
-        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ primary: primary || null, fallbacks: [...new Set(fbs)] }) });
+        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: curProv(), primary: primary || null, fallbacks: [...new Set(fbs)] }) });
         const d = await res.json();
         if (!res.ok) { showToast(d.detail || 'השמירה נכשלה', true); return; }
         showToast(d.message);
@@ -873,7 +935,7 @@
     }
     async function resetModelChoice() {
       try {
-        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ primary: null, fallbacks: [] }) });
+        const res = await adminFetch(`${API_BASE}/api/admin/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: curProv(), primary: null, fallbacks: [] }) });
         const d = await res.json();
         showToast(d.message || 'אופס');
         await loadModelPanel();
@@ -893,6 +955,7 @@
         badge.textContent = 'טרם הוזן מפתח API (מצב הדגמה פעיל)';
         badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold shrink-0';
       }
+      loadProviders().catch(() => {});
       loadModelPanel().catch(() => {});
     }
 

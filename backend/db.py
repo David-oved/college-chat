@@ -66,6 +66,14 @@ class Database:
                     await cur.execute("alter table system_config add column if not exists gemini_models text;")
         except Exception as e:
             print(f"[db] could not ensure system_config.gemini_models: {e}")
+        # other AI providers (OpenAI, xAI Grok): their keys, their chosen models, and which provider the bot uses ("google" by default)
+        for col in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models"):
+            try:
+                async with pool.connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute(f"alter table system_config add column if not exists {col} text;")
+            except Exception as e:
+                print(f"[db] could not ensure system_config.{col}: {e}")
         # זיכרון הבוט לכל משתמש: עובדות שהסטודנט סיפר (למשל "עזבתי את הקורס X") - נשמרות בשרת, לכל משתמש לחוד
         try:
             async with pool.connection() as conn:
@@ -179,6 +187,33 @@ class Database:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("update system_config set gemini_models = %s where id = 1;", (",".join(names) if names else None,))
+        self.invalidate_config_cache()
+
+    async def _get_ai_provider_cfg_raw(self) -> Dict[str, Any]:
+        out = {"active": "google", "openai_key": "", "xai_key": "", "openai_models": [], "xai_models": []}
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("select ai_provider, openai_api_key, xai_api_key, openai_models, xai_models from system_config where id = 1;")
+                    row = await cur.fetchone()
+        except Exception:
+            return out
+        if row:
+            out["active"] = row[0] if row[0] in ("google", "openai", "xai") else "google"
+            out["openai_key"], out["xai_key"] = row[1] or "", row[2] or ""
+            out["openai_models"] = [n for n in (row[3] or "").split(",") if n.strip()]
+            out["xai_models"] = [n for n in (row[4] or "").split(",") if n.strip()]
+        return out
+
+    async def get_ai_provider_cfg(self) -> Dict[str, Any]:
+        return await self._cfg("get_ai_provider_cfg")
+
+    async def set_ai_provider_value(self, column: str, value: Optional[str]):
+        if column not in ("ai_provider", "openai_api_key", "xai_api_key", "openai_models", "xai_models"):
+            raise ValueError("bad column")
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(f"update system_config set {column} = %s where id = 1;", (value or None,))
         self.invalidate_config_cache()
 
     async def _get_moodle_enabled_functions_raw(self) -> Optional[List[str]]:

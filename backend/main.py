@@ -30,6 +30,7 @@ from pypdf import PdfReader
 from db import db
 from auth import admin_auth, require_admin, hash_password, student_auth, require_student
 from gemini_diagnostics import run_full_diagnostics, test_connectivity, list_chat_models
+import ai_providers
 from push import send_push_to_subscription, VAPID_PUBLIC_KEY
 from moodle_tools import decode_file_ref, MOODLE_FILE_BASE
 from rag_engine import (
@@ -681,29 +682,92 @@ async def test_key_connectivity(req: TestConnectivityRequest):
 
 # ---- the chat's AI model: chosen from the models of the key that is already saved (no need to type the key again)
 class ModelChoiceRequest(BaseModel):
+    provider: str = "google"
     primary: Optional[str] = Field(None, max_length=90)
     fallbacks: List[str] = Field(default_factory=list, max_length=4)
 
 
 class ModelTestRequest(BaseModel):
+    provider: str = "google"
     model: str = Field(..., min_length=3, max_length=90)
+
+
+class ProviderKeyRequest(BaseModel):
+    provider: str
+    api_key: str = Field("", max_length=300)
+
+
+class ProviderActiveRequest(BaseModel):
+    provider: str
+
+
+def _prov(p: str) -> str:
+    if p not in ("google", "openai", "xai"):
+        raise HTTPException(status_code=400, detail="ספק לא מוכר")
+    return p
+
+
+async def _provider_key(p: str) -> str:
+    return (await db.get_api_key()) if p == "google" else (await db.get_ai_provider_cfg()).get(p + "_key", "")
+
+
+def _mask(k: str) -> str:
+    return (k[:3] + "..." + k[-4:]) if len(k) > 10 else ("מוגדר" if k else "")
+
+
+@app.get("/api/admin/providers", dependencies=[Depends(require_admin)])
+async def get_providers():
+    """The keys that are saved (masked), and which provider the bot uses now."""
+    cfg = await db.get_ai_provider_cfg()
+    gk = await db.get_api_key()
+    keys = {"google": gk, "openai": cfg.get("openai_key", ""), "xai": cfg.get("xai_key", "")}
+    return {"active": cfg.get("active", "google"), "providers": {p: {"label": ai_providers.LABELS[p], "has_key": bool(k), "masked": _mask(k)} for p, k in keys.items()}}
+
+
+@app.post("/api/admin/providers/key", dependencies=[Depends(require_admin)])
+async def set_provider_key(req: ProviderKeyRequest):
+    """Saves (or, when empty, removes) the key of OpenAI / xAI. The Google key keeps its own field above."""
+    p = _prov(req.provider)
+    if p == "google":
+        raise HTTPException(status_code=400, detail="מפתח Google נשמר בשדה המפתח שלמעלה")
+    key = req.api_key.strip()
+    await db.set_ai_provider_value(p + "_api_key", key or None)
+    if not key and (await db.get_ai_provider_cfg()).get("active") == p:
+        await db.set_ai_provider_value("ai_provider", None)          # its key is gone: back to Google
+    return {"message": "המפתח נשמר" if key else "המפתח נמחק"}
+
+
+@app.post("/api/admin/providers/active", dependencies=[Depends(require_admin)])
+async def set_active_provider(req: ProviderActiveRequest):
+    """Which provider answers the students. Google stays the safety net if the chosen one gives nothing; the knowledge search always uses the Google key."""
+    p = _prov(req.provider)
+    if p != "google" and not await _provider_key(p):
+        raise HTTPException(status_code=400, detail="אין מפתח שמור לספק הזה")
+    await db.set_ai_provider_value("ai_provider", None if p == "google" else p)
+    return {"message": "הבוט עובד עכשיו עם " + ai_providers.LABELS[p]}
 
 
 _MODEL_NAME = re.compile(r"^[A-Za-z0-9._\-]{3,90}$")
 
 
 @app.get("/api/admin/models", dependencies=[Depends(require_admin)])
-async def get_models():
+async def get_models(provider: str = "google"):
     """What the saved key can run, what is chosen now, and how fast each model answered lately."""
     from rag_engine import DEFAULT_MODELS_TO_TRY, _SPEED
-    key = await db.get_api_key()
-    chosen = await db.get_gemini_models()
-    out = {"has_key": bool(key), "chosen": chosen or [], "using_defaults": not chosen, "defaults": list(DEFAULT_MODELS_TO_TRY),
-           "speeds": dict(_SPEED), "models": [], "error": ""}
+    provider = _prov(provider)
+    key = await _provider_key(provider)
+    if provider == "google":
+        chosen = await db.get_gemini_models()
+        defaults = list(DEFAULT_MODELS_TO_TRY)
+    else:
+        chosen = (await db.get_ai_provider_cfg()).get(provider + "_models") or None
+        defaults = list(ai_providers.DEFAULT_MODELS[provider])
+    out = {"provider": provider, "has_key": bool(key), "chosen": chosen or [], "using_defaults": not chosen, "defaults": defaults,
+           "speeds": dict(_SPEED) if provider == "google" else {}, "models": [], "error": ""}
     if not key:
-        out["error"] = "טרם נשמר מפתח API"
+        out["error"] = "טרם נשמר מפתח API לספק הזה"
         return out
-    res = await list_chat_models(key)
+    res = await (list_chat_models(key) if provider == "google" else ai_providers.list_models(provider, key))
     if res.get("success"):
         out["models"] = res["models"]
     else:
@@ -714,21 +778,22 @@ async def get_models():
 @app.post("/api/admin/models", dependencies=[Depends(require_admin)])
 async def set_models(req: ModelChoiceRequest):
     """Saves the main model and its fallbacks (all must be models of the saved key). An empty choice returns to the built-in order."""
+    provider = _prov(req.provider)
     names = [n.strip() for n in ([req.primary or ""] + list(req.fallbacks)) if n and n.strip()]
     if not names:
-        await db.set_gemini_models(None)
+        await (db.set_gemini_models(None) if provider == "google" else db.set_ai_provider_value(provider + "_models", None))
         return {"message": "חזרנו לסדר המודלים המובנה", "chosen": []}
     if len(set(names)) != len(names) or not all(_MODEL_NAME.match(n) for n in names):
         raise HTTPException(status_code=400, detail="שמות מודלים לא תקינים או כפולים")
-    key = await db.get_api_key()
+    key = await _provider_key(provider)
     if key:
-        res = await list_chat_models(key)
+        res = await (list_chat_models(key) if provider == "google" else ai_providers.list_models(provider, key))
         if res.get("success"):
             ok = {m["name"] for m in res["models"]}
             bad = [n for n in names if n not in ok]
             if bad:
                 raise HTTPException(status_code=400, detail="המודלים האלה לא זמינים למפתח השמור: " + ", ".join(bad))
-    await db.set_gemini_models(names)
+    await (db.set_gemini_models(names) if provider == "google" else db.set_ai_provider_value(provider + "_models", ",".join(names)))
     return {"message": "המודל נשמר: " + names[0] + (" (גיבויים: " + ", ".join(names[1:]) + ")" if len(names) > 1 else ""), "chosen": names}
 
 
@@ -737,10 +802,11 @@ async def test_model(req: ModelTestRequest):
     """A real small request to one model with the saved key: does it answer, and how fast."""
     if not _MODEL_NAME.match(req.model):
         raise HTTPException(status_code=400, detail="שם מודל לא תקין")
-    key = await db.get_api_key()
+    provider = _prov(req.provider)
+    key = await _provider_key(provider)
     if not key:
-        raise HTTPException(status_code=400, detail="טרם נשמר מפתח API")
-    return await test_connectivity(key, req.model)
+        raise HTTPException(status_code=400, detail="טרם נשמר מפתח API לספק הזה")
+    return await (test_connectivity(key, req.model) if provider == "google" else ai_providers.test_model(provider, key, req.model))
 
 
 @app.get("/api/admin/knowledge", dependencies=[Depends(require_admin)])
