@@ -464,13 +464,12 @@ async def _stream_chat_inner(
     declarations = [d for grp in moodle_tools for d in grp.get("functionDeclarations", [])]
     if user_id:
         declarations = declarations + MEMORY_TOOLS[0]["functionDeclarations"]
-    if moodle_names:
-        declarations = declarations + UI_TOOLS[0]["functionDeclarations"]
+    declarations = declarations + UI_TOOLS[0]["functionDeclarations"]          # the display kit is for every answer, not only Moodle ones
     tools = [{"functionDeclarations": declarations}] if declarations else []
 
-    extra = RICH_ADDENDUM
+    extra = RICH_ADDENDUM + UI_ADDENDUM
     if moodle_names:
-        extra += MOODLE_SYSTEM_ADDENDUM + UI_ADDENDUM
+        extra += MOODLE_SYSTEM_ADDENDUM
     if user_id:
         extra += MEMORY_ADDENDUM + build_memory_block(memories)
 
@@ -478,6 +477,8 @@ async def _stream_chat_inner(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
         username=username, extra_system_instructions=extra,
     )
+
+    allowed_parts = [user_turn_text]            # everything the model was given: contacts in a UI block must appear in this material or in a tool result
 
     async def final_answer(contents):
         if emit_status:
@@ -545,8 +546,8 @@ async def _stream_chat_inner(
             name, args = fc.get("name", ""), fc.get("args") or {}
             if name in MEMORY_TOOL_NAMES and user_id:
                 return await run_memory_tool(name, args, user_id, memories)
-            if name == "show_ui" and moodle_names:
-                blocks, msg = resolve_blocks(args.get("blocks"), (get_cards() or {}).get("items", {}))
+            if name == "show_ui":
+                blocks, msg = resolve_blocks(args.get("blocks"), (get_cards() or {}).get("items", {}), "\n".join(allowed_parts))
                 if blocks:
                     (get_cards() or {})["ui"] = blocks
                 return msg, None
@@ -557,6 +558,7 @@ async def _stream_chat_inner(
         outcomes = await asyncio.gather(*[run(p) for p in calls])
         _fm = (get_cards() or {}).setdefault("file_markers", [])
         for _t, _ in outcomes:
+            allowed_parts.append(str(_t))
             (get_cards() or {}).setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
         _fm.extend(re.findall(r"\[\[file:[^\]\n]+\]\]", str(_t)))
         if emit_status:
