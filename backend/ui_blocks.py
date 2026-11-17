@@ -219,7 +219,7 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
     dropped = 0
     if not isinstance(blocks, list):
         return [], "blocks חייב להיות רשימה."
-    for b in blocks[:8]:
+    for b in blocks[:10]:
         if not isinstance(b, dict):
             continue
         kind = _s(b.get("type"), 14).lower()
