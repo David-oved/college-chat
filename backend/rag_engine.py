@@ -556,6 +556,8 @@ async def _stream_chat_inner(
             return f"הכלי {name} לא זמין.", None
 
         outcomes = await asyncio.gather(*[run(p) for p in calls])
+        for p in calls:
+            db.bump_api_usage("tool:" + str(p["functionCall"].get("name", ""))[:40])            # admin sees what students use (counts only)
         _fm = _cd().setdefault("file_markers", [])
         for _t, _ in outcomes:
             allowed_parts.append(str(_t))
@@ -569,6 +571,8 @@ async def _stream_chat_inner(
         card = _cd()
         ui_blocks_out = card.pop("ui", None)
         if ui_blocks_out:
+            for blk in ui_blocks_out:
+                db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
             yield f"[[ui:{encode_blocks(ui_blocks_out)}]]"          # the cards the model chose to show (validated by the server)
         contents.append({"role": "model", "parts": calls})
         contents.append({

@@ -678,6 +678,43 @@ async def list_knowledge():
     return {"chunks": await db.get_all_chunks(), "catalog": await db.get_catalog()}
 
 
+class EditChunkRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    text: str = Field(..., min_length=1, max_length=6000)
+    category: str = Field(..., min_length=1, max_length=80)
+
+
+@app.put("/api/admin/knowledge/{chunk_id}", dependencies=[Depends(require_admin)])
+async def edit_knowledge_chunk(chunk_id: str, req: EditChunkRequest):
+    """עריכת קטע קיים: הווקטור נבנה מחדש כדי שהחיפוש ימשיך להתאים לנוסח החדש."""
+    api_key = await db.get_api_key()
+    embedding = await get_embedding(f"{req.title}: {req.text}", api_key) if api_key else None
+    ok = await db.update_chunk(chunk_id, req.title.strip(), req.text.strip(), req.category.strip(), embedding or None)
+    if not ok:
+        raise HTTPException(status_code=404, detail="הקטע לא נמצא")
+    return {"ok": True, "has_embedding": bool(embedding)}
+
+
+class TestSearchRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=400)
+
+
+@app.post("/api/admin/knowledge/test-search", dependencies=[Depends(require_admin)])
+async def test_knowledge_search(req: TestSearchRequest):
+    """מה הבוט ימצא במאגר לשאלה הזו (ואיזה דמיון): לאיתור קטעים שלא נמצאים כשצריך."""
+    api_key = await db.get_api_key()
+    emb = await get_embedding(req.question, api_key) if api_key else []
+    hits = await db.search_similar_chunks(emb, top_k=5) if emb else []
+    return {"hits": [{"id": str(h["id"]), "title": h["title"], "category": h["category"], "similarity": round(float(h["similarity"]), 3), "preview": h["text"][:240]} for h in hits]}
+
+
+@app.get("/api/admin/usage-breakdown", dependencies=[Depends(require_admin)])
+async def usage_breakdown(days: int = 7):
+    """במה הסטודנטים עוסקים: כמה פעמים כל כלי (tool:*) וכל סוג תצוגה (ui:*) הופעלו, לפי יום. מספרים בלבד - בלי תוכן שיחות."""
+    rows = await db.get_usage_range(max(1, min(days, 30)))
+    return {"rows": rows}
+
+
 @app.post("/api/admin/knowledge/ai-draft", dependencies=[Depends(require_admin)])
 async def draft_knowledge_with_ai(req: AiDraftKnowledgeRequest):
     """

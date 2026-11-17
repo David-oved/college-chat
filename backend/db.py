@@ -301,6 +301,35 @@ class Database:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("delete from knowledge_chunks where id = %s;", (chunk_id,))
+        await self.recount_catalog()
+
+    async def update_chunk(self, chunk_id: str, title: str, text: str, category: str, embedding: Optional[List[float]]) -> bool:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "update knowledge_chunks set title = %s, text = %s, category = %s, embedding = %s::vector where id = %s;",
+                    (title, text, category, _vector_literal(embedding), chunk_id),
+                )
+                ok = cur.rowcount > 0
+        await self.recount_catalog()
+        return ok
+
+    async def recount_catalog(self):
+        """ספירות הקטלוג (המפה שהבוט רואה) חייבות להתאים למה שבאמת שמור - אחרת הבוט "יודע" על קטעים שלא קיימים."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("update knowledge_catalog k set chunk_count = (select count(*) from knowledge_chunks c where c.category = k.category);")
+                await cur.execute("delete from knowledge_catalog where chunk_count = 0;")
+        self.invalidate_config_cache()
+
+    async def get_usage_range(self, days: int = 7) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "select usage_date::text as day, call_type, count from api_usage_daily where usage_date > current_date - %s::int order by usage_date;",
+                    (int(days),),
+                )
+                return [dict(r) for r in await cur.fetchall()]
 
     async def search_similar_chunks(self, query_embedding: Optional[List[float]], top_k: int = 3) -> List[Dict[str, Any]]:
         """חיפוש הדמיון עצמו רץ בתוך Postgres (אופרטור <=> של pgvector), לא בלולאת Python."""
@@ -409,7 +438,7 @@ class Database:
                 )
                 rows = await cur.fetchall()
         by_type = {r["call_type"]: r["count"] for r in rows}
-        by_type["total"] = sum(by_type.values())
+        by_type["total"] = sum(v for k, v in by_type.items() if not k.startswith(("tool:", "ui:")))      # רק קריאות Gemini, לא מוני הכלים והתצוגות
         return by_type
 
     async def get_student_usage_summary(self) -> Dict[str, Any]:
