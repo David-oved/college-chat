@@ -466,6 +466,8 @@ async def _stream_chat_inner(
         declarations = declarations + MEMORY_TOOLS[0]["functionDeclarations"]
     declarations = declarations + UI_TOOLS[0]["functionDeclarations"]          # the display kit is for every answer, not only Moodle ones
     tools = [{"functionDeclarations": declarations}] if declarations else []
+    if _is_smalltalk(question):
+        tools = []                     # "hi" / "thanks": a plain, fast answer - no tools, no cards
 
     extra = RICH_ADDENDUM + UI_ADDENDUM
     if moodle_names:
@@ -611,6 +613,14 @@ async def _stream_chat_inner(
         yield token
     if not answered:
         yield "לא הצלחתי להשלים את הבקשה כרגע. נסה שוב בעוד רגע."
+
+
+_SMALLTALK = re.compile(r"^(?:היי+|הי|שלום|אהלן|אהלא|בוקר טוב|ערב טוב|צהריים טובים|תודה(?: רבה| לך)?|תודה!+|סבבה|אוקי|אוקיי|אחלה|מעולה|יופי|מצוין|ביי|להתראות|לילה טוב|hi|hello|hey|thanks|thank you|ok|okay|merci|bonjour|salut)[\s!.,?]*$", re.I)
+
+
+def _is_smalltalk(q: str) -> bool:
+    first = str(q or "").split("\n\n[")[0].strip()
+    return len(first) <= 24 and bool(_SMALLTALK.match(first))
 
 
 async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
