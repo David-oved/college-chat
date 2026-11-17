@@ -39,6 +39,8 @@ STYLES = {
     "stats": ("row",),
     "progress": ("bars",),
     "buttons": ("quick",),
+    "hero": ("gradient", "soft"),
+    "routes": ("badges", "pills"),
 }
 ITEM_KINDS = {"deadlines": "d", "grades": "g", "courses": "c"}
 TONES = ("info", "warn", "success", "tip", "danger")
@@ -50,7 +52,7 @@ ACTION_KINDS = ("email", "phone", "whatsapp", "link", "address", "text")
 
 _MAX_ITEMS = {"contact": 6, "hours": 10, "steps": 10, "facts": 10, "highlight": 4, "list": 12, "links": 8, "timeline": 10, "price": 8,
               "summary": 8, "tags": 14, "checklist": 12, "accordion": 8, "tabs": 5, "compare": 8, "table": 12, "quote": 1,
-              "stats": 4, "progress": 8, "buttons": 4}
+              "stats": 4, "progress": 8, "buttons": 4, "hero": 3, "routes": 10}
 
 UI_ADDENDUM = """
 
@@ -72,6 +74,8 @@ UI_ADDENDUM = """
 11. מידע אישי מ-Moodle: deadlines / grades / courses לפי ids, ומעליהם highlight או stats (למשל כמה מטלות השבוע) ו-callout אדום על איחור.
 12. כשהמידע ארוך: heading בין הקבוצות (בקצרה) ו-summary של שורה אחת בסוף. בסוף תשובה עשירה אפשר buttons עם 2-3 המשכים טבעיים ("עוד פרטים", "איך נרשמים").
 שלמות, בלי יוצא מן הכלל: אין כרטיס ריק. בכל שורה ב-facts / price / stats / progress / highlight חייב להיות value אמיתי (או detail ב-facts) מהחומר שקיבלת. אם אין לך מידע על משהו - אל תכלול אותו בכלל (אל תשלח שורה עם label בלבד, אל תכתוב "חניה" בלי לומר מה). כל בלוק מכיל תוכן ממשי, ואם הוא לא - מחק אותו. לפני ששולחים: עבור על הבלוקים ובדוק שכל פרט נכון ושנמצא בחומר.
+הסטנדרט לעיצוב - ככה נראית תשובה יפה ומושכת: "איך מגיעים לקמפוס לב?" -> [location(title:"קמפוס לב", subtitle:"גבעת מרדכי, ירושלים", text:"כתובת מלאה מהחומר", color:green), routes(style:badges, title:"קווי אוטובוס", icon:bus, color:blue, items:[{label:"6", title:"מגבעת שאול", detail:"ירידה: שח"ל/הלר"},{label:"5", title:"מבית הכרם", detail:"ירידה: גבעת מרדכי/בייט"},{label:"39", title:"מהר חוצבים", detail:"ירידה: גבעת מרדכי/בייט"}]), banner(tone:tip, color:purple, icon:info, text:"טיפ קצר ושימושי אחד מהחומר")]. שים לב: מעט מילים, אייקון וצבע בכל בלוק, מבנה במקום פסקאות, וקצר: כל שורה בתוך בלוק עד כמה מילים. תמיד בנה כך - ולעולם לא רשימה ארוכה אחת של נקודות.
+פתיחה בולטת: כשיש לתשובה נושא ברור (קמפוס, שירות, מלגה, מסלול), פתח ב-hero או ב-location או ב-highlight ורק אחר כך פרטים. בקשת מעבר בין כמה אפשרויות (קווים, קמפוסים, מסלולים) -> routes.
 אנימציה וצבע: anim=rise כברירת מחדל, pop למספר גדול (highlight), glow לדבר דחוף או חשוב מאוד, slide לצעדים. צבע לפי משמעות. אל תחזור על אותו סוג בלוק כשיש סוג מתאים יותר (רשימת bullets היא הברירה האחרונה, לא הראשונה). בלי טקסט כפול: מה שבכרטיס לא חוזר בטקסט.
 דוגמה: "כמה עולה שכר לימוד ואיך משלמים?" -> blocks: [highlight(items:[{value:"...",label:"שכר לימוד לשנה"}], anim:pop, color:blue), facts(items:[{label:"תשלומים",value:"..."},{label:"הנחה",value:"..."}]), steps(style:timeline, items:[{title:"שלב 1"},{title:"שלב 2"}]), callout(tone:warn, text:"שים לב: ..."), buttons(items:[{label:"איך מגישים בקשה למלגה"}])].
 דוגמה: "מי אחראי על הרישום ומתי פתוח?" -> blocks: [contact(title:"...", subtitle:"...", items:[{kind:phone,value:"..."},{kind:email,value:"..."}], color:teal), hours(style:week, items:[...]), callout(tone:tip, text:"...")].
@@ -98,6 +102,8 @@ UI_ADDENDUM = """
 - quote: ציטוט או הגדרה: text, subtitle=מקור/מונח. style quote / definition.
 - summary: סיכום קצר: title, text, items {label} כנקודות. style card / plain / glass.
 - heading: כותרת מקטע: title, text=כותרת משנה. style plain / accent / centered. tags: תגיות קצרות: items {label}.
+- hero: פתיחה בולטת ומרשימה לתשובה (כרטיס צבעוני מלא עם אייקון גדול). title=הנושא, subtitle=שורת משנה, text=פרט קצר, icon, color, items עד 3 מספרים מרכזיים {value, label} (למשל "8,100 ש"ח" / "מחיר לשנה"). style gradient (ברירת מחדל, בולט מאוד) / soft (עדין). מתאים לשאלה על מקום, שירות, מסלול או נושא שיש לו שם ומספר מפתח. בלוק אחד, בראש התשובה.
+- routes: קווים, אפשרויות או נתיבים עם תג צבעוני גדול לכל שורה: items {label=התג (מספר קו, "א'", "1"), title, detail?}. style badges / pills. מתאים לקווי אוטובוס (label="6", title="מגבעת שאול", detail="לרדת בתחנת שח"ל/הלר"), לקמפוסים, למסלולי לימוד, לשלבים ממוספרים צבעוניים.
 - stats (מספרים), progress (פסי אחוזים 0-100), buttons (כפתורי המשך ששולחים הודעה בשם הסטודנט; items {label, value?}), steps עם items {label} פשוט.
 לכל בלוק אפשר: color (blue/green/orange/red/purple/teal/pink/gray), icon (phone/mail/clock/pin/book/money/warning/info/user/calendar/file/link/key/shield/heart/star/school/tool/chat/check/bolt/globe/id/food/home/bus/wifi/print/lock/bell/gift/flag), anim (fade/rise/pop/slide/glow - כניסה מונפשת, none לבלי), title.
 עיצוב: בחר צבע לפי משמעות (אדום לאזהרה, ירוק להצלחה, כתום לתשלום/דחיפות, כחול למידע, סגול לטיפ) ושלב בלוקים: למשל banner קצר, ואחריו contact, ואחריו steps. מהירות: אם צריך כמה כלים - קרא להם כולם באותו צעד במקביל. אל תשתמש בשם של אדם או במספר שלא מופיעים בחומר.
@@ -135,7 +141,7 @@ UI_TOOLS = [{"functionDeclarations": [{
                 "items": {
                     "type": "OBJECT",
                     "properties": {
-                        "type": {"type": "STRING", "description": "deadlines grades courses contact hours steps facts highlight price callout banner list checklist accordion tabs compare table links timeline location quote summary heading tags stats progress buttons"},
+                        "type": {"type": "STRING", "description": "deadlines grades courses contact hours steps facts highlight price callout banner list checklist accordion tabs compare table links timeline location quote summary heading tags stats progress buttons hero routes"},
                         "style": {"type": "STRING", "description": "סגנון לפי סוג הבלוק (ראה הנחיות)"},
                         "title": {"type": "STRING", "description": "כותרת (או שם איש קשר)"},
                         "subtitle": {"type": "STRING", "description": "כותרת משנה (או תפקיד)"},
@@ -312,6 +318,25 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
                 out.append({**base, "tx": text, "it": its})
             elif kind != "summary":
                 problems.append(f"בלוק {kind} נזרק: לשורות חסרים ערכים.")
+        # ---------------- hero (a bold opening card) and routes (lines / options with a coloured badge)
+        elif kind == "hero":
+            its = [{"v": _s(x.get("value"), 24), "l": _s(x.get("label"), 40)} for x in raw_items if _s(x.get("value"), 24)]
+            if title:
+                out.append({**base, "tx": text, "it": its})
+        elif kind == "routes":
+            its = []
+            for x in raw_items:
+                badge = _s(x.get("label"), 10)
+                name = _s(x.get("title") or x.get("text"), 70)
+                if not badge:                                   # "קו 6 מגבעת שאול" -> badge "6", title "מגבעת שאול"
+                    m = re.match(r"^(?:קו\s*)?(\d{1,3}[א-ת]?)\s*[-:–,]?\s*(.*)$", name)
+                    if m and m.group(2):
+                        badge, name = m.group(1), m.group(2)
+                det = _s(x.get("detail"), 160)
+                if name or det:
+                    its.append({"b": badge, "l": name or det, "d": det if name else ""})
+            if its:
+                out.append({**base, "it": its})
         # ---------------- links
         elif kind == "links":
             its = []

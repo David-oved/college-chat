@@ -811,6 +811,11 @@ async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
         elif not tok.startswith(STATUS_OPEN):
             acc.append(tok)
         yield tok
+    if not "".join(acc).strip():
+        msg = "השרתים של ה-AI עמוסים כרגע ולא הצלחתי לענות. נסה שוב בעוד רגע, זה בדרך כלל עובר מהר."
+        acc.append(msg)
+        yield msg                                                # never an empty answer, even when every model failed
+        return
     if not kwargs.get("emit_status"):
         return
     text = "".join(acc)
