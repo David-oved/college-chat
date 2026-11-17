@@ -780,7 +780,7 @@ async def _followups(question: str, digest: str, api_key: str) -> List[str]:
         q = str(question or "").split("\n\n[")[0].strip()[:400]
         prompt = (
             "אתה אורי, העוזר של המרכז האקדמי לב. הסטודנט שאל שאלה וקיבל תשובה. הצע 3 עד 4 שאלות המשך שהוא עשוי לרצות לשאול עכשיו, "
-            "כפי שהוא עצמו היה כותב אותן (גוף ראשון, עד 6 מילים כל אחת, באותה שפה של השאלה).\n"
+            "כפי שהוא עצמו היה כותב אותן (גוף ראשון, עד 5 מילים (עד 30 תווים) כל אחת, באותה שפה של השאלה).\n"
             "הן חייבות להיות קשורות ישירות לשאלה ולתשובה ולהביא מידע שימושי נוסף שאפשר לענות עליו (על המכללה, או על Moodle האישי שלו). "
             "אסור: כן/לא, 'יש לי שאלה נוספת', שאלות כלליות, או חזרה על מה שכבר נענה. מחזיר מערך JSON של מחרוזות בלבד.\n\n"
             f"שאלת הסטודנט: {q}\nתקציר התשובה: {digest}"
@@ -794,7 +794,7 @@ async def _followups(question: str, digest: str, api_key: str) -> List[str]:
         out: List[str] = []
         for x in arr if isinstance(arr, list) else []:
             t = " ".join(str(x).split()).strip(" .\"'")
-            if 3 <= len(t) <= 46 and t not in out and t not in ("כן", "לא", "כן, תסביר", "תודה"):
+            if 3 <= len(t) <= 36 and t not in out and t not in ("כן", "לא", "כן, תסביר", "תודה"):
                 out.append(t)
         return out[:4]
     except Exception as e:
