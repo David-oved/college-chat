@@ -1371,7 +1371,7 @@ async def serve_student_app():
 
 @app.get("/admin")
 async def serve_admin_app():
-    return FileResponse(os.path.join(FRONTEND_DIR, "admin.html"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "admin.html"), headers={"Cache-Control": "no-cache, must-revalidate"})
 
 # קבצים סטטיים ל-PWA (manifest, service worker, אייקונים) ולסקריפט בדיקת העדכונים
 @app.get("/manifest.json")
