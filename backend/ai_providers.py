@@ -16,8 +16,20 @@ from http_client import shared_client
 BASES = {"openai": "https://api.openai.com/v1", "xai": "https://api.x.ai/v1", "groq": "https://api.groq.com/openai/v1"}
 LABELS = {"google": "Google Gemini", "openai": "OpenAI", "xai": "xAI Grok", "groq": "Groq"}
 DEFAULT_MODELS = {"openai": ["gpt-4.1-mini", "gpt-4o-mini"], "xai": ["grok-3-mini", "grok-3"], "groq": ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]}
-_NOT_CHAT = ("embedding", "audio", "tts", "whisper", "image", "dall", "realtime", "transcribe", "moderation", "guard", "playai", "orpheus", "distil-whisper", "search", "imagine", "davinci", "babbage", "computer", "codex", "instruct", "vision-preview")
+_NOT_CHAT = ("allam", "embedding", "audio", "tts", "whisper", "image", "dall", "realtime", "transcribe", "moderation", "guard", "playai", "orpheus", "distil-whisper", "search", "imagine", "davinci", "babbage", "computer", "codex", "instruct", "vision-preview")
 _CHAT_PREFIX = {"openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"), "xai": ("grok",), "groq": ("",)}
+
+
+# a model that answered "no" for good (wrong name, no tool support, too small, no access) is skipped for a while instead of failing on every question
+_BAD: Dict[tuple, float] = {}
+
+
+def _usable(kind: str, model: str) -> bool:
+    return _BAD.get((kind, model), 0) < time.time()
+
+
+def _mark_bad(kind: str, model: str, status: int) -> None:
+    _BAD[(kind, model)] = time.time() + (600 if status in (400, 401, 403, 404, 413) else 30 if status in (429, 500, 502, 503) else 0)
 
 
 def _lower_schema(x: Any) -> Any:
@@ -107,6 +119,7 @@ async def oa_stream(kind: str, key: str, model: str, payload: dict) -> AsyncGene
                                      headers={"Authorization": "Bearer " + key}, timeout=httpx.Timeout(connect=6.0, read=25.0, write=10.0, pool=6.0)) as r:
                 if r.status_code != 200:
                     print(f"[{kind}] {model} -> {r.status_code}: {(await r.aread()).decode('utf-8', errors='ignore')[:300]}")
+                    _mark_bad(kind, model, r.status_code)
                     return
                 async for line in r.aiter_lines():
                     if not line.startswith("data:"):
@@ -137,6 +150,8 @@ async def oa_stream(kind: str, key: str, model: str, payload: dict) -> AsyncGene
 async def stream_with_fallback(cfg: dict, payload: dict) -> AsyncGenerator[tuple, None]:
     """The models of the chosen provider in order (no parallel asking: this costs money). Stops at the first one that produces anything."""
     for model in cfg["models"]:
+        if not _usable(cfg["kind"], model):
+            continue
         got = False
         async for ev in oa_stream(cfg["kind"], cfg["key"], model, payload):
             got = True
@@ -148,12 +163,15 @@ async def stream_with_fallback(cfg: dict, payload: dict) -> AsyncGenerator[tuple
 async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
     """A single non-streamed call; returns a Gemini-shaped content {"parts": [...]} or None."""
     for model in cfg["models"]:
+        if not _usable(cfg["kind"], model):
+            continue
         try:
             async with shared_client(30.0) as client:
                 r = await client.post(BASES[cfg["kind"]] + "/chat/completions", json=_body(cfg["kind"], model, payload, False),
                                       headers={"Authorization": "Bearer " + cfg["key"]}, timeout=httpx.Timeout(connect=6.0, read=30.0, write=10.0, pool=6.0))
             if r.status_code != 200:
                 print(f"[{cfg['kind']}] {model} -> {r.status_code}: {r.text[:300]}")
+                _mark_bad(cfg["kind"], model, r.status_code)
                 continue
             msg = (r.json().get("choices") or [{}])[0].get("message") or {}
             parts: List[dict] = []

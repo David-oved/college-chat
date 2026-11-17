@@ -1147,18 +1147,35 @@ async def _stream_chat_response(
             return
 
         route = personal_route(question, bool(moodle_token and moodle_user_id))
-        if emit_status:
-            yield status_event(s="moodle" if route["skip_kb"] else "kb")
+        from rag_engine import _is_smalltalk, _KB_MARKERS
+        head = question.split("\n\n[")[0]
+        # Only a plainly college-information question is searched up front (the answer needs it anyway). Everything else goes STRAIGHT to the model, which
+        # decides: it can call search_college_info, the Moodle tools, or answer at once. (A greeting or a Moodle question never waits for a search.)
+        inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and bool(_KB_MARKERS.search(head))
+        use_tool = (not inline_kb) and (not _is_smalltalk(question))
+        if emit_status and inline_kb:
+            yield status_event(s="kb")
+        elif emit_status and route["skip_kb"]:
+            yield status_event(s="moodle")
 
-        async def search():
-            if route["skip_kb"]:
-                return []                                          # personal Moodle question: nothing to look up in the college's information
+        async def search_q(q):
             try:
-                embedding = await get_embedding(question, api_key)
+                embedding = await get_embedding(q, api_key)
                 return await db.search_similar_chunks(embedding, top_k=3)
             except Exception as e:
                 print(f"[chat] knowledge search failed: {type(e).__name__}: {e}")
                 return []
+
+        async def search():
+            return await search_q(question) if inline_kb else []
+
+        # ambiguous questions: the search starts at once IN PARALLEL with the model's first call, so if the model asks for it the result is already there
+        spec = asyncio.create_task(search_q(head)) if (use_tool and not route["skip_kb"]) else None
+
+        async def kb_search(query):
+            if spec is not None and len(set(query.split()) & set(head.split())) >= max(1, min(len(head.split()), len(query.split())) // 2):
+                return await spec
+            return await search_q(query)
 
         (relevant_chunks, bot_identity, catalog, conversation_summary, recent_messages, memories, enabled_functions) = await asyncio.gather(
             search(),
@@ -1181,6 +1198,7 @@ async def _stream_chat_response(
             username=username, moodle_token=moodle_token, moodle_user_id=moodle_user_id,
             enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
             memories=memories, user_id=user_id, emit_status=emit_status, lang=lang,
+            kb_search=kb_search if use_tool else None,
         )
 
         # הגנה מתקיעות: אם שום דבר לא יוצא 45 שניות (Gemini/Moodle תקועים) - לא משאירים את הסטודנט מול ספינר לנצח

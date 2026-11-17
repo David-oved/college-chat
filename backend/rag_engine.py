@@ -239,6 +239,18 @@ async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_t
         print(f"[chat] Gemini stream error with {model_name}: {type(e).__name__}: {e}")
 
 
+def _gemini_safe(turns: List[dict]) -> List[dict]:
+    """A tool call that another provider made (OpenAI / Groq / Grok) has no thought signature; Gemini 3 refuses history without one, so the documented dummy value is added."""
+    out = []
+    for t in turns:
+        parts = t.get("parts") or []
+        if t.get("role") == "model" and any(isinstance(x, dict) and x.get("functionCall") and "thoughtSignature" not in x for x in parts):
+            parts = [({**x, "thoughtSignature": "skip_thought_signature_validator"} if isinstance(x, dict) and x.get("functionCall") and "thoughtSignature" not in x else x) for x in parts]
+            t = {**t, "parts": parts}
+        out.append(t)
+    return out
+
+
 async def _other_provider():
     """The chosen non-Google provider with its key and models, or None (then Google is used)."""
     try:
@@ -247,7 +259,8 @@ async def _other_provider():
         return None
     kind = cfg.get("active")
     if kind in ai_providers.BASES and cfg.get(kind + "_key"):
-        return {"kind": kind, "key": cfg[kind + "_key"], "models": cfg.get(kind + "_models") or ai_providers.DEFAULT_MODELS[kind]}
+        chosen = cfg.get(kind + "_models") or []
+        return {"kind": kind, "key": cfg[kind + "_key"], "models": chosen + [m for m in ai_providers.DEFAULT_MODELS[kind] if m not in chosen]}
     return None
 
 
@@ -270,6 +283,8 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
         if got:
             return
     order = await _model_order(models)
+    if other:
+        payload["contents"] = _gemini_safe(payload["contents"])
     async with gemini_queue_semaphore:
         for attempt in range(2):
             q: asyncio.Queue = asyncio.Queue()
@@ -371,6 +386,8 @@ async def _generate_once(
         if res:
             return res
     order = await _model_order()
+    if other:
+        payload["contents"] = _gemini_safe(payload["contents"])
     async with gemini_queue_semaphore:
         for model_name in order:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -505,6 +522,19 @@ RICH_ADDENDUM = """
 אל תציף בסקרים: רק כשזה באמת חוסך הקלדה או מבהיר משהו, לא בכל תשובה ולא על מידע רגיש. אל תחזור על רשימת האפשרויות בטקסט שמעל הסקר.
 """
 
+# The question goes straight to the model; it decides if it needs the college's information (this tool), Moodle data (the Moodle tools), or nothing.
+SEARCH_DECL = {
+    "name": "search_college_info",
+    "description": "מחפש במאגר המידע הרשמי של המכללה (נהלים, שכר לימוד, מעונות, שעות פעילות, אנשי קשר, קמפוסים, לוח שנה, מלגות, רישום ועוד) ומחזיר את הקטעים הרלוונטיים. חובה לקרוא לו לפני כל תשובה על המכללה עצמה.",
+    "parameters": {"type": "OBJECT", "properties": {"query": {"type": "STRING", "description": "מה לחפש, בעברית, בניסוח קצר וברור של הנושא (למשל: שכר לימוד תואר ראשון, שעות מזכירות, ערעור על ציון)"}}, "required": ["query"]},
+}
+
+KB_TOOL_NOTE = """
+
+=== מידע על המכללה: חיפוש לפי צורך ===
+מידע על המכללה אינו מצורף מראש. כל שאלה על המכללה עצמה (נהלים, מחירים, מעונות, שעות, אנשי קשר, קמפוסים, מלגות, רישום, לוח שנה) - קודם קרא לכלי search_college_info, ורק אחרי שחזר ענה לפי מה שהוא החזיר ובדיוק לפיו (אל תענה על המכללה מהזיכרון, ואל תקרא ל-show_ui באותו צעד עם החיפוש). שאלה אישית על Moodle, הודעת פתיחה או תודה, או שיחה כללית - ענה ישר בלי לחפש. אם החיפוש לא החזיר כלום: אין לך מידע רשמי על כך, אמור זאת.
+"""
+
 PRECEDENCE_ADDENDUM = """
 
 === סדר עדיפויות (במקרה של סתירה בין ההוראות) ===
@@ -597,6 +627,7 @@ async def _stream_chat_inner(
     user_id: Optional[str] = None,
     emit_status: bool = False,
     lang: str = "",
+    kb_search=None,
 ) -> AsyncGenerator[str, None]:
     """
     מנוע הצ'אט המאוחד: כלי Moodle (אם יש חיבור) + כלי זיכרון (אם יש משתמש) בסיבוב החלטה אחד, ואז תשובה מוזרמת.
@@ -620,6 +651,8 @@ async def _stream_chat_inner(
     declarations = [d for grp in moodle_tools for d in grp.get("functionDeclarations", [])]
     if user_id:
         declarations = declarations + MEMORY_TOOLS[0]["functionDeclarations"]
+    if kb_search is not None:
+        declarations = declarations + [SEARCH_DECL]               # the model decides whether the college's information is needed
     declarations = declarations + UI_TOOLS[0]["functionDeclarations"]          # the display kit is for every answer, not only Moodle ones
     tools = [{"functionDeclarations": declarations}] if declarations else []
     if _is_smalltalk(question):
@@ -644,7 +677,7 @@ async def _stream_chat_inner(
         extra += MOODLE_SYSTEM_ADDENDUM
     if user_id:
         extra += MEMORY_ADDENDUM + build_memory_block(memories)
-    extra += moodle_off_note + PRECEDENCE_ADDENDUM
+    extra += moodle_off_note + (KB_TOOL_NOTE if kb_search is not None else "") + PRECEDENCE_ADDENDUM
 
     user_turn_text = _build_chat_user_turn(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
@@ -730,6 +763,12 @@ async def _stream_chat_inner(
                 if blocks:
                     _cd()["ui"] = blocks
                 return msg, None
+            if name == "search_college_info" and kb_search is not None:
+                found = await kb_search(str(args.get("query") or question)[:300])
+                if not found:
+                    return "לא נמצא מידע רלוונטי במאגר המכללה על הנושא הזה.", None
+                body = "\n\n---\n\n".join(f"מקור: {c.get('title', 'נהלי מכללה')}\nתוכן: {c['text']}" for c in found)
+                return body, {"s": "kbdone", "t": str(found[0].get("title") or "")[:60]}
             if name in moodle_names:
                 return await execute_moodle_function(name, args, moodle_token, moodle_user_id), None
             return f"הכלי {name} לא זמין.", None
