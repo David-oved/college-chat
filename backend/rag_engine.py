@@ -279,6 +279,7 @@ async def _generate_once(
     tools: Optional[List[dict]] = None,
     max_output_tokens: int = 300,
     call_type: str = "other",
+    tool_config: Optional[dict] = None,
 ) -> Optional[dict]:
     """
     קריאה בודדת (לא מוזרמת) ל-Gemini - משמשת לסיבוב ה"החלטה" של function calling
@@ -291,6 +292,8 @@ async def _generate_once(
     }
     if tools:
         payload["tools"] = tools
+    if tool_config:
+        payload["toolConfig"] = tool_config
 
     async with gemini_queue_semaphore:
         for model_name in DEFAULT_MODELS_TO_TRY:
@@ -373,7 +376,7 @@ RICH_ADDENDUM = """
 שם: קוראים לך אורי. כשמציגים אותך או שואלים "מי אתה / איך קוראים לך" - אתה אורי, העוזר של המרכז האקדמי לב. אל תציג את עצמך כמודל שפה, כ-Gemini או כ"עוזר AI" כללי.
 
 === תגובות עשירות באפליקציה ===
-אפשר לעצב: **טקסט מודגש** להדגשה (שמות קורסים, תאריכים, מילים חשובות), רשימות עם - או 1. וכותרת קצרה עם ## . קצר ומסודר עדיף על קיר טקסט.
+אפשר לעצב: **טקסט מודגש** להדגשה (שמות קורסים, תאריכים, מילים חשובות), רשימות עם - או 1. וכותרת קצרה עם ## . אבל תשובה ארוכה מ-3 שורות או מורכבת לא נכתבת כטקסט בכלל: היא מוצגת עם show_ui (כלל הברזל בהמשך). הטקסט הרגיל נשאר לתשובות קצרות ופשוטות.
 סקר ותגובות מהירות: כל סימן בשורה משלו, בסוף התשובה, לכל היותר אחד בהודעה, בלי אימוג'י, ובלי התווים | או ] בתוך הטקסטים:
 [[poll:multi|השאלה|אפשרות 1|אפשרות 2|אפשרות 3]]   - בחירה מרובה (2 עד 12 אפשרויות)
 [[poll:single|השאלה|אפשרות 1|אפשרות 2]]   - בחירה אחת
@@ -483,6 +486,7 @@ async def _stream_chat_inner(
     )
 
     allowed_parts = [user_turn_text]            # everything the model was given: contacts in a UI block must appear in this material or in a tool result
+    _cd()["allowed"] = allowed_parts            # the iron-rule guard (stream_chat_with_tools) validates its own cards against the same material
 
     async def final_answer(contents):
         if emit_status:
@@ -630,6 +634,59 @@ def _is_smalltalk(q: str) -> bool:
     return len(first) <= 24 and bool(_SMALLTALK.match(first))
 
 
+VISUAL_TOKEN = status_event(s="visual")          # tells the client: drop the text so far, the answer is being redrawn as cards (main.py also resets what is saved)
+
+_MARKERS = re.compile(r"\[\[[^\]]*\]\]")
+_LISTLINE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+", re.M)
+_NUMBERS = re.compile(r"\d[\d:.,/\-]*")
+_CONTACT = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|https?://|\b0\d{1,2}[-\s]?\d{6,8}\b|\*\d{3,5}")
+_FAILURE_OPEN = re.compile(r"^(?:לא הצלחתי|שגיאה|המערכת בעומס|התשובה התעכבה|אירעה שגיאה|מצטער)")
+
+
+def _needs_visual(text: str) -> bool:
+    """The iron rule's test: more than three screen lines of text, or something shorter but complex (a list, several numbers, contact details)."""
+    if any(m in text for m in ("[[ui:", "[[file:", "[[poll:")):
+        return False
+    t = _MARKERS.sub("", text).strip()
+    if len(t) < 45 or _FAILURE_OPEN.match(t) or _is_smalltalk(t):
+        return False
+    lines = [ln for ln in t.splitlines() if ln.strip()]
+    screen_lines = sum(max(1, -(-len(ln) // 48)) for ln in lines)            # about 48 characters fit in one line of the chat on a phone
+    if screen_lines > 3:
+        return True
+    if len(_LISTLINE.findall(t)) >= 2:
+        return True
+    if _CONTACT.search(t):
+        return True
+    return len(_NUMBERS.findall(t)) >= 3 and len(t) > 70
+
+
+async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[str, Any]]:
+    """Turns an answer that was written as text into validated show_ui blocks (a forced show_ui call). Returns [] when it cannot."""
+    try:
+        q = str(question or "").split("\n\n[")[0].strip()[:600]
+        prompt = (
+            "אתה אורי, העוזר של המרכז האקדמי לב. כתבת תשובה בטקסט, אבל כלל הברזל שלך: תשובה ארוכה מ-3 שורות או מורכבת מוצגת ויזואלית.\n"
+            "הצג עכשיו את אותה תשובה בדיוק בעזרת הכלי show_ui, כמה בלוקים (2 עד 5) שמסודרים לפי המתכונים שלמטה.\n"
+            "אל תוסיף מידע שלא נמצא בתשובה, אל תשמיט עובדה, מספר, תאריך או פרט קשר, ואל תכתוב טקסט מחוץ לקריאה לכלי. "
+            "שמור על הניסוח הקצר והישיר; המטרה היא מבנה ובהירות. כתוב את תוכן הבלוקים באותה שפה שבה כתובה התשובה.\n"
+            f"{UI_ADDENDUM}\n\nשאלת הסטודנט:\n{q}\n\nהתשובה שכתבת:\n{text[:3500]}"
+        )
+        content = await _generate_once(
+            [{"role": "user", "parts": [{"text": prompt}]}], api_key, tools=UI_TOOLS, max_output_tokens=2200, call_type="ui_guard",
+            tool_config={"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": ["show_ui"]}},
+        )
+        for part in (content or {}).get("parts", []):
+            fc = part.get("functionCall") if isinstance(part, dict) else None
+            if fc and fc.get("name") == "show_ui":
+                allowed = "\n".join(str(x) for x in (_cd().get("allowed") or [])) or text
+                blocks, _msg = resolve_blocks((fc.get("args") or {}).get("blocks"), _cd().get("items", {}), allowed)
+                return blocks
+    except Exception as e:
+        print(f"[ui-guard] conversion failed: {type(e).__name__}: {e}")
+    return []
+
+
 async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
     """עוטף את מנוע הצ'אט ומוודא שהבוט לא מבטיח קובץ שלא צירף: אם כתב "הנה הקובץ" בלי סמן - מצרפים את הקובץ שהכלי מצא, ואם לא נמצא כלום - אומרים את זה בפשטות."""
     from moodle_tools import get_cards as _gc
@@ -639,6 +696,22 @@ async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
             acc.append(tok)
         yield tok
     text = "".join(acc)
+    # THE IRON RULE: a long or complex answer is never left as text. If the model wrote one anyway, it is converted to visual cards here.
+    if kwargs.get("emit_status") and _needs_visual(text):
+        question = args[0] if args else kwargs.get("question", "")
+        api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
+        quick = re.findall(r"\[\[quick\|[^\]\n]*\]\]", text)
+        yield VISUAL_TOKEN                                          # the client replaces the text with a "designing it" line
+        blocks = await _visualize_text(question, text, api_key)
+        if blocks:
+            db.bump_api_usage("ui:guard")
+            for blk in blocks:
+                db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
+            yield f"[[ui:{encode_blocks(blocks)}]]"
+            if quick:
+                yield "\n\n" + "\n".join(quick[:1])
+            return
+        yield text                                                  # the conversion failed: the answer comes back as it was
     if "[[file:" in text:
         return
     card = _gc() or {}

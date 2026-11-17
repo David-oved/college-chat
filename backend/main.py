@@ -40,6 +40,7 @@ from rag_engine import (
     stream_chat_with_tools,
     status_event,
     STATUS_OPEN,
+    VISUAL_TOKEN,
     stream_knowledge_draft,
     summarize_conversation,
 )
@@ -1047,6 +1048,8 @@ async def _stream_chat_response(
                 print(f"[chat] stream stalled for conversation {conversation_id}")
                 break
             if token.startswith(STATUS_OPEN):      # אירוע סטטוס: עובר ללקוח, אבל לא חלק מהתשובה שנשמרת
+                if token == VISUAL_TOKEN:
+                    full_answer = ""               # the text so far is being replaced by cards: what is saved must be the replacement
                 if emit_status:
                     yield token
                 continue
