@@ -24,6 +24,20 @@ _CHAT_PREFIX = {"openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"), "xai": ("grok"
 _BAD: Dict[tuple, float] = {}
 
 
+def key_mismatch(provider: str, key: str) -> str:
+    """"" when the key looks like it belongs to this provider; otherwise a short explanation (a Groq key pasted into the xAI row, and the like)."""
+    k = key.strip()
+    if k.startswith("gsk_") and provider != "groq":
+        return "זה מפתח של Groq (gsk_...)"
+    if k.startswith("xai-") and provider != "xai":
+        return "זה מפתח של xAI Grok (xai-...)"
+    if k.startswith("sk-") and provider != "openai":
+        return "זה נראה כמו מפתח OpenAI (sk-...)"
+    if k.startswith("AIza") and provider != "google":
+        return "זה מפתח של Google (AIza...)"
+    return ""
+
+
 def _count(prefix: str, kind: str, model: str) -> None:
     try:
         from db import db
@@ -118,10 +132,11 @@ def _loads(s: str) -> dict:
         return {}
 
 
-async def oa_stream(kind: str, key: str, model: str, payload: dict) -> AsyncGenerator[tuple, None]:
+async def oa_stream(kind: str, key: str, model: str, payload: dict, count_public: bool = True) -> AsyncGenerator[tuple, None]:
     """("text", piece) as it arrives, then ("calls", [functionCall parts]). Ends silently on any failure."""
     calls: Dict[int, Dict[str, str]] = {}
-    _count("model", kind, model)
+    if count_public:
+        _count("model", kind, model)
     try:
         async with shared_client(30.0) as client:
             async with client.stream("POST", BASES[kind] + "/chat/completions", json=_body(kind, model, payload, True),
@@ -158,16 +173,23 @@ async def oa_stream(kind: str, key: str, model: str, payload: dict) -> AsyncGene
 
 async def stream_with_fallback(cfg: dict, payload: dict) -> AsyncGenerator[tuple, None]:
     """The models of the chosen provider in order (no parallel asking: this costs money). Stops at the first one that produces anything."""
+    uid = cfg.get("user_id")
     for model in cfg["models"]:
         if not _usable(cfg["kind"], model):
             continue
         got = False
-        async for ev in oa_stream(cfg["kind"], cfg["key"], model, payload):
+        if uid:
+            from db import db
+            db.bump_user_ai(uid, f"{cfg['kind']}/{model}")
+        async for ev in oa_stream(cfg["kind"], cfg["key"], model, payload, count_public=not uid):
             got = True
             yield ev
         if got:
-            _count("win", cfg["kind"], model)
+            if not uid:
+                _count("win", cfg["kind"], model)
             return
+        if uid:
+            db.bump_user_ai(uid, f"{cfg['kind']}/{model}", fail=True)
 
 
 async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
@@ -175,7 +197,12 @@ async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
     for model in cfg["models"]:
         if not _usable(cfg["kind"], model):
             continue
-        _count("model", cfg["kind"], model)
+        uid = cfg.get("user_id")
+        if uid:
+            from db import db
+            db.bump_user_ai(uid, f"{cfg['kind']}/{model}")
+        else:
+            _count("model", cfg["kind"], model)
         try:
             async with shared_client(30.0) as client:
                 r = await client.post(BASES[cfg["kind"]] + "/chat/completions", json=_body(cfg["kind"], model, payload, False),
@@ -183,6 +210,8 @@ async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
             if r.status_code != 200:
                 print(f"[{cfg['kind']}] {model} -> {r.status_code}: {r.text[:300]}")
                 _mark_bad(cfg["kind"], model, r.status_code)
+                if uid:
+                    db.bump_user_ai(uid, f"{cfg['kind']}/{model}", fail=True)
                 continue
             msg = (r.json().get("choices") or [{}])[0].get("message") or {}
             parts: List[dict] = []
@@ -193,7 +222,8 @@ async def oa_generate(cfg: dict, payload: dict) -> Optional[dict]:
                 if fn.get("name"):
                     parts.append({"functionCall": {"name": fn["name"], "args": _loads(fn.get("arguments"))}})
             if parts:
-                _count("win", cfg["kind"], model)
+                if not uid:
+                    _count("win", cfg["kind"], model)
                 return {"parts": parts}
         except asyncio.CancelledError:
             raise

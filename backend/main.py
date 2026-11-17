@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pypdf import PdfReader
 
 from db import db
@@ -815,6 +815,102 @@ async def test_model(req: ModelTestRequest):
     return await (test_connectivity(key, req.model) if provider == "google" else ai_providers.test_model(provider, key, req.model))
 
 
+# ---- a student's own AI key (developers): hidden in the app under the memory settings; every call is only for the signed-in student
+class MyAiKey(BaseModel):
+    provider: str
+    api_key: str = Field(..., min_length=8, max_length=300)
+
+
+class MyAiChoice(BaseModel):
+    models: List[str] = Field(default_factory=list, max_length=3)
+    mode: str = "personal"
+
+
+class MyAiTest(BaseModel):
+    model: str = Field(..., min_length=3, max_length=90)
+
+
+def _my_ai_view(cfg):
+    if not cfg:
+        return {"has_key": False, "mode": "public", "kind": "", "masked": "", "models": []}
+    return {"has_key": True, "mode": cfg.get("mode", "public"), "kind": cfg["kind"], "masked": _mask(cfg["key"]), "models": cfg.get("models") or []}
+
+
+@app.get("/api/me/ai")
+async def my_ai(session=Depends(require_student)):
+    return _my_ai_view(await db.get_user_ai(session["user_id"]))
+
+
+@app.post("/api/me/ai/key")
+async def my_ai_save_key(req: MyAiKey, session=Depends(require_student)):
+    _rate_limit("meai:" + session["user_id"], 30, 60)
+    p = _prov(req.provider)
+    key = req.api_key.strip()
+    why = ai_providers.key_mismatch(p, key)
+    if why:
+        raise HTTPException(status_code=400, detail=why + ", בחר את הספק המתאים")
+    await db.set_user_ai(session["user_id"], {"mode": "public", "kind": p, "key": key, "models": []})      # saved, but not used until the student switches it on
+    return _my_ai_view(await db.get_user_ai(session["user_id"]))
+
+
+@app.post("/api/me/ai/models-list")
+async def my_ai_models(session=Depends(require_student)):
+    _rate_limit("meai:" + session["user_id"], 30, 60)
+    cfg = await db.get_user_ai(session["user_id"])
+    if not cfg:
+        raise HTTPException(status_code=400, detail="לא נשמר מפתח")
+    res = await (list_chat_models(cfg["key"]) if cfg["kind"] == "google" else ai_providers.list_models(cfg["kind"], cfg["key"]))
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail="המפתח לא הצליח לשלוף מודלים (קוד " + str(res.get("status_code")) + ")")
+    return {"models": [m["name"] for m in res["models"]], "chosen": cfg.get("models") or []}
+
+
+@app.post("/api/me/ai/test")
+async def my_ai_test(req: MyAiTest, session=Depends(require_student)):
+    _rate_limit("meai:" + session["user_id"], 30, 60)
+    cfg = await db.get_user_ai(session["user_id"])
+    if not cfg or not _MODEL_NAME.match(req.model):
+        raise HTTPException(status_code=400, detail="אין מפתח או שם מודל לא תקין")
+    r = await (test_connectivity(cfg["key"], req.model) if cfg["kind"] == "google" else ai_providers.test_model(cfg["kind"], cfg["key"], req.model))
+    return {"success": bool(r.get("success")), "latency_ms": r.get("latency_ms"), "status_code": r.get("status_code"), "error": "" if r.get("success") else str(r.get("error") or "")[:200]}
+
+
+@app.post("/api/me/ai/choose")
+async def my_ai_choose(req: MyAiChoice, session=Depends(require_student)):
+    _rate_limit("meai:" + session["user_id"], 30, 60)
+    cfg = await db.get_user_ai(session["user_id"])
+    if not cfg:
+        raise HTTPException(status_code=400, detail="לא נשמר מפתח")
+    models = [m.strip() for m in req.models if m.strip()]
+    if len(set(models)) != len(models) or not all(_MODEL_NAME.match(m) for m in models):
+        raise HTTPException(status_code=400, detail="שמות מודלים לא תקינים")
+    if req.mode == "personal" and not models and cfg["kind"] == "google":
+        raise HTTPException(status_code=400, detail="בחר מודל לפני ההפעלה")
+    cfg["models"] = models
+    cfg["mode"] = "personal" if req.mode == "personal" else "public"
+    await db.set_user_ai(session["user_id"], cfg)
+    return _my_ai_view(cfg)
+
+
+@app.delete("/api/me/ai")
+async def my_ai_delete(session=Depends(require_student)):
+    await db.set_user_ai(session["user_id"], None)
+    return {"deleted": True}
+
+
+@app.get("/api/me/ai/usage")
+async def my_ai_usage(session=Depends(require_student)):
+    """The student's own calls on their own key: the last 7 days, per day and model. Nothing about anyone else."""
+    rows = await db.get_user_ai_usage(session["user_id"])
+    days: Dict[str, Dict[str, int]] = {}
+    for r in rows:
+        d = days.setdefault(r["day"], {"calls": 0, "fails": 0})
+        d["calls"] += r["calls"]
+        d["fails"] += r["fails"]
+    return {"days": [{"day": k, **v} for k, v in sorted(days.items())], "models": rows,
+            "total_calls": sum(v["calls"] for v in days.values()), "total_fails": sum(v["fails"] for v in days.values())}
+
+
 @app.get("/api/admin/knowledge", dependencies=[Depends(require_admin)])
 async def list_knowledge():
     """מחזיר את כל קטעי המידע של המכללה השמורים במאגר"""
@@ -1186,6 +1282,12 @@ async def _stream_chat_response(
             db.list_memories(user_id) if user_id else _empty(),
             db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else _none(),
         )
+        try:                                                      # the student's own AI key, if they switched it on (developers)
+            from rag_engine import _USER_AI
+            ucfg = await db.get_user_ai(user_id) if user_id else None
+            _USER_AI.set({**ucfg, "user_id": user_id} if (ucfg and ucfg.get("mode") == "personal") else None)
+        except Exception:
+            pass
         if emit_status and relevant_chunks:
             yield status_event(s="kbdone", t=str(relevant_chunks[0].get("title") or "")[:60])      # what it found (the client shows "found: ...")
         if moodle_token and moodle_user_id:

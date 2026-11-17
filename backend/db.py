@@ -74,6 +74,16 @@ class Database:
                         await cur.execute(f"alter table system_config add column if not exists {col} text;")
             except Exception as e:
                 print(f"[db] could not ensure system_config.{col}: {e}")
+        # the student's own AI key/model (developers): one encrypted text on the account, and their own usage per day and model (kept 7 days)
+        try:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("alter table app_users add column if not exists ai_cfg text;")
+                    await cur.execute("""create table if not exists user_ai_usage (
+                        user_id uuid not null references app_users(id) on delete cascade, usage_date date not null, model text not null,
+                        calls int not null default 0, fails int not null default 0, primary key (user_id, usage_date, model));""")
+        except Exception as e:
+            print(f"[db] could not ensure the personal AI tables: {e}")
         # זיכרון הבוט לכל משתמש: עובדות שהסטודנט סיפר (למשל "עזבתי את הקורס X") - נשמרות בשרת, לכל משתמש לחוד
         try:
             async with pool.connection() as conn:
@@ -188,6 +198,65 @@ class Database:
             async with conn.cursor() as cur:
                 await cur.execute("update system_config set gemini_models = %s where id = 1;", (",".join(names) if names else None,))
         self.invalidate_config_cache()
+
+    # ---- the student's own AI key (encrypted with a key derived from the server secret; never shown again, only masked)
+    @staticmethod
+    def _fernet():
+        import base64 as _b, hashlib as _h
+        from cryptography.fernet import Fernet
+        from auth import _session_secret
+        return Fernet(_b.urlsafe_b64encode(_h.sha256(b"user-ai-key-v1:" + _session_secret()).digest()))
+
+    async def get_user_ai(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """{"mode": "personal"|"public", "kind", "key", "models": []} or None."""
+        try:
+            async with _get_pool().connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("select ai_cfg from app_users where id = %s;", (user_id,))
+                    row = await cur.fetchone()
+            raw = row[0] if row else None
+            if not raw:
+                return None
+            import json as _j
+            cfg = _j.loads(self._fernet().decrypt(raw.encode()).decode())
+            return cfg if isinstance(cfg, dict) and cfg.get("kind") and cfg.get("key") else None
+        except Exception:
+            return None
+
+    async def set_user_ai(self, user_id: str, cfg: Optional[Dict[str, Any]]):
+        import json as _j
+        token = self._fernet().encrypt(_j.dumps(cfg, ensure_ascii=False).encode()).decode() if cfg else None
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("update app_users set ai_cfg = %s where id = %s;", (token, user_id))
+                if not cfg:
+                    await cur.execute("delete from user_ai_usage where user_id = %s;", (user_id,))
+
+    def bump_user_ai(self, user_id: str, model: str, fail: bool = False):
+        import asyncio as _a
+
+        async def _run():
+            try:
+                async with _get_pool().connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute(
+                            f"insert into user_ai_usage (user_id, usage_date, model, calls, fails) values (%s, current_date, %s, {0 if fail else 1}, {1 if fail else 0}) "
+                            f"on conflict (user_id, usage_date, model) do update set calls = user_ai_usage.calls + {0 if fail else 1}, fails = user_ai_usage.fails + {1 if fail else 0};",
+                            (user_id, model[:120]))
+            except Exception:
+                pass
+        try:
+            _a.get_running_loop().create_task(_run())
+        except RuntimeError:
+            pass
+
+    async def get_user_ai_usage(self, user_id: str) -> List[Dict[str, Any]]:
+        """This student's own calls on their own key, the last 7 days (older rows are removed)."""
+        async with _get_pool().connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("delete from user_ai_usage where user_id = %s and usage_date < current_date - 6;", (user_id,))
+                await cur.execute("select usage_date::text as day, model, calls, fails from user_ai_usage where user_id = %s order by usage_date desc, model;", (user_id,))
+                return await cur.fetchall()
 
     async def _get_ai_provider_cfg_raw(self) -> Dict[str, Any]:
         out = {"active": "google", "openai_key": "", "xai_key": "", "groq_key": "", "openai_models": [], "xai_models": [], "groq_models": []}

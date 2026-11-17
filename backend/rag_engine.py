@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextvars
 import json
 import re
 import time
@@ -194,13 +195,16 @@ HEDGE_AFTER = 5.0            # a model that has not answered after this many sec
 ATTEMPT_LIMIT = 22.0         # no answer at all from anyone within this time: that round is given up
 
 
-async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_type: str):
+async def _one_model_stream(model_name: str, payload: dict, api_key: str, call_type: str, personal: Optional[str] = None):
     """One request to one model (no retry here). Yields ("text", piece) / ("calls", [functionCall...]); simply ends when it fails or has nothing."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
     calls: List[dict] = []
     try:
-        db.bump_api_usage(call_type)
-        db.bump_api_usage("model:google/" + model_name)
+        if personal:
+            db.bump_user_ai(personal, "google/" + model_name)                      # the student's own calls: counted for them only, not in the public numbers
+        else:
+            db.bump_api_usage(call_type)
+            db.bump_api_usage("model:google/" + model_name)
         async with shared_client(30.0) as client:
             async with client.stream("POST", url, json=payload, timeout=_model_timeout(model_name)) as response:
                 gemini_stats.record(model_name, response.status_code)
@@ -252,8 +256,16 @@ def _gemini_safe(turns: List[dict]) -> List[dict]:
     return out
 
 
+# the student's own key for THIS request (set by the chat endpoint); None = the public setup
+_USER_AI: contextvars.ContextVar = contextvars.ContextVar("user_ai", default=None)
+
+
 async def _other_provider():
     """The chosen non-Google provider with its key and models, or None (then Google is used)."""
+    ua = _USER_AI.get()
+    if ua and ua.get("kind") in ai_providers.BASES:
+        chosen = ua.get("models") or []
+        return {"kind": ua["kind"], "key": ua["key"], "models": chosen + [m for m in ai_providers.DEFAULT_MODELS[ua["kind"]] if m not in chosen], "user_id": ua.get("user_id")}
     try:
         cfg = await db.get_ai_provider_cfg()
     except Exception:
@@ -266,6 +278,21 @@ async def _other_provider():
 
 
 async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer", models: Optional[List[str]] = None):
+    ua = _USER_AI.get()
+    if ua and ua.get("kind") == "google":                  # the student's own Google key goes first; if it gives nothing, the public setup answers
+        got = False
+        async for ev in _stream_gemini_core(contents, ua["key"], tools, max_output_tokens, call_type, ua.get("models") or None, ua.get("user_id")):
+            if ev[0] == "failed":
+                break
+            got = True
+            yield ev
+        if got:
+            return
+    async for ev in _stream_gemini_core(contents, api_key, tools, max_output_tokens, call_type, models, None):
+        yield ev
+
+
+async def _stream_gemini_core(contents, api_key: str, tools=None, max_output_tokens: int = 800, call_type: str = "chat_answer", models: Optional[List[str]] = None, personal: Optional[str] = None):
     """
     One streamed call to Gemini (with tools if asked): yields ("text", piece) as it arrives and at the end ("calls", [functionCall...]) if the model asked for tools,
     or ("failed", None) when nobody answered. Speed under load: the models are asked in order, but a model that is slow (HEDGE_AFTER seconds) does not block -
@@ -275,7 +302,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
     payload = {"contents": turns, "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_output_tokens}}
     if tools:
         payload["tools"] = tools
-    other = await _other_provider()
+    other = None if personal else await _other_provider()
     if other:                                                  # the admin chose OpenAI / Grok: they go first; if they give nothing, Google below is the safety net
         got = False
         async for ev in ai_providers.stream_with_fallback(other, payload):
@@ -296,7 +323,7 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
 
             async def pump(model_name: str):
                 try:
-                    async for ev in _one_model_stream(model_name, payload, api_key, call_type):
+                    async for ev in _one_model_stream(model_name, payload, api_key, call_type, personal):
                         await q.put((model_name, ev))
                 finally:
                     await q.put((model_name, None))                    # this model is finished (with or without an answer)
@@ -331,6 +358,8 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                     if ev is None:
                         active -= 1
                         if winner is None:
+                            if personal:
+                                db.bump_user_ai(personal, "google/" + model_name, fail=True)
                             _speed_note(model_name, max(20.0, time.monotonic() - started.get(model_name, time.monotonic())))      # it gave nothing: it counts as slow
                         if winner is not None and model_name == winner:
                             return                                      # the winner finished: done
@@ -341,7 +370,8 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
                         continue
                     if winner is None:
                         winner = model_name                             # the first to produce anything: the others are not needed
-                        db.bump_api_usage("win:google/" + winner)
+                        if not personal:
+                            db.bump_api_usage("win:google/" + winner)
                         _speed_note(winner, time.monotonic() - started.get(winner, time.monotonic()))
                         for t, m in zip(tasks, order[:len(tasks)]):
                             if m != winner and not t.done():
@@ -357,7 +387,16 @@ async def _stream_gemini_events(contents, api_key: str, tools=None, max_output_t
     yield ("failed", None)
 
 
-async def _generate_once(
+async def _generate_once(contents, api_key, tools=None, max_output_tokens=300, call_type="other", tool_config=None, gen_extra=None):
+    ua = _USER_AI.get()
+    if ua and ua.get("kind") == "google":
+        res = await _generate_core(contents, ua["key"], tools, max_output_tokens, call_type, tool_config, gen_extra, ua.get("models") or None, ua.get("user_id"))
+        if res:
+            return res
+    return await _generate_core(contents, api_key, tools, max_output_tokens, call_type, tool_config, gen_extra, None, None)
+
+
+async def _generate_core(
     contents: List[dict],
     api_key: str,
     tools: Optional[List[dict]] = None,
@@ -365,6 +404,8 @@ async def _generate_once(
     call_type: str = "other",
     tool_config: Optional[dict] = None,
     gen_extra: Optional[dict] = None,
+    models: Optional[List[str]] = None,
+    personal: Optional[str] = None,
 ) -> Optional[dict]:
     """
     קריאה בודדת (לא מוזרמת) ל-Gemini - משמשת לסיבוב ה"החלטה" של function calling
@@ -382,24 +423,29 @@ async def _generate_once(
     if gen_extra:
         payload["generationConfig"].update(gen_extra)
 
-    other = await _other_provider()
+    other = None if personal else await _other_provider()
     if other:
         res = await ai_providers.oa_generate(other, payload)
         if res:
             return res
-    order = await _model_order()
+    order = await _model_order(models)
     if other:
         payload["contents"] = _gemini_safe(payload["contents"])
     async with gemini_queue_semaphore:
         for model_name in order:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             try:
-                db.bump_api_usage(call_type)
-                db.bump_api_usage("model:google/" + model_name)
+                if personal:
+                    db.bump_user_ai(personal, "google/" + model_name)
+                else:
+                    db.bump_api_usage(call_type)
+                    db.bump_api_usage("model:google/" + model_name)
                 async with shared_client(30.0) as client:
                     resp = await client.post(url, json=payload, timeout=_model_timeout(model_name))
-                if resp.status_code == 200:
+                if resp.status_code == 200 and not personal:
                     db.bump_api_usage("win:google/" + model_name)
+                elif resp.status_code != 200 and personal:
+                    db.bump_user_ai(personal, "google/" + model_name, fail=True)
                     candidates = resp.json().get("candidates", [])
                     return candidates[0].get("content") if candidates else None
                 if resp.status_code not in (429, 500, 502, 503, 504):
