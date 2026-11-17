@@ -574,6 +574,8 @@ async def _stream_chat_inner(
             for blk in ui_blocks_out:
                 db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
             yield f"[[ui:{encode_blocks(ui_blocks_out)}]]"          # the cards the model chose to show (validated by the server)
+            if all(p["functionCall"].get("name") == "show_ui" for p in calls):
+                return                       # the cards ARE the answer: no extra model round (saves several seconds). Data tools in the same step still get their final answer.
         contents.append({"role": "model", "parts": calls})
         contents.append({
             "role": "user",
