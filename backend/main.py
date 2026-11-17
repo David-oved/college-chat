@@ -216,6 +216,7 @@ class ChatQuestionV2Request(BaseModel):
     moodle_token: Optional[str] = None
     moodle_user_id: Optional[int] = None
     ctx: Optional[dict] = None  # הפריט שהסטודנט לחץ עליו בכרטיס (שם, קורס, מועד, תיאור) - ההקשר לשאלה
+    lang: Optional[str] = None  # the app's language (he / en / fr)
     status: bool = False        # האם לשלוח גם אירועי סטטוס חיים ("מחפש קבצים...") בתוך הזרם - רק ללקוחות שיודעים לקרוא אותם
 
 
@@ -1039,6 +1040,7 @@ async def _stream_chat_response(
     user_id: Optional[str] = None,
     emit_status: bool = False,
     ctx: Optional[dict] = None,
+    lang: str = "",
 ) -> StreamingResponse:
     """
     ליבת הצ'אט המשותפת. מהירות: כל מה שהתשובה צריכה נשלף במקביל (כל סבב ל-DB עולה ~300ms), ההגדרות הקבועות במטמון, שמירת שאלת הסטודנט
@@ -1106,7 +1108,7 @@ async def _stream_chat_response(
             question + _ctx_text(ctx), relevant_chunks, api_key, bot_identity, catalog, conversation_summary, recent_messages or [],
             username=username, moodle_token=moodle_token, moodle_user_id=moodle_user_id,
             enabled_functions=set(enabled_functions) if enabled_functions is not None else None,
-            memories=memories, user_id=user_id, emit_status=emit_status,
+            memories=memories, user_id=user_id, emit_status=emit_status, lang=lang,
         )
 
         # הגנה מתקיעות: אם שום דבר לא יוצא 45 שניות (Gemini/Moodle תקועים) - לא משאירים את הסטודנט מול ספינר לנצח
@@ -1354,7 +1356,7 @@ async def chat_stream_endpoint_v2(req: ChatQuestionV2Request, session=Depends(re
         moodle_wstoken, moodle_uid = token_value, int(uid_value)
     return await _stream_chat_response(
         req.conversation_id, question, session.get("display_name") or session["username"], moodle_wstoken, moodle_uid,
-        user_id=session["user_id"], emit_status=bool(req.status), ctx=req.ctx,
+        user_id=session["user_id"], emit_status=bool(req.status), ctx=req.ctx, lang=(req.lang or "")[:5],
     )
 
 

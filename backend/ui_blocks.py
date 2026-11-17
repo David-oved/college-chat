@@ -164,8 +164,17 @@ UI_TOOLS = [{"functionDeclarations": [{
 }]}]
 
 
+# the small models now and then slip an Arabic letter into a Hebrew word ("מחيري"): in text that is clearly Hebrew those letters are put back
+_AR2HE = str.maketrans("يىكلمنهورتبدسعفصقشجحخطزا", "ייכלמנהורתבדסעפצקשגחכטזא")
+_HEB = re.compile(r"[א-ת]")
+_ARB = re.compile(r"[؀-ۿ]")
+
+
 def _s(v: Any, n: int) -> str:
-    return " ".join(str(v if v is not None else "").split())[:n]
+    t = " ".join(str(v if v is not None else "").split())
+    if _ARB.search(t) and len(_HEB.findall(t)) > len(_ARB.findall(t)):
+        t = t.translate(_AR2HE)
+    return t[:n]
 
 
 def _digits(s: str) -> str:
@@ -280,8 +289,8 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
             acts = _clean_actions(b.get("items"), allowed)
             asked = len([x for x in raw_items])
             dropped += max(0, asked - len(acts))
-            if not title and not acts:
-                continue
+            if not acts and not text:
+                continue                                       # a name alone is not a contact card: nothing to call, write or open
             out.append({**base, "tx": text, "it": acts})
         # ---------------- hours
         elif kind == "hours":

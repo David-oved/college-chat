@@ -419,6 +419,7 @@ def _build_chat_user_turn(
     recent_messages: Optional[List[Dict[str, str]]],
     username: str = "",
     extra_system_instructions: str = "",
+    ui_lang: str = "",
 ) -> str:
     """מרכיב את תור הפתיחה (system prompt + הקשר RAG + היסטוריה + השאלה) - משותף לנתיב הרגיל ולנתיב Moodle."""
     if context_chunks:
@@ -430,9 +431,12 @@ def _build_chat_user_turn(
 
     # מידע בסיסי אמיתי שתמיד זמין למודל - לא תלוי בשליפת RAG - כדי שיוכל לחשב בעצמו
     # דברים כמו "האם המטלה הזו באיחור" (צריך גם תאריך נוכחי וגם תאריך הגשה, לא רק אחד מהם).
+    student_name = username if (username and not str(username).startswith("moodle_")) else "לא ידוע"
+    lang_name = {"he": "עברית", "en": "English", "fr": "Français"}.get(str(ui_lang or "").lower()[:2], "לא ידוע")
     basic_info_block = f"""
 === מידע בסיסי בזמן אמת (עובדתי ומדויק - אפשר להסתמך עליו לחישובים) ===
-שם המשתמש המחובר כרגע: {username or "לא ידוע"}
+שם פרטי של הסטודנט: {student_name}
+שפת הממשק של האפליקציה אצלו: {lang_name}
 תאריך ושעה נוכחיים: {_current_israel_time_block()}
 =========================================================================
 """
@@ -474,6 +478,34 @@ RICH_ADDENDUM = """
 כלל: הסטודנט לא אמור להקליד כדי להמשיך. אל תסיים תשובה בשאלה פתוחה בטקסט ("רוצה שאסביר?", "מה מעניין אותך?") ואל תבקש ממנו לענות "כן" או "לא" - כל שאלה שלך אליו מוצגת ככפתורים (quick) או כסקר (poll), עם אפשרויות קונקרטיות שקשורות למה שהוא שאל. כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורים, אל תנחש. בסוף כל תשובה השרת מוסיף בעצמו כפתורי המשך מתאימים, אז אין צורך שתוסיף אותם; הוסף quick או poll רק כשיש שאלה ממוקדת שאתה צריך את תשובתה.
 אל תציף בסקרים: רק כשזה באמת חוסך הקלדה או מבהיר משהו, לא בכל תשובה ולא על מידע רגיש. אל תחזור על רשימת האפשרויות בטקסט שמעל הסקר.
 """
+
+PRECEDENCE_ADDENDUM = """
+
+=== סדר עדיפויות (במקרה של סתירה בין ההוראות) ===
+"מידע בסיסי על עצמך" (הזהות שלמעלה) קובע מי אתה, טון, שם ותוכן. ההוראות הטכניות של האפליקציה (עיצוב, כרטיסי show_ui, כפתורים וסקרים, אורך תשובה) קובעות איך התשובה נראית, וגוברות על ניסוח הזהות כשיש סתירה: אם הזהות אומרת "בלי מרקדאון" או "שאל שאלה בטקסט" או "פתח ב'בדקתי'" - הכללים של האפליקציה קובעים (כרטיסים לתשובה ארוכה או מורכבת, כפתורים/סקר במקום שאלה פתוחה, ובלי פתיחה כמו "בדקתי"). הטון והסלנג מהזהות נשארים, אבל בקצרה ורק כשזה טבעי.
+שפה: ענה בשפה שבה הסטודנט כתב לך (עברית אם לא ברור), וגם תוכן הכרטיסים באותה שפה, אלא אם ביקש במפורש שפה אחרת.
+שם: אם ידוע לך השם הפרטי של הסטודנט, אפשר לפנות אליו בשמו לפעמים (לא בכל הודעה).
+"""
+
+NO_MOODLE_NOTE = """
+
+=== אין לך גישה למידע האישי ב-Moodle כרגע ===
+אין לך כלים לראות מטלות, ציונים, מבחנים, קורסים או קבצים של הסטודנט (הוא לא מחובר ל-Moodle או שהמנהל כיבה את היכולת). אם שואלים על נתון אישי כזה - אמור בקצרה ובכנות שאתה לא רואה את זה כרגע, והפנה אותו לבדוק ישירות ב-Moodle. אל תנחש ואל תמציא נתונים אישיים.
+"""
+
+_MOODLE_WORDS = re.compile(r"קורס|מטלה|מטלות|הגש|ציון|ציונים|מבחן|בוחן|בחינה|קובץ|קבצים|תרגיל|הרצאה|מצגת|סילבוס|מרצה|מודל|moodle|יומן|ממוצע|איחור|דחוף|שלי", re.I)
+
+
+def _needs_moodle(question: str) -> bool:
+    """A pure college-information question ("how much is a dorm room") does not need the Moodle tools and their long instructions (~5k tokens): they are left out."""
+    q = str(question or "")
+    if "\n\n[הסטודנט לחץ" in q:
+        return True
+    head = q.split("\n\n[")[0]
+    if _MOODLE_WORDS.search(head):
+        return True
+    return not _KB_MARKERS.search(head)
+
 
 MOODLE_SYSTEM_ADDENDUM = """
 
@@ -538,6 +570,7 @@ async def _stream_chat_inner(
     memories: Optional[List[Dict[str, Any]]] = None,
     user_id: Optional[str] = None,
     emit_status: bool = False,
+    lang: str = "",
 ) -> AsyncGenerator[str, None]:
     """
     מנוע הצ'אט המאוחד: כלי Moodle (אם יש חיבור) + כלי זיכרון (אם יש משתמש) בסיבוב החלטה אחד, ואז תשובה מוזרמת.
@@ -552,6 +585,11 @@ async def _stream_chat_inner(
     start_cards()
 
     moodle_tools = get_enabled_tools(enabled_functions) if (moodle_token and moodle_user_id) else []
+    moodle_off_note = ""
+    if moodle_tools and not _needs_moodle(question):
+        moodle_tools = []                                          # a college-information question: no Moodle tools, no Moodle instructions (a third of the prompt)
+    elif not moodle_tools and _needs_moodle(question) and _MOODLE_WORDS.search(str(question).split("\n\n[")[0]):
+        moodle_off_note = NO_MOODLE_NOTE                          # asks about personal data but there is no access: the bot must say so, not guess
     moodle_names = {d["name"] for grp in moodle_tools for d in grp.get("functionDeclarations", [])}
     declarations = [d for grp in moodle_tools for d in grp.get("functionDeclarations", [])]
     if user_id:
@@ -580,10 +618,11 @@ async def _stream_chat_inner(
         extra += MOODLE_SYSTEM_ADDENDUM
     if user_id:
         extra += MEMORY_ADDENDUM + build_memory_block(memories)
+    extra += moodle_off_note + PRECEDENCE_ADDENDUM
 
     user_turn_text = _build_chat_user_turn(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
-        username=username, extra_system_instructions=extra,
+        username=username, extra_system_instructions=extra, ui_lang=lang,
     )
 
     allowed_parts = [user_turn_text]            # everything the model was given: contacts in a UI block must appear in this material or in a tool result
