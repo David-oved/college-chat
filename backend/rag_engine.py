@@ -412,6 +412,7 @@ MOODLE_SYSTEM_ADDENDUM = """
    בקשות שהן בכלל לא קשורות למה שקיים (קבצים של סטודנטים אחרים, מבחנים סודיים שעוד לא פורסמו, עקיפת הרשאות) - סרב בנימוס והצע אלטרנטיבה חוקית.
 5. אם הכלי מחזיר שאין התאמה טובה - אל תשלח קבצים אקראיים "לפחות משהו". אמור שלא מצאת, ציין מה כן יש (לפי הסקירה) ושאל מה הוא מחפש.
 6. כשהבקשה לקבצים כללית או לא ברורה ("כל הקבצים", "החומר של הקורס", "משהו על X"): אל תשאל בטקסט. שלח סקר (poll:single, או poll:multi כשהגיוני לבחור כמה) שהאפשרויות שלו נגזרות אך ורק מהסקירה שהכלי get_course_files החזיר בפועל ("לפי סוג" ו"לפי נושא"): שמות הסוגים או הנושאים האמיתיים בקורס הזה, עם כמות הקבצים בסוגריים כשיש, ורק כאלה שקיימים. אל תמציא קטגוריות. בכל סקר הסטודנט יכול גם להקליד חופשי, אז אין צורך באפשרות "אחר".
+7. אל תכתוב "הנה הקובץ" או ניסוח דומה אלא אם הדבקת בפועל, באותה תשובה, סמן [[file:...]] מתוצאת הכלי. אם הכלי לא החזיר קובץ מתאים או שנכשל: אמור בשורה אחת מה קרה (לא נמצא קובץ מתאים / הייתה בעיה בשליפה) והצע המשך עם כפתורי quick שמבוססים על מה שכן קיים בקורס.
 6. אתה לא קורא את תוכן הקבצים - רק שולח אותם ומתאר אותם לפי שם/נושא/תיאור. אם הוא מבקש הסבר על התוכן עצמו, אמור לו זאת בכנות."""
 
 
@@ -430,7 +431,7 @@ MAX_FILE_SEARCHES_PER_TURN = 2
 MAX_TOOL_ROUNDS = 4
 
 
-async def stream_chat_with_tools(
+async def _stream_chat_inner(
     question: str,
     context_chunks: List[Dict[str, Any]],
     api_key: str,
@@ -554,6 +555,10 @@ async def stream_chat_with_tools(
             return f"הכלי {name} לא זמין.", None
 
         outcomes = await asyncio.gather(*[run(p) for p in calls])
+        _fm = (get_cards() or {}).setdefault("file_markers", [])
+        for _t, _ in outcomes:
+            (get_cards() or {}).setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
+        _fm.extend(re.findall(r"\[\[file:[^\]\n]+\]\]", str(_t)))
         if emit_status:
             for _, event in outcomes:
                 if event:
@@ -598,6 +603,27 @@ async def stream_chat_with_tools(
         yield token
     if not answered:
         yield "לא הצלחתי להשלים את הבקשה כרגע. נסה שוב בעוד רגע."
+
+
+async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
+    """עוטף את מנוע הצ'אט ומוודא שהבוט לא מבטיח קובץ שלא צירף: אם כתב "הנה הקובץ" בלי סמן - מצרפים את הקובץ שהכלי מצא, ואם לא נמצא כלום - אומרים את זה בפשטות."""
+    from moodle_tools import get_cards as _gc
+    acc: List[str] = []
+    async for tok in _stream_chat_inner(*args, **kwargs):
+        if not tok.startswith(STATUS_OPEN):
+            acc.append(tok)
+        yield tok
+    text = "".join(acc)
+    if "[[file:" in text:
+        return
+    card = _gc() or {}
+    markers = card.get("file_markers") or []
+    files_called = "get_course_files" in (card.get("called") or [])
+    promised = re.search(r"הנה (?:ה)?(?:קובץ|קבצים|תרגיל|מסמך|מצגת)|מצורף|הקובץ הבא|הקבצים הבאים", text)
+    if promised and markers:
+        yield "\n\n" + "\n".join(markers[:3])
+    elif files_called and (promised or (text.rstrip().endswith(":") and re.search(r"קובץ|קבצים|מסמך", text))):
+        yield "\n\nלא הצלחתי למשוך את הקובץ כרגע. אפשר לנסות שוב בעוד רגע, או לפתוח אותו ישירות ב-Moodle."
 
 
 async def stream_gemini_answer_with_moodle_tools(
