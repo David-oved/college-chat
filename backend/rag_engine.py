@@ -490,8 +490,13 @@ async def _stream_chat_inner(
 
     contents = [{"role": "user", "parts": [{"text": user_turn_text}]}]
     if not tools:
+        got = False
         async for token in final_answer(user_turn_text):
+            if not token.startswith(STATUS_OPEN):
+                got = True
             yield token
+        if not got:
+            yield "לא הצלחתי לענות כרגע. אפשר לנסות שוב?"
         return
 
     # קריאה מוזרמת אחת עם הכלים: שאלה רגילה מתחילה להיענות מיד; רק אם המודל מבקש כלי יש סבב שני אחרי ביצוע הכלים
