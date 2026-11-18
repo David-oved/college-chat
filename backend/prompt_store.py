@@ -117,6 +117,10 @@ def _clean(st: Any) -> Dict[str, Any]:
                 "enabled": v.get("enabled") is not False,
                 "priority": v.get("priority") if v.get("priority") in ("low", "normal", "high") else "normal",
                 "note": str(v.get("note") or "")[:500],
+                "mode": "fixed" if v.get("mode") == "fixed" and str(v.get("style") or "") else "auto",     # auto: the bot picks the style; fixed: always this one
+                "style": str(v.get("style") or "")[:20],
+                "off_styles": [str(x)[:20] for x in (v.get("off_styles") or [])][:10],
+                "style_notes": {str(a)[:20]: str(n)[:200] for a, n in list((v.get("style_notes") or {}).items())[:10] if str(n).strip()} if isinstance(v.get("style_notes"), dict) else {},
             }
     out["rules"] = [r for r in (PR.clean_rule(x) for x in (st.get("rules") or [])[:400]) if r]
     out["ruled"] = [k for k in (st.get("ruled") or []) if k in SECTION_KEYS or k == "mine"]
@@ -239,6 +243,19 @@ def disabled_kinds() -> set:
     return {k for k, v in (_STATE.get("designs") or {}).items() if v.get("enabled") is False}
 
 
+def apply_style(kind: str, style: str, allowed) -> str:
+    """The style a block really gets: the admin's fixed style, else the bot's choice unless the admin took that style off its menu."""
+    cfg = (_STATE.get("designs") or {}).get(kind) or {}
+    allowed = list(allowed)
+    if cfg.get("mode") == "fixed" and cfg.get("style") in allowed:
+        return cfg["style"]
+    off = set(cfg.get("off_styles") or [])
+    if style in off:
+        rest = [x for x in allowed if x not in off]
+        return rest[0] if rest else style
+    return style
+
+
 def design_text() -> str:
     d = _STATE.get("designs") or {}
     off = sorted(k for k, v in d.items() if v.get("enabled") is False)
@@ -252,6 +269,13 @@ def design_text() -> str:
         pri = pr.get(v.get("priority"), "")
         if pri or v.get("note"):
             lines.append(f"- {k}" + (f" ({pri})" if pri else "") + (f": {v['note']}" if v.get("note") else ""))
+        if v.get("mode") == "fixed" and v.get("style"):
+            lines.append(f"- {k}: תמיד style={v['style']} (קבוע, אל תבחר סגנון אחר)")
+        else:
+            if v.get("off_styles"):
+                lines.append(f"- {k}: אסור להשתמש בסגנונות: " + ", ".join(v["off_styles"]))
+            if v.get("style_notes"):
+                lines.append(f"- {k}: איזה סגנון מתי: " + "; ".join(f"{a} - {n}" for a, n in v["style_notes"].items()))
     custom = [c for c in (_STATE.get("custom") or []) if c.get("enabled") is not False]
     if custom:
         lines.append("עיצובים מיוחדים נוספים (משתמשים בהם דרך show_ui עם type=המזהה; השדות: title, subtitle, text, color, icon, items עם label/value/detail):")

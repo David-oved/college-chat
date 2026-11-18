@@ -24,7 +24,12 @@ CATALOG: List[Dict[str, Any]] = [
     {"kind": "tags", "name": "תגיות", "desc": "מילות מפתח קצרות.", "sample": {"color": "pink", "items": [{"label": "מלגות"}, {"label": "רישום"}, {"label": "מעונות"}]}},
     {"kind": "contact", "name": "איש קשר", "desc": "כרטיס עם חיוג, מייל ווואטסאפ.", "sample": {"title": "מזכירות סטודנטים", "subtitle": "קומה 1", "color": "teal",
                 "items": [{"kind": "phone", "value": "02-6751111"}, {"kind": "email", "value": "info@jct.ac.il"}]}},
-    {"kind": "hours", "name": "שעות פעילות", "desc": "שעות לפי ימים, עם 'פתוח עכשיו'.", "sample": {"title": "מזכירות", "text": "בערבי חג נסגר מוקדם", "items": [{"days": "א'-ה'", "time": "8:15-16:00"}, {"days": "ו'", "time": "8:15-12:00"}]}},
+    {"kind": "hours", "name": "שעות פעילות", "samples": [
+        {"name": "פשוט: טווח אחד ביום", "sample": {"title": "מזכירות", "text": "בערבי חג נסגר מוקדם", "items": [{"days": "א'-ה'", "time": "08:30-16:00"}, {"days": "ו'", "time": "08:30-12:00"}]}},
+        {"name": "עם סוגי שירות (טלפוני וקהל)", "sample": {"title": "חשבונות סטודנטים", "items": [{"days": "א'-ג'", "time": "10:00-12:00", "label": "טלפוני"}, {"days": "א'-ג'", "time": "13:00-15:00", "label": "קהל"},
+                                                                       {"days": "ד'-ה'", "time": "10:00-12:00", "label": "טלפוני"}, {"days": "ד'", "time": "13:00-15:00", "label": "קהל"}]}},
+        {"name": "כמה טווחים ביום", "sample": {"title": "ספרייה", "items": [{"days": "א'-ד'", "time": "08:00-12:00, 14:00-20:00"}, {"days": "ה'", "time": "08:00-14:00"}]}}],
+     "desc": "שעות לפי ימים, עם 'פתוח עכשיו'.", "sample": {"title": "מזכירות", "text": "בערבי חג נסגר מוקדם", "items": [{"days": "א'-ה'", "time": "8:15-16:00"}, {"days": "ו'", "time": "8:15-12:00"}]}},
     {"kind": "location", "name": "מיקום", "desc": "כתובת עם ניווט.", "sample": {"title": "קמפוס לב", "subtitle": "בניין ראשי", "text": "הרב קוק 21, ירושלים", "color": "green"}},
     {"kind": "routes", "name": "קווים ונתיבים", "desc": "תג צבעוני גדול לכל קו או אפשרות.", "sample": {"title": "קווי אוטובוס", "icon": "bus", "color": "blue", "items": [{"label": "6", "title": "מגבעת שאול", "detail": "ירידה בשח\"ל"}, {"label": "5", "title": "מבית הכרם", "detail": "ירידה בגבעת מרדכי"}]}},
     {"kind": "links", "name": "קישורים", "desc": "כפתורי קישור לאתרים של המכללה.", "sample": {"title": "קישורים", "items": [{"label": "הפורטל", "detail": "רישום וציונים", "url": "https://www.jct.ac.il"}]}},

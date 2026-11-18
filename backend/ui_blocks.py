@@ -19,7 +19,7 @@ STYLES = {
     "grades": ("gauges", "list"),
     "courses": ("chips", "list"),
     "contact": ("card", "row", "big"),
-    "hours": ("table", "week", "compact"),
+    "hours": ("table", "week", "bars"),
     "steps": ("numbered", "timeline", "cards"),
     "facts": ("list", "grid", "chips"),
     "highlight": ("big", "pill", "row"),
@@ -89,7 +89,7 @@ UI_ADDENDUM = """
 
 מידע מהמאגר ומהכלים (אתה כותב את התוכן, קצר): כל מייל, טלפון וקישור חייבים להיות בדיוק כפי שהופיעו בחומר שקיבלת, אחרת השרת ימחק אותם. אל תמציא פרטים.
 - contact: איש קשר או מדור. title=שם, subtitle=תפקיד, text=שורה נוספת. items=פעולות {kind: email|phone|whatsapp|link|address, value, label?} - הסטודנט לוחץ ומתקשר/שולח מייל/פותח וואטסאפ או מעתיק. style card/row/big.
-- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style table / week (שבוע עם היום מודגש, רק כשיש טווח אחד ביום ובלי הערות) / compact. סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
+- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style table (שורות: ימים עם אותן שעות מאוחדים לשורה אחת, הבחירה הרגילה) / week (שבעה ריבועי ימים, כשהשעות פשוטות) / bars (פס זמן שמראה את היום, מתאים כשיש כמה טווחים או סוגי שירות). סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
 - steps: תהליך צעד אחר צעד. items {title, detail?}. style numbered / timeline / cards.
 - facts: זוגות שם-ערך. items {label, value, icon?}. style list / grid / chips.
 - highlight: מספר או סכום גדול. items {value, label, detail?} (עד 4). style big / pill / row. מתאים ל"6 ש"ח ליום איחור".
@@ -318,6 +318,8 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         style = _s(b.get("style"), 12).lower()
         if kind in STYLES and style not in STYLES[kind]:
             style = STYLES[kind][0]
+        if kind in STYLES and not preview:
+            style = prompt_store.apply_style(kind, style, STYLES[kind])            # the admin may fix the style of a kind, or take some styles off the bot's menu
         base = {"k": kind, "s": style, "ti": title, **_common(b)}
         if sub:
             base["su"] = sub

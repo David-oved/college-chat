@@ -489,6 +489,8 @@
               </div>
               <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px">
                 <div id="pmGalTitle" class="text-sm font-bold mb-3">בחר עיצוב</div>
+                <div id="pmGalCtl" class="mb-3"></div>
+                <div id="pmGalCount" class="hint" style="margin:0 0 8px"></div>
                 <div id="pmGalHost"></div>
               </div>
             </div>
@@ -513,6 +515,10 @@
                 </div>
               </div>
               <div class="lg:col-span-2 card" style="padding:14px"><div class="text-sm font-bold mb-3">תצוגה מקדימה</div><div id="pmGenHost" class="hint" style="margin:0">עדיין לא נוצר עיצוב.</div></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div><h2>ספריית עיצובים מוכנים</h2><p>עיצובים מוכנים להתקנה בלחיצה. אחרי ההתקנה הם עיצובים שלך: אפשר לשנות אותם עם AI, לכבות ולמחוק.</p></div></div>
+              <div class="card-body"><div id="pmLibrary" class="grid md:grid-cols-2 gap-3"><div class="empty" style="grid-column:1/-1">טוען...</div></div></div>
             </div>
             <div class="card">
               <div class="card-head"><h2>העיצובים שיצרתי</h2></div>
@@ -2037,7 +2043,7 @@
       document.querySelectorAll('.pmSub').forEach(b => { if (grp.includes(b.dataset.sub)) b.classList.toggle('active', b.dataset.sub === name); });
       if (!PM) return;
       if (name === 'gallery') pmLoadGallery();
-      if (name === 'create') pmRenderCustom();
+      if (name === 'create') { pmRenderCustom(); pmRenderLibrary(); }
       if (name === 'history') pmRenderVersions();
     }
     function pmDiscard() { if (confirm('לבטל את כל השינויים שלא נשמרו?')) pmLoad(); }
@@ -2310,7 +2316,12 @@
       pmRenderKinds();
       if (!PM_KIND && PM_CAT.kinds.length) pmSelectKind(PM_CAT.kinds[0].kind);
     }
-    function pmDesignCfg(kind) { return PM.designs[kind] || (PM.designs[kind] = { enabled: true, priority: 'normal', note: '' }); }
+    function pmDesignCfg(kind) {
+      const c = PM.designs[kind] || (PM.designs[kind] = { enabled: true, priority: 'normal', note: '' });
+      if (!c.mode) c.mode = 'auto'; if (!c.off_styles) c.off_styles = []; if (!c.style_notes) c.style_notes = {}; if (c.style == null) c.style = '';
+      return c;
+    }
+    const STYLE_HE = { table: 'שורות', week: 'שבוע', bars: 'פס זמן', compact: 'מצומצם' };
     function pmRenderKinds() {
       const box = document.getElementById('pmKinds'); box.innerHTML = '';
       PM_CAT.kinds.forEach(k => {
@@ -2321,7 +2332,9 @@
         const info = el('div', 'flex-1 min-w-0');
         info.appendChild(el('div', 'font-bold text-sm', k.name + '  '));
         info.firstChild.appendChild(el('span', 'text-[11px] font-mono text-slate-400', k.kind));
-        info.appendChild(el('div', 'text-xs text-slate-500', k.desc)); top.appendChild(info);
+        info.appendChild(el('div', 'text-xs text-slate-500', k.desc));
+        if (cfg.mode === 'fixed' && cfg.style) info.appendChild(el('span', 'badge badge-accent mt-1', 'סגנון קבוע: ' + (STYLE_HE[cfg.style] || cfg.style)));
+        top.appendChild(info);
         const sw = pmSwitch(cfg.enabled !== false, v => { pmDesignCfg(k.kind).enabled = v; c.classList.toggle('opacity-60', !v); });
         sw.onclick = (ev) => { ev.stopPropagation(); const v = !sw.classList.contains('on'); sw.classList.toggle('on', v); pmDesignCfg(k.kind).enabled = v; c.classList.toggle('opacity-60', !v); pmDirty(); };
         top.appendChild(sw); c.appendChild(top);
@@ -2334,18 +2347,86 @@
       });
     }
     let PM_GAL = null;
+    function pmRenderStyleCtl(k) {
+      const host = document.getElementById('pmGalCtl'); host.innerHTML = '';
+      const cfg = pmDesignCfg(k.kind), styles = k.styles || [];
+      const box = el('div', 'rounded-xl p-3 space-y-2.5'); box.style.cssText = 'background:var(--bg);border:1px solid var(--line)';
+      if (styles.length > 1) {
+        box.appendChild(el('div', 'text-[13px] font-bold', 'איך הבוט בוחר סגנון'));
+        const seg = el('div', 'seg');
+        const mk = (mode, label) => { const b = el('button', cfg.mode === mode ? 'active' : '', label); b.type = 'button'; b.onclick = () => { cfg.mode = mode; if (mode === 'fixed' && !cfg.style) cfg.style = styles[0]; pmDirty(); pmRenderStyleCtl(k); pmRenderKinds(); }; return b; };
+        seg.appendChild(mk('auto', 'הבוט בוחר לבד')); seg.appendChild(mk('fixed', 'תמיד אותו סגנון'));
+        box.appendChild(seg);
+        if (cfg.mode === 'fixed') {
+          const row = el('div', 'flex items-center gap-2 text-[13px]'); row.appendChild(el('span', '', 'הסגנון הקבוע:'));
+          row.appendChild(pmSelect(styles.map(x => [x, (STYLE_HE[x] || x) + ' (' + x + ')']), cfg.style || styles[0], v => { cfg.style = v; pmRenderKinds(); }));
+          box.appendChild(row);
+          box.appendChild(el('div', 'hint', 'הבוט לא יבחר סגנון אחר, גם אם ינסה: השרת מחליף לסגנון הזה.'));
+        } else {
+          box.appendChild(el('div', 'hint', 'כבה סגנון כדי להוריד אותו מהתפריט של הבוט, וכתוב לכל סגנון מתי להשתמש בו. הבוט קורא את זה בכל תשובה.'));
+          styles.forEach(st => {
+            const on = !cfg.off_styles.includes(st);
+            const r = el('div', 'flex items-center gap-2');
+            r.appendChild(pmSwitch(on, v => { cfg.off_styles = cfg.off_styles.filter(x => x !== st); if (!v) cfg.off_styles.push(st); }));
+            r.appendChild(el('b', 'text-[13px] shrink-0', (STYLE_HE[st] || st)));
+            const inp = el('input', 'input input-sm flex-1'); inp.placeholder = 'מתי להשתמש בסגנון הזה'; inp.value = cfg.style_notes[st] || '';
+            inp.oninput = () => { cfg.style_notes[st] = inp.value; pmDirty(); };
+            r.appendChild(inp); box.appendChild(r);
+          });
+        }
+      } else {
+        box.appendChild(el('div', 'hint', 'לעיצוב הזה יש סגנון אחד, ולכן אין מה לבחור.'));
+      }
+      const cl = el('button', 'btn btn-sm', '⟦sparkle⟧שכפל כעיצוב משלי ושנה עם AI'); cl.type = 'button';
+      cl.onclick = () => pmCloneKind(k);
+      box.appendChild(cl);
+      host.appendChild(box);
+    }
+    function pmCloneKind(k) {
+      pmSub('create');
+      const d = document.getElementById('pmGenDesc');
+      d.value = 'עיצוב חדש על בסיס "' + k.name + '" (' + k.kind + '): ' + k.desc + '\nדוגמה לתוכן: ' + JSON.stringify(k.sample).slice(0, 300) + '\nמה לשנות: ';
+      d.focus(); d.setSelectionRange(d.value.length, d.value.length); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     async function pmSelectKind(kind) {
       PM_KIND = kind; pmRenderKinds();
       const k = PM_CAT.kinds.find(x => x.kind === kind); if (!k) return;
-      document.getElementById('pmGalTitle').textContent = k.name + ' - כך זה נראה אצל הסטודנט';
+      document.getElementById('pmGalTitle').textContent = k.name;
+      pmRenderStyleCtl(k);
       if (!PM_GAL) PM_GAL = pmPreview(document.getElementById('pmGalHost'));
       const styles = k.styles && k.styles.length ? k.styles : [''];
-      const items = [];
-      for (const st of styles) {
-        const r = await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: k.kind, ...(st ? { style: st } : {}), ...k.sample }] }) })).json();
-        if (r.marker) items.push({ name: st ? 'סגנון: ' + st : '', marker: r.marker });
-      }
-      if (PM_KIND === kind) PM_GAL.show(items);
+      const samples = k.samples && k.samples.length ? k.samples : [{ name: '', sample: k.sample }];
+      document.getElementById('pmGalCount').textContent = `מוצגים כל ${styles.length} הסגנונות${samples.length > 1 ? ` על ${samples.length} דוגמאות תוכן שונות` : ''}, בדיוק כפי שהסטודנט רואה. אין סגנונות נסתרים.`;
+      const jobs = [];
+      for (const sm of samples) for (const st of styles) jobs.push({ st, sm });
+      const rendered = await Promise.all(jobs.map(async j => {
+        const r = await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: k.kind, ...(j.st ? { style: j.st } : {}), ...j.sm.sample }] }) })).json();
+        return r.marker ? { name: (j.st ? 'סגנון: ' + (STYLE_HE[j.st] || j.st) : '') + (samples.length > 1 ? (j.st ? ' · ' : '') + j.sm.name : ''), marker: r.marker } : null;
+      }));
+      if (PM_KIND === kind) PM_GAL.show(rendered.filter(Boolean));
+    }
+
+    // ---------- ready-made designs
+    let PM_LIB = null;
+    async function pmRenderLibrary() {
+      const box = document.getElementById('pmLibrary'); if (!box) return;
+      if (!PM_LIB) { try { PM_LIB = (await (await adminFetch(`${API_BASE}/api/admin/ui/library`)).json()).items; } catch (e) { box.innerHTML = '<div class="empty" style="grid-column:1/-1">שגיאה בטעינת הספרייה</div>'; return; } }
+      box.innerHTML = '';
+      PM_LIB.forEach(it => {
+        const c = el('div', 'rounded-xl border border-slate-200 bg-white p-3 space-y-2');
+        const head = el('div', 'flex items-start justify-between gap-2');
+        const t = el('div', 'min-w-0'); t.appendChild(el('div', 'font-bold text-sm', it.design.name)); t.appendChild(el('div', 'hint', it.desc)); head.appendChild(t);
+        const btn = el('button', 'btn btn-sm ' + (it.installed ? '' : 'btn-primary'), it.installed ? '⟦check⟧מותקן' : '⟦plus⟧התקן והפעל'); btn.type = 'button'; btn.disabled = it.installed;
+        btn.onclick = async () => {
+          btn.disabled = true;
+          const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: it.design }) });
+          const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+          if (res.ok) { it.installed = true; await pmReloadKeepEdits(); pmRenderLibrary(); } else btn.disabled = false;
+        };
+        head.appendChild(btn); c.appendChild(head);
+        const host = el('div'); c.appendChild(host); box.appendChild(c);
+        if (it.marker) pmPreview(host).show([{ name: '', marker: it.marker }]);
+      });
     }
 
     // ---------- AI-made designs

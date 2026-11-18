@@ -1765,6 +1765,19 @@ def _design_preview(design: dict) -> dict:
     return {"marker": ("[[ui:" + _encode_blocks([blk]) + "]]") if blk else ""}
 
 
+@app.get("/api/admin/ui/library", dependencies=[Depends(require_admin)])
+async def admin_ui_library():
+    """Ready-made designs, each with its preview already rendered, and whether it is installed."""
+    import ui_library
+    await prompt_store.refresh(True)
+    have = {c.get("id") for c in prompt_store.state().get("custom", [])}
+    out = []
+    for t in ui_library.LIBRARY:
+        design = custom_designs.normalize({**t, "enabled": True})
+        out.append({"design": design, "desc": t["desc"], "installed": t["id"] in have, **_design_preview(design)})
+    return {"items": out}
+
+
 @app.post("/api/admin/ui/design/generate", dependencies=[Depends(require_admin)])
 async def admin_design_generate(req: DesignGenRequest):
     if not req.description.strip():
