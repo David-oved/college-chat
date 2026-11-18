@@ -2630,7 +2630,7 @@
 
     // ===================== אורי, הדמות =====================
     let MC = null, MC_DIRTY = false, MC_T = null, MC_FR = null, MC_READY = false;
-    const MC_MOODS = { happy: 'שמח', grin: 'צוחק', wow: 'מופתע', think: 'חושב', love: 'אוהב', sleep: 'ישן' };
+    const MC_MOODS = { happy: 'שמח', grin: 'צוחק', wow: 'מופתע', think: 'חושב', love: 'אוהב', sleep: 'ישן', dizzy: 'מסוחרר' };
     const MC_BODIES = [['לבן', '#ffffff'], ['מנטה', '#d9f7ec'], ['אפרסק', '#ffe3d1'], ['לבנדר', '#e9e1ff'], ['שמיים', '#dbeeff'], ['לימון', '#fff4c2'], ['ורוד', '#ffdfe9']];
     const MC_SLOT_HE = { hat: 'כובע', face: 'פנים', neck: 'צוואר' };
     function mcDirty(on = true) { MC_DIRTY = on; const b = document.getElementById('mcDirty'); if (b) b.classList.toggle('hidden', !on); }
@@ -2715,10 +2715,76 @@
       [['blink', 'מצמץ', ''], ['look', 'העיניים עוקבות אחרי האצבע או העכבר', 'רק בפנים הגדולות'], ['bounce', 'נושם ומתנועע בהמתנה', ''], ['react', 'מגיב כשנוגעים בו', 'קפיצה, סיבוב, מבוכה ולבבות'],
         ['play', 'פינת משחק', 'נגיעה באווטאר בכותרת פותחת מסך עם ארון ומצבי רוח'], ['sleepy', 'ישן בלילה', 'בין חצות לחמש בבוקר']].forEach(([k, l, h]) => b.appendChild(mcRow(l, mcSw(c.behavior[k] !== false, v => { c.behavior[k] = v; }), h)));
       box.appendChild(card);
+      // animations
+      [card, b] = mcCard('אנימציות', 'כל התנועות שאורי יודע לעשות. כבה תנועה כדי שלא תופיע בשום מקום. "נגן" מראה אותה על הבמה בצד.');
+      b.appendChild(mcRow('מהירות', mcSlider(0.5, 2, 0.1, c.anim.speed, v => { c.anim.speed = v; }, v => v.toFixed(1) + 'x'), '0.5 איטי, 2 מהיר'));
+      b.appendChild(mcRow('חלקיקים (לבבות, כוכבים, קונפטי)', [mcSw(c.anim.particles, v => { c.anim.particles = v; }), mcSlider(2, 14, 1, c.anim.amount, v => { c.anim.amount = v; }, v => v + ' חלקיקים')]));
+      const grid2 = el('div', 'grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2');
+      Object.entries(MC.anims).forEach(([id, label]) => {
+        const t = el('div', 'rounded-xl border border-slate-200 p-2 flex items-center gap-2');
+        t.appendChild(mcSw(c.anim.enabled.includes(id), v => { c.anim.enabled = c.anim.enabled.filter(x => x !== id); if (v) c.anim.enabled.push(id); mcRender2(); }));
+        t.appendChild(el('span', 'text-[13px] font-semibold flex-1 min-w-0', label));
+        const pl = el('button', 'btn btn-sm btn-soft', 'נגן'); pl.type = 'button'; pl.onclick = () => mcPlay(id); t.appendChild(pl); grid2.appendChild(t);
+      });
+      b.appendChild(grid2); box.appendChild(card);
+      // moments
+      [card, b] = mcCard('מתי אורי עושה מה', 'לכל רגע בוחרים אילו תנועות מתאימות לו (אורי בוחר אחת באקראי), ובכמה אחוזים מהפעמים הוא גם אומר משפט.');
+      Object.entries(MC.triggers).forEach(([key, label]) => {
+        const r = el('div', 'py-3 space-y-2'); r.style.borderTop = '1px solid var(--line)';
+        const top = el('div', 'flex flex-wrap items-center gap-3'); top.appendChild(el('b', 'text-[13.5px]', label));
+        top.appendChild(el('span', 'flex-1'));
+        top.appendChild(el('span', 'text-[12px]', 'אומר משפט ב-'));
+        top.appendChild(mcSlider(0, 100, 5, c.talk[key], v => { c.talk[key] = v; }, v => v + '%'));
+        const t = el('button', 'btn btn-sm btn-soft', 'נסה'); t.type = 'button';
+        t.onclick = () => { const l = (c.triggers[key] || []).filter(i => c.anim.enabled.includes(i)); const ph = c.phrases[key === 'open' ? 'open' : key] || c.phrases.tap || []; mcPlay(l[Math.floor(Math.random() * l.length)] || '', ph[Math.floor(Math.random() * ph.length)] || ''); };
+        top.appendChild(t); r.appendChild(top);
+        const chips = el('div', 'flex flex-wrap gap-1.5');
+        c.anim.enabled.forEach(id => {
+          const on = (c.triggers[key] || []).includes(id), x = el('button', 'badge ' + (on ? 'badge-accent' : ''), MC.anims[id] || id); x.type = 'button'; x.style.cursor = 'pointer'; x.style.border = '1px solid ' + (on ? 'var(--accent-line)' : 'var(--line)');
+          x.onclick = () => { const l = c.triggers[key] || (c.triggers[key] = []); const i = l.indexOf(id); if (i >= 0) l.splice(i, 1); else l.push(id); x.className = 'badge ' + (i >= 0 ? '' : 'badge-accent'); x.style.border = '1px solid ' + (i >= 0 ? 'var(--line)' : 'var(--accent-line)'); mcChanged(); };
+          chips.appendChild(x);
+        });
+        r.appendChild(chips); b.appendChild(r);
+      });
+      const idl = el('div', 'flex flex-wrap items-center gap-2 py-2'); idl.style.borderTop = '1px solid var(--line)';
+      idl.appendChild(el('span', 'text-[13px] font-bold', 'כשאף אחד לא עושה כלום, אורי זז כל'));
+      const mi = el('input', 'input input-sm'); mi.type = 'number'; mi.min = 6; mi.max = 600; mi.value = c.idle.min; mi.style.width = '72px'; mi.oninput = () => { c.idle.min = Math.max(6, parseInt(mi.value, 10) || 6); mcChanged(); };
+      const ma = el('input', 'input input-sm'); ma.type = 'number'; ma.min = 6; ma.max = 1200; ma.value = c.idle.max; ma.style.width = '72px'; ma.oninput = () => { c.idle.max = Math.max(c.idle.min, parseInt(ma.value, 10) || c.idle.min); mcChanged(); };
+      idl.append(mi, el('span', 'text-[13px]', 'עד'), ma, el('span', 'text-[13px]', 'שניות'));
+      b.appendChild(idl); box.appendChild(card);
       // phrases
-      [card, b] = mcCard('מה אורי אומר', 'משפטים שאורי אומר כשנוגעים בו. אחד בכל שורה (עד 14).');
-      const ta = el('textarea', 'textarea'); ta.rows = 6; ta.value = (c.phrases || []).join('\n'); ta.oninput = () => { c.phrases = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); };
-      b.appendChild(ta); box.appendChild(card);
+      [card, b] = mcCard('מה אורי אומר', 'משפטים לכל מצב, אחד בכל שורה (עד 14). בפתיחת הצ\'אט הוא בוחר לפי השעה. אם משאירים קטגוריה ריקה חוזרים למשפטי ברירת המחדל שלה.');
+      Object.entries(MC.phrase_keys).forEach(([key, label]) => {
+        const w = el('div', 'py-2'); w.style.borderTop = '1px solid var(--line)';
+        const top = el('div', 'flex items-center gap-2 mb-1'); top.appendChild(el('b', 'text-[13px] flex-1', label));
+        const t = el('button', 'btn btn-sm', 'נסה'); t.type = 'button'; t.onclick = () => { const l = c.phrases[key] || []; mcPlay('', l[Math.floor(Math.random() * l.length)] || ''); }; top.appendChild(t); w.appendChild(top);
+        const ta = el('textarea', 'textarea'); ta.rows = 3; ta.value = (c.phrases[key] || []).join('\n');
+        ta.oninput = () => { c.phrases[key] = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); };
+        w.appendChild(ta); b.appendChild(w);
+      });
+      box.appendChild(card);
+      // advanced look
+      [card, b] = mcCard('תצוגה מתקדמת', 'צבע עיניים, מסגרת, הילה, הכפתור הצף והתג הקטן.');
+      const colorCtl = (key, clearable) => { const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'color'; i.value = c.look[key] || '#3b5bdb'; i.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; i.oninput = () => { c.look[key] = i.value; mcChanged(); };
+        w.appendChild(i); if (clearable) { const x = el('button', 'btn btn-sm btn-ghost', 'ברירת מחדל'); x.type = 'button'; x.onclick = () => { c.look[key] = ''; mcChanged(); mcRender2(); }; w.appendChild(x); } if (!c.look[key]) w.appendChild(el('span', 'hint', 'לפי נושא האפליקציה')); return w; };
+      b.appendChild(mcRow('צבע עיניים ופה', colorCtl('eye', true)));
+      b.appendChild(mcRow('מסגרת', [colorCtl('outline', true), mcSlider(0, 3, 0.5, c.look.outlineW, v => { c.look.outlineW = v; }, v => 'עובי ' + v)]));
+      b.appendChild(mcRow('הילה זוהרת', [colorCtl('aura', true), mcSlider(0, 24, 1, c.look.auraSize, v => { c.look.auraSize = v; }, v => 'עוצמה ' + v)]));
+      b.appendChild(mcRow('צבעי הכפתור הצף וההודעות', [colorCtl('fab1', true), colorCtl('fab2', true)], 'מעבר צבע משני הצבעים'));
+      b.appendChild(mcRow('גודל הכפתור הצף', mcSlider(0.8, 1.5, 0.05, c.look.fabScale, v => { c.look.fabScale = v; }, v => Math.round(v * 100) + '%')));
+      const tg = el('input', 'input input-sm'); tg.maxLength = 4; tg.value = c.look.tag; tg.style.width = '84px'; tg.oninput = () => { c.look.tag = tg.value; mcChanged(); };
+      b.appendChild(mcRow('התג הקטן ליד אורי', [tg, el('span', 'hint', 'עד 4 תווים. ריק מסתיר אותו.')]));
+      box.appendChild(card);
+    }
+    function mcRender2() { const y = document.querySelector('main').scrollTop; mcRender(); document.querySelector('main').scrollTop = y; mcChanged(); }
+    function mcSlider(min, max, step, val, on, fmt) {
+      const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = val; i.style.width = '140px';
+      const l = el('span', 'text-[12px] font-bold w-16', fmt(Number(val))); i.oninput = () => { const v = Number(i.value); l.textContent = fmt(v); on(v); mcChanged(); };
+      w.append(i, l); return w;
+    }
+    function mcPlay(id, text) {
+      if (!MC_FR || !MC_READY || !MC) return;
+      try { MC_FR.contentWindow.postMessage({ t: 'uriPlay', id: id || '', text: text || '', cfg: MC.cfg }, 'https://david-oved.github.io'); } catch (e) {}
     }
     async function mcSave() {
       const res = await adminFetch(`${API_BASE}/api/admin/mascot`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: MC.cfg }) });
