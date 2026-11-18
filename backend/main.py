@@ -176,6 +176,26 @@ def _spawn(coro):
     return t
 
 
+# The Moodle functions the bot had before new ones started being added. A function that is NOT in this list and was never seen by the server before is
+# switched on once (when the admin had saved an explicit list), so a newly added capability does not sit silently off; after that the admin's choice rules.
+_MOODLE_FUNCTIONS_BEFORE = {"get_my_courses", "get_course_assignments", "get_course_grades", "get_calendar_events", "get_course_content", "get_course_files",
+                            "get_assignment_submission_status", "get_upcoming_deadlines", "get_overall_grades", "get_quiz_attempts", "get_my_exams", "get_completion_status"}
+
+
+async def _enable_new_moodle_functions():
+    from moodle_tools import MOODLE_FUNCTION_NAMES
+    raw = await db.get_state_kv("moodle_known")
+    known = set(json.loads(raw)) if raw else set(_MOODLE_FUNCTIONS_BEFORE)
+    new = [n for n in MOODLE_FUNCTION_NAMES if n not in known]
+    if new:
+        enabled = await db._get_moodle_enabled_functions_raw()
+        if enabled is not None:
+            await db.set_moodle_enabled_functions(enabled + [n for n in new if n not in enabled])
+            db.invalidate_config_cache()
+            print(f"[moodle] new functions switched on: {new}")
+    await db.set_state_kv("moodle_known", json.dumps(MOODLE_FUNCTION_NAMES))
+
+
 @app.on_event("startup")
 async def on_startup():
     """מתחבר ל-DB ומייצר (בפעם הראשונה בלבד) סיסמת מנהל אקראית, מודפסת לקונסול."""
@@ -187,6 +207,10 @@ async def on_startup():
         print(f"    {generated_password}")
         print("    שמור אותה במקום בטוח - היא לא תוצג שוב!")
         print("=" * 64 + "\n")
+    try:
+        await _enable_new_moodle_functions()
+    except Exception as e:
+        print(f"[moodle] could not update the enabled functions: {type(e).__name__}: {e}")
     asyncio.create_task(version_watch_loop())
 
 

@@ -1082,6 +1082,240 @@ async def _exec_get_completion_status(wstoken, moodle_user_id, args) -> Tuple[An
 
 
 # =====================================================================
+# Added from the token's function list (read-only, each one checked by hand): announcements, what changed, courses by status, teachers, notifications
+# =====================================================================
+def _fmt_past(ts: Any) -> str:
+    """When something was posted: "יום ד' 18/11/2026 21:29 (לפני שעה)". (describe_ts is for deadlines and says "the deadline passed", which is wrong for an announcement.)"""
+    from datetime import datetime
+    from hebdate import ISRAEL_TZ, weekday_he, _span
+    try:
+        ts = int(ts)
+    except (TypeError, ValueError):
+        return "תאריך לא ידוע"
+    if not ts:
+        return "תאריך לא ידוע"
+    dt = datetime.fromtimestamp(ts, ISRAEL_TZ)
+    diff = ts - int(time.time())
+    when = "ממש עכשיו" if -90 < diff <= 90 else (f"לפני {_span(diff)}" if diff < 0 else f"בעוד {_span(diff)}")
+    return f"יום {weekday_he(dt.date())} {dt.strftime('%d/%m/%Y %H:%M')} ({when})"
+
+
+def _html_text(s: Any, n: int = 320) -> str:
+    return _plain_html(html.unescape(str(s or "")), n)
+
+
+_MOD_HE = {"assign": "מטלה", "resource": "קובץ", "folder": "תיקייה", "quiz": "בוחן", "forum": "פורום", "page": "דף מידע", "url": "קישור", "label": "הודעה בעמוד", "book": "ספר",
+           "choice": "סקר", "feedback": "משוב", "workshop": "סדנה", "lesson": "שיעור", "bigbluebuttonbn": "שיעור מקוון", "glossary": "מילון", "wiki": "ויקי", "data": "מאגר נתונים"}
+
+
+@_register(
+    name="get_course_announcements", moodle_function="mod_forum_get_forum_discussions",
+    icon="📢", label="הכרזות מהמרצים",
+    description_admin="מחזיר את ההכרזות האחרונות מפורום ההודעות של המרצה (Announcements) בקורס מסוים או בכל הקורסים: כותרת, תאריך ותוכן. קריאה בלבד.",
+    description_ai="מחזיר את ההכרזות האחרונות שהמרצה פרסם בקורס (פורום ההודעות): כותרת, תאריך ותוכן. השתמש כשהסטודנט שואל אם יש הודעה מהמרצה, מה פורסם לאחרונה, אם משהו השתנה בקורס, או על הכרזה ספציפית. בלי course_name - בכל הקורסים הפעילים; עם course_name - רק בקורס הזה.",
+    params=[{"name": "course_name", "type": "STRING", "description": "שם הקורס (לא חובה - ריק = כל הקורסים)", "required": False}],
+)
+async def _exec_get_course_announcements(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    name = str(args.get("course_name") or "").strip()
+    if name:
+        c = await _resolve_course(wstoken, moodle_user_id, name)
+        if not c:
+            return None, f"לא נמצא קורס בשם '{name}' ברשימת הקורסים."
+        courses = [c]
+    else:
+        courses = (await _get_courses(wstoken, moodle_user_id) or [])[:10]
+    if not courses:
+        return None, "לא נמצאו קורסים רשומים."
+    ids = [c["id"] for c in courses]
+    forums = await _cached_moodle_call((moodle_user_id, "forums", tuple(ids)), wstoken, "mod_forum_get_forums_by_courses", {f"courseids[{i}]": cid for i, cid in enumerate(ids)})
+    news: Dict[Any, dict] = {}
+    for f in forums if isinstance(forums, list) else []:
+        if f.get("type") == "news" and f.get("course") in ids and f.get("course") not in news:
+            news[f["course"]] = f
+    if not news:
+        return forums, "לא נמצא פורום הכרזות בקורסים."
+    cmap = {c["id"]: c for c in courses}
+
+    async def one(cid, forum):
+        d = await _cached_moodle_call((moodle_user_id, "news", forum["id"]), wstoken, "mod_forum_get_forum_discussions", {"forumid": forum["id"], "page": 0, "perpage": 4})
+        return cid, ((d or {}).get("discussions", []) if isinstance(d, dict) else [])
+
+    results = await asyncio.gather(*[one(cid, f) for cid, f in news.items()], return_exceptions=True)
+    for r in results:
+        if isinstance(r, MoodleTokenInvalid):
+            raise r
+    blocks, raw = [], {}
+    for r in results:
+        if isinstance(r, Exception):
+            continue
+        cid, ds = r
+        raw[cid] = ds
+        ds = sorted(ds, key=lambda x: -(x.get("timemodified") or x.get("created") or 0))[:3]
+        if not ds:
+            continue
+        lines = [f"הכרזות בקורס '{_clean_course_name(cmap[cid].get('fullname'))}':"]
+        for x in ds:
+            when = x.get("timemodified") or x.get("created") or 0
+            subj = html.unescape(str(x.get("subject") or x.get("name") or "")).strip()
+            body = _html_text(x.get("message"), 300)
+            who = str(x.get("userfullname") or "").strip()
+            lines.append(f"- {subj} ({_fmt_past(when)}{', ' + who if who else ''})" + (f": {body}" if body else ""))
+        blocks.append("\n".join(lines))
+    if not blocks:
+        return raw, "אין הכרזות בקורסים."
+    return raw, "\n\n".join(blocks)
+
+
+@_register(
+    name="get_course_updates", moodle_function="core_course_get_updates_since",
+    icon="🆕", label="מה חדש בקורס",
+    description_admin="מחזיר מה השתנה בקורס מסוים בימים האחרונים: קבצים חדשים או שעודכנו, מטלות ופעילויות שעודכנו. קריאה בלבד.",
+    description_ai="מחזיר מה חדש או השתנה בקורס מסוים ב-N הימים האחרונים (ברירת מחדל 7): קבצים חדשים, מטלות ופעילויות שעודכנו. השתמש כשהסטודנט שואל מה חדש בקורס, אם הועלה משהו, או מה השתנה מאז שבוע שעבר.",
+    params=[{"name": "course_name", "type": "STRING", "description": "שם הקורס", "required": True},
+            {"name": "days", "type": "STRING", "description": "כמה ימים אחורה (ברירת מחדל 7, עד 60)", "required": False}],
+)
+async def _exec_get_course_updates(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    course_name = args.get("course_name", "")
+    course = await _resolve_course(wstoken, moodle_user_id, course_name)
+    if not course:
+        return None, f"לא נמצא קורס בשם '{course_name}' ברשימת הקורסים."
+    try:
+        days = max(1, min(60, int(str(args.get("days") or 7).strip() or 7)))
+    except ValueError:
+        days = 7
+    since = int(time.time()) - days * 86400
+    data = await _cached_moodle_call((moodle_user_id, "updates", course["id"], days), wstoken, "core_course_get_updates_since", {"courseid": course["id"], "since": since})
+    contents = await _cached_moodle_call((moodle_user_id, "content", course["id"]), wstoken, "core_course_get_contents", {"courseid": course["id"]})
+    cm = {m.get("id"): m for s in (contents if isinstance(contents, list) else []) for m in (s.get("modules") or [])}
+    rows = []
+    for inst in (data or {}).get("instances", []) if isinstance(data, dict) else []:
+        if inst.get("contextlevel") != "module":
+            continue
+        m = cm.get(inst.get("id"))
+        if not m:
+            continue
+        kinds, latest = set(), 0
+        for u in inst.get("updates") or []:
+            n = u.get("name")
+            latest = max(latest, int(u.get("timeupdated") or 0))
+            if n in ("fileschanged", "contentfiles", "introfiles"):
+                kinds.add("קבצים חדשים או עודכנו")
+            elif n == "configuration":
+                kinds.add("הפעילות עודכנה")
+            elif n == "gradeitem":
+                kinds.add("הציון עודכן")
+        if kinds:
+            rows.append((latest, f"- {_MOD_HE.get(m.get('modname'), m.get('modname') or 'פעילות')} '{html.unescape(str(m.get('name') or '')).strip()}': {', '.join(sorted(kinds))} ({_fmt_past(latest)})"))
+    cname = course.get("fullname")
+    if not rows:
+        return data, f"לא נמצאו שינויים בקורס '{cname}' ב-{days} הימים האחרונים."
+    rows.sort(key=lambda r: -r[0])
+    return data, f"מה השתנה בקורס '{cname}' ב-{days} הימים האחרונים:\n" + "\n".join(r[1] for r in rows[:15])
+
+
+_STATUS_ALIASES = {"inprogress": "inprogress", "active": "inprogress", "current": "inprogress", "פעילים": "inprogress", "פעיל": "inprogress", "נוכחיים": "inprogress",
+                   "past": "past", "finished": "past", "ended": "past", "עבר": "past", "שהסתיימו": "past", "קודמים": "past",
+                   "future": "future", "upcoming": "future", "עתידיים": "future", "עתיד": "future", "בקרוב": "future"}
+
+
+@_register(
+    name="get_courses_by_status", moodle_function="core_course_get_enrolled_courses_by_timeline_classification",
+    icon="🗓️", label="קורסים לפי סטטוס (פעילים/עבר/עתידיים)",
+    description_admin="מחלק את הקורסים של הסטודנט לפי Moodle: פעילים עכשיו, שהסתיימו, או עתידיים. מדויק יותר מהרשימה הכללית כשרוצים לדעת מה הוא לומד כרגע. קריאה בלבד.",
+    description_ai="מחזיר את הקורסים של הסטודנט לפי סטטוס שMoodle קובע: classification = inprogress (פעילים עכשיו, ברירת מחדל), past (שהסתיימו) או future (עתידיים). השתמש כשהסטודנט שואל מה הוא לומד עכשיו, אילו קורסים סיים, או מה יתחיל. עדיף על get_my_courses כשצריך רק את הקורסים הפעילים.",
+    params=[{"name": "classification", "type": "STRING", "description": "inprogress | past | future (ברירת מחדל inprogress)", "required": False}],
+)
+async def _exec_get_courses_by_status(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    cls = _STATUS_ALIASES.get(str(args.get("classification") or "inprogress").strip().lower(), "inprogress")
+    data = await _cached_moodle_call((moodle_user_id, "bystatus", cls), wstoken, "core_course_get_enrolled_courses_by_timeline_classification",
+                                     {"classification": cls, "limit": 0, "offset": 0, "sort": "fullname"})
+    courses = [c for c in ((data or {}).get("courses", []) if isinstance(data, dict) else []) if not (_name_hidden(c.get("fullname")) or _name_hidden(c.get("shortname")))]
+    label = {"inprogress": "פעילים עכשיו", "past": "שהסתיימו", "future": "עתידיים"}[cls]
+    if not courses:
+        return data, f"לא נמצאו קורסים {label}."
+    lines = []
+    for c in courses:
+        end = int(c.get("enddate") or 0)
+        prog = c.get("progress")
+        extra = []
+        if cls == "inprogress" and end:
+            extra.append(f"מסתיים {_fmt_ts(end)}")
+        if cls == "future" and c.get("startdate"):
+            extra.append(f"מתחיל {_fmt_ts(c.get('startdate'))}")
+        if prog is not None and cls == "inprogress":
+            try:
+                extra.append(f"התקדמות {round(float(prog))}%")
+            except (TypeError, ValueError):
+                pass
+        lines.append(f"- [{_reg('c', n=_clean_course_name(c.get('fullname'))[:60])}] {c.get('fullname')}" + (f" ({'; '.join(extra)})" if extra else ""))
+    return data, f"קורסים {label}:\n" + "\n".join(lines)
+
+
+@_register(
+    name="get_course_teachers", moodle_function="core_course_get_courses_by_field",
+    icon="👤", label="מרצי הקורס",
+    description_admin="מחזיר את המרצים (אנשי הקשר של הקורס ב-Moodle) בקורס מסוים, ואת המייל שלהם כשהוא גלוי לסטודנטים. קריאה בלבד.",
+    description_ai="מחזיר מי המרצים בקורס מסוים (שם, ואם גלוי - גם מייל). השתמש כשהסטודנט שואל מי המרצה, מי מלמד, או איך לפנות למרצה. אל תמציא מייל: אם הוא לא מופיע בתוצאה, אמור שהוא לא גלוי ב-Moodle.",
+    params=[{"name": "course_name", "type": "STRING", "description": "שם הקורס", "required": True}],
+)
+async def _exec_get_course_teachers(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    course_name = args.get("course_name", "")
+    course = await _resolve_course(wstoken, moodle_user_id, course_name)
+    if not course:
+        return None, f"לא נמצא קורס בשם '{course_name}' ברשימת הקורסים."
+    data = await _cached_moodle_call((moodle_user_id, "byfield", course["id"]), wstoken, "core_course_get_courses_by_field", {"field": "id", "value": course["id"]})
+    found = (data or {}).get("courses", []) if isinstance(data, dict) else []
+    contacts = (found[0].get("contacts") if found else None) or []
+    cname = course.get("fullname")
+    if not contacts:
+        return data, f"Moodle לא מציג מרצים כאנשי קשר בקורס '{cname}'."
+    emails: Dict[Any, str] = {}
+    try:
+        profs = await _cached_moodle_call((moodle_user_id, "teacherprofiles", course["id"]), wstoken, "core_user_get_course_user_profiles",
+                                          {**{f"userlist[{i}][userid]": c.get("id") for i, c in enumerate(contacts[:8])}, **{f"userlist[{i}][courseid]": course["id"] for i in range(len(contacts[:8]))}})
+        for p in profs if isinstance(profs, list) else []:
+            if p.get("email"):
+                emails[p.get("id")] = str(p["email"])
+    except MoodleTokenInvalid:
+        raise
+    except Exception:
+        pass
+    lines = [f"- {html.unescape(str(c.get('fullname') or '')).strip()}" + (f" (מייל: {emails[c.get('id')]})" if c.get("id") in emails else " (המייל לא גלוי ב-Moodle)") for c in contacts[:8]]
+    return data, f"המרצים בקורס '{cname}':\n" + "\n".join(lines)
+
+
+@_register(
+    name="get_my_notifications", moodle_function="message_popup_get_popup_notifications",
+    icon="🔔", label="התראות מ-Moodle",
+    description_admin="מחזיר את ההתראות האחרונות של הסטודנט ב-Moodle (ציון חדש, מטלה חדשה, הודעת מערכת) ואת מספר ההתראות והשיחות שלא נקראו. לא קורא את תוכן ההודעות הפרטיות. קריאה בלבד.",
+    description_ai="מחזיר את ההתראות האחרונות של הסטודנט מ-Moodle (למשל פורסם ציון, נוספה מטלה, הודעת מערכת) ואת מספר ההתראות והשיחות שלא נקראו. השתמש כשהסטודנט שואל אם יש לו התראות או הודעות חדשות, או מה חדש עבורו. אין גישה לתוכן שיחות פרטיות.",
+    params=[],
+)
+async def _exec_get_my_notifications(wstoken, moodle_user_id, args) -> Tuple[Any, str]:
+    data = await _moodle_call(wstoken, "message_popup_get_popup_notifications", {"useridto": moodle_user_id, "newestfirst": 1, "limit": 12, "offset": 0})
+    notes = (data or {}).get("notifications", []) if isinstance(data, dict) else []
+    unread = (data or {}).get("unreadcount", 0) if isinstance(data, dict) else 0
+    convs = None
+    try:
+        convs = await _moodle_call(wstoken, "core_message_get_unread_conversations_count", {"useridto": moodle_user_id})
+    except MoodleTokenInvalid:
+        raise
+    except Exception:
+        pass
+    cnt = "אין התראות שלא נקראו" if not unread else ("יש התראה אחת שלא נקראה" if unread == 1 else f"יש {unread} התראות שלא נקראו")
+    head = cnt + (f" ו-{convs} שיחות לא נקראות" if isinstance(convs, int) and convs > 1 else (" ושיחה אחת לא נקראה" if convs == 1 else "")) + "."
+    if not notes:
+        return data, head + " אין התראות אחרונות."
+    lines = []
+    for n in notes[:10]:
+        subj = html.unescape(str(n.get("subject") or "")).strip()
+        body = _html_text(n.get("smallmessage") or n.get("fullmessage"), 140)
+        new = "" if n.get("read") else "[חדש] "
+        lines.append(f"- {new}{subj} ({_fmt_past(n.get('timecreated'))})" + (f": {body}" if body and body != subj else ""))
+    return data, head + "\n" + "\n".join(lines)
+
+
+# =====================================================================
 # API ציבורי - נגזר מ-FUNCTION_REGISTRY
 # =====================================================================
 _REGISTRY_BY_NAME = {f["name"]: f for f in FUNCTION_REGISTRY}

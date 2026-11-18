@@ -215,6 +215,18 @@ class Database:
         from auth import _session_secret
         return Fernet(_b.urlsafe_b64encode(_h.sha256(b"user-ai-key-v1:" + _session_secret()).digest()))
 
+    async def get_state_kv(self, k: str) -> Optional[str]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select v from prompt_state where k = %s;", (k,))
+                row = await cur.fetchone()
+        return row[0] if row else None
+
+    async def set_state_kv(self, k: str, v: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("insert into prompt_state(k, v) values (%s, %s) on conflict (k) do update set v = excluded.v;", (k, v))
+
     async def get_prompt_state(self) -> Optional[str]:
         async with _get_pool().connection() as conn:
             async with conn.cursor() as cur:
