@@ -533,6 +533,20 @@
               <div id="moodleTestConnectResult" class="mt-3 text-xs"></div>
             </div>
           </div>
+          <div id="moodleAllCard" class="card hidden">
+            <div class="card-head"><div><h2>כל הפונקציות שהטוקן מורשה להפעיל</h2><p>הרשימה המלאה מהאתר, מקובצת לפי רכיב. "נתח עם AI" מוסיף לכל פונקציה הסבר בעברית, ציון שימושיות לסטודנט ושאלה לדוגמה שהיא עונה עליה, כדי לגלות מה אנחנו מפספסים.</p></div>
+              <button type="button" id="moodleAnnBtn" onclick="annotateMoodle()" class="btn btn-soft">⟦sparkle⟧נתח עם AI</button></div>
+            <div class="card-body">
+              <div class="flex flex-wrap gap-2 mb-2">
+                <input id="moodleAllSearch" type="search" oninput="renderMoodleAll()" placeholder="חיפוש לפי שם או הסבר" class="input flex-1" style="min-width:200px" dir="rtl" />
+                <select id="moodleAllFilter" onchange="renderMoodleAll()" class="select" style="width:auto">
+                  <option value="unused">רק מה שהבוט עדיין לא משתמש בו</option><option value="useful">שימושיות לסטודנט (אחרי ניתוח)</option><option value="read">רק קריאה, בלי שינוי נתונים</option><option value="all">הכל</option>
+                </select>
+              </div>
+              <div id="moodleAllInfo" class="hint" style="margin:0 0 10px"></div>
+              <div id="moodleAllList" class="space-y-2"></div>
+            </div>
+          </div>
           <div class="card">
             <div class="card-head"><div><h2>פונקציות Moodle</h2><p>כל פונקציה דולקת זמינה לבוט כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע ממנו לקרוא לה, למשל כשהיא לא עובדת טוב מול המערכת של המכללה. כפתור "בדוק" פעיל אחרי חיבור עם טוקן.</p></div>
               <button type="button" onclick="loadMoodleFunctions()" class="btn btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>רענן</button></div>
@@ -1117,9 +1131,71 @@
           <div class="kpi"><b style="${missing.length ? 'color:var(--err)' : ''}">${missing.length}</b><span>שהבוט מצפה להן אבל חסרות</span></div>
         </div>
         ${missing.length ? `<div class="callout mb-2" style="background:var(--err-soft);border-color:#fecdca;color:var(--err)">⟦alert⟧<div>לא זמינות לטוקן: ${missing.map(f => escapeHtmlAdmin(f.label) + ' <span dir="ltr">(' + escapeHtmlAdmin(f.mf) + ')</span>').join(', ')}</div></div>` : ''}
-        <details class="mt-1"><summary class="cursor-pointer text-[13px] font-semibold" style="color:var(--accent-d)">כל ${moodleAvail.length} הפונקציות שהטוקן יכול להפעיל</summary>
-          <div class="mt-2 flex flex-wrap gap-1.5" dir="ltr">${moodleAvail.map(n => `<span class="badge ${ourMf.has(n) ? 'badge-ok' : ''}" style="font-weight:600">${escapeHtmlAdmin(n)}</span>`).join('')}</div>
-          <div class="hint">בירוק: פונקציות שהבוט משתמש בהן (${usable.length}). האחרות (${others.length}) קיימות באתר ופתוחות לטוקן אבל הבוט עדיין לא משתמש בהן.</div></details>`;
+        <div class="hint">${others.length} פונקציות נוספות פתוחות לטוקן והבוט עדיין לא משתמש בהן: הרשימה המלאה בכרטיס שמתחת.</div>`;
+    }
+
+    // ---- every function the token may call, grouped by component, with the AI's notes on which ones would help students
+    let MOODLE_ANN = {};
+    const MW_WRITE = /_(add|create|delete|remove|update|set|submit|send|save|mark|toggle|unenrol|duplicate|move|reset|import|upload|start|finish|process|edit|change|assign|unassign|suspend|revoke|invite|reorder|block|unblock|enrol|join|leave|favourite|unfavourite)(_|$)/;
+    const MW_PREFIX = ['core', 'mod', 'gradereport', 'block', 'local', 'tool', 'report', 'enrol', 'auth', 'format', 'qtype', 'assignsubmission', 'assignfeedback', 'workshopform'];
+    function mwGroup(n) { const p = n.split('_'); return MW_PREFIX.includes(p[0]) && p.length > 2 ? p[0] + '_' + p[1] : p[0]; }
+    function renderMoodleAll() {
+      const card = document.getElementById('moodleAllCard');
+      if (!moodleAvail) { card.classList.add('hidden'); return; }
+      card.classList.remove('hidden');
+      const q = (document.getElementById('moodleAllSearch').value || '').trim().toLowerCase();
+      const flt = document.getElementById('moodleAllFilter').value;
+      const ours = new Set((moodleFunctionsCatalog || []).map(f => f.moodle_function));
+      const annotated = Object.keys(MOODLE_ANN).length;
+      const isWrite = n => MOODLE_ANN[n] ? MOODLE_ANN[n].w : MW_WRITE.test(n);
+      const rows = moodleAvail.filter(n => {
+        const a = MOODLE_ANN[n];
+        if (q && !(n.toLowerCase().includes(q) || (a && (a.d + ' ' + a.i).toLowerCase().includes(q)))) return false;
+        if (flt === 'unused') return !ours.has(n);
+        if (flt === 'read') return !isWrite(n);
+        if (flt === 'useful') return a && a.u >= 2 && !ours.has(n);
+        return true;
+      });
+      const groups = new Map();
+      rows.forEach(n => { const g = mwGroup(n); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(n); });
+      const score = n => (MOODLE_ANN[n] ? MOODLE_ANN[n].u : -1);
+      const sorted = [...groups.entries()].sort((a, b) => (Math.max(...b[1].map(score)) - Math.max(...a[1].map(score))) || a[0].localeCompare(b[0]));
+      document.getElementById('moodleAllInfo').textContent = `${moodleAvail.length} פונקציות בסך הכל · ${moodleAvail.filter(n => !isWrite(n)).length} קריאה בלבד · ${moodleAvail.filter(n => ours.has(n)).length} בשימוש הבוט · ${annotated} נותחו · מוצגות ${rows.length}`;
+      const list = document.getElementById('moodleAllList');
+      if (!rows.length) { list.innerHTML = '<div class="empty">' + (flt === 'useful' && !annotated ? 'עדיין לא בוצע ניתוח. לחץ "נתח עם AI".' : 'אין פונקציות שמתאימות לסינון.') + '</div>'; return; }
+      list.innerHTML = sorted.map(([g, names]) => {
+        names.sort((a, b) => (score(b) - score(a)) || a.localeCompare(b));
+        const items = names.map(n => {
+          const a = MOODLE_ANN[n], w = isWrite(n);
+          return `<div class="py-2.5" style="border-top:1px solid var(--line)">
+            <div class="flex flex-wrap items-center gap-1.5"><b class="text-[13px]" dir="ltr">${escapeHtmlAdmin(n)}</b>
+              ${ours.has(n) ? '<span class="badge badge-ok">בשימוש הבוט</span>' : ''}
+              <span class="badge ${w ? 'badge-warn' : ''}">${w ? 'משנה נתונים' : 'קריאה'}</span>
+              ${a ? `<span class="badge ${a.u >= 2 ? 'badge-accent' : ''}">שימושיות ${a.u} מתוך 3</span>` : ''}</div>
+            ${a ? `<div class="text-[13px] mt-1" style="color:var(--text-2)">${escapeHtmlAdmin(a.d)}</div>` : ''}
+            ${a && a.i ? `<div class="text-[12.5px] mt-0.5" style="color:var(--accent-d)">שאלה לדוגמה: "${escapeHtmlAdmin(a.i)}"</div>` : ''}</div>`;
+        }).join('');
+        return `<details ${q || flt === 'useful' ? 'open' : ''} class="rounded-xl border border-slate-200 bg-white"><summary class="cursor-pointer select-none px-3.5 py-2.5 flex items-center justify-between gap-2"><span class="font-bold text-[13.5px]" dir="ltr">${escapeHtmlAdmin(g)}</span><span class="badge">${names.length}</span></summary><div class="px-3.5 pb-1">${items}</div></details>`;
+      }).join('');
+    }
+    async function annotateMoodle() {
+      if (!moodleAvail) return;
+      const btn = document.getElementById('moodleAnnBtn');
+      const todo = moodleAvail.filter(n => !MOODLE_ANN[n]);
+      if (!todo.length) { showToast('כל הפונקציות כבר נותחו'); return; }
+      btn.disabled = true; const orig = btn.innerHTML;
+      try {
+        for (let i = 0; i < todo.length; i += 40) {
+          btn.textContent = `מנתח ${Math.min(i + 40, todo.length)} מתוך ${todo.length}...`;
+          const res = await adminFetch(`${API_BASE}/api/admin/moodle-functions/annotate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: todo.slice(i, i + 40) }) });
+          const d = await res.json();
+          if (!res.ok) { showToast(d.detail || 'הניתוח נכשל', true); break; }
+          Object.assign(MOODLE_ANN, d.items || {});
+          renderMoodleAll();
+        }
+        if (Object.keys(MOODLE_ANN).length) { document.getElementById('moodleAllFilter').value = 'useful'; renderMoodleAll(); }
+      } catch (e) { showToast('הניתוח נכשל: ' + e.message, true); }
+      finally { btn.disabled = false; btn.innerHTML = orig; }
     }
 
     async function connectMoodleTest() {
@@ -1151,6 +1227,7 @@
         moodleAvail = Array.isArray(data.available_functions) ? data.available_functions : null;
         if (!moodleFunctionsCatalog.length) { try { await loadMoodleFunctions(); } catch (e) {} }
         resultEl.innerHTML = `<div class="font-bold" style="color:var(--ok)">⟦check⟧ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>` + renderMoodleAvail();
+        renderMoodleAll();
         document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = false);
       } catch (err) {
         btn.disabled = false;

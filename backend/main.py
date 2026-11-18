@@ -556,6 +556,47 @@ async def admin_moodle_test_connect(req: MoodleConnectRequest):
     }
 
 
+class MoodleAnnotateRequest(BaseModel):
+    names: List[str]
+
+
+_MOODLE_ANN: Dict[str, dict] = {}            # function name -> what the AI said about it (kept while the server runs, so a name is never paid for twice)
+
+_ANN_PROMPT = """אתה מומחה ל-Moodle Web Services. לפניך שמות של פונקציות שאתר Moodle של מכללה פתח לטוקן של סטודנט.
+לכל שם החזר אובייקט עם: n = השם בדיוק כפי שקיבלת; d = תיאור קצר בעברית (עד 12 מילים) של מה הפונקציה עושה;
+u = מספר 0 עד 3: עד כמה היא שימושית לעוזר צ'אט שעונה לסטודנט על הלימודים שלו (3 = מאוד: מטלות, מועדים, ציונים, מבחנים, קבצים, הכרזות והודעות, נוכחות, לוח זמנים; 2 = שימושית לפעמים;
+1 = שולית; 0 = ניהולית, טכנית או לא רלוונטית לסטודנט); i = אם u הוא 2 או 3: שאלה לדוגמה (בעברית, עד 10 מילים) שסטודנט היה שואל והפונקציה עונה עליה, אחרת מחרוזת ריקה;
+w = true אם הפונקציה משנה נתונים (כתיבה, שליחה, מחיקה), false אם היא רק קוראת.
+השמות:
+"""
+
+
+@app.post("/api/admin/moodle-functions/annotate", dependencies=[Depends(require_admin)])
+async def admin_moodle_annotate(req: MoodleAnnotateRequest):
+    """Describes a batch of Moodle function names (what it does, how useful for a student assistant, an example question). Admin tool for finding what the bot is missing."""
+    from rag_engine import _generate_once
+    names = [n for n in dict.fromkeys(req.names) if re.fullmatch(r"[A-Za-z0-9_]{3,120}", n)][:40]
+    todo = [n for n in names if n not in _MOODLE_ANN]
+    if todo:
+        api_key = await db.get_api_key()
+        if not api_key:
+            raise HTTPException(status_code=400, detail="אין מפתח Google שמור.")
+        schema = {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {"n": {"type": "STRING"}, "d": {"type": "STRING"}, "u": {"type": "INTEGER"},
+                                                                                "i": {"type": "STRING"}, "w": {"type": "BOOLEAN"}}, "required": ["n", "d", "u"]}}
+        try:
+            content = await asyncio.wait_for(_generate_once(
+                [{"role": "user", "parts": [{"text": _ANN_PROMPT + "\n".join(todo)}]}], api_key, max_output_tokens=5000, call_type="ai_draft",
+                gen_extra={"responseMimeType": "application/json", "responseSchema": schema}), timeout=60)
+            txt = "".join(p.get("text", "") for p in (content or {}).get("parts", []) if isinstance(p, dict))
+            for it in json.loads(txt):
+                n = str(it.get("n") or "")
+                if n in todo:
+                    _MOODLE_ANN[n] = {"d": str(it.get("d") or "")[:140], "u": max(0, min(3, int(it.get("u") or 0))), "i": str(it.get("i") or "")[:120], "w": bool(it.get("w"))}
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"הניתוח נכשל: {type(e).__name__}")
+    return {"items": {n: _MOODLE_ANN[n] for n in names if n in _MOODLE_ANN}}
+
+
 @app.post("/api/admin/moodle-test-function", dependencies=[Depends(require_admin)])
 async def admin_moodle_test_function(req: MoodleTestFunctionRequest):
     """
