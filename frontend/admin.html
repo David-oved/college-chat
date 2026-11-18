@@ -1101,6 +1101,26 @@
     let moodleTestToken = null;   // חי רק בזיכרון הדפדפן של המנהל, לכל שימוש הדף הזה - לא נשמר בשום מקום
     let moodleTestUserId = null;
     let moodleFunctionsCatalog = [];
+    let moodleAvail = null;       // every function the pasted token may call on the Moodle site (null = the site does not say)
+
+    // what the token can really do on the site, against the functions this bot is built to use
+    function renderMoodleAvail() {
+      if (moodleAvail === null) return '<div class="hint">האתר לא מפרסם את רשימת הפונקציות של הטוקן הזה.</div>';
+      const have = new Set(moodleAvail);
+      const ours = (moodleFunctionsCatalog || []).map(f => ({ name: f.name, mf: f.moodle_function, label: f.label }));
+      const usable = ours.filter(f => have.has(f.mf)), missing = ours.filter(f => !have.has(f.mf));
+      const ourMf = new Set(ours.map(f => f.mf));
+      const others = moodleAvail.filter(n => !ourMf.has(n));
+      return `<div class="grid grid-cols-3 gap-3 my-3">
+          <div class="kpi"><b>${moodleAvail.length}</b><span>פונקציות פתוחות לטוקן באתר</span></div>
+          <div class="kpi"><b style="color:var(--ok)">${usable.length}</b><span>מתוך ${ours.length} שהבוט בנוי להפעיל, זמינות</span></div>
+          <div class="kpi"><b style="${missing.length ? 'color:var(--err)' : ''}">${missing.length}</b><span>שהבוט מצפה להן אבל חסרות</span></div>
+        </div>
+        ${missing.length ? `<div class="callout mb-2" style="background:var(--err-soft);border-color:#fecdca;color:var(--err)">⟦alert⟧<div>לא זמינות לטוקן: ${missing.map(f => escapeHtmlAdmin(f.label) + ' <span dir="ltr">(' + escapeHtmlAdmin(f.mf) + ')</span>').join(', ')}</div></div>` : ''}
+        <details class="mt-1"><summary class="cursor-pointer text-[13px] font-semibold" style="color:var(--accent-d)">כל ${moodleAvail.length} הפונקציות שהטוקן יכול להפעיל</summary>
+          <div class="mt-2 flex flex-wrap gap-1.5" dir="ltr">${moodleAvail.map(n => `<span class="badge ${ourMf.has(n) ? 'badge-ok' : ''}" style="font-weight:600">${escapeHtmlAdmin(n)}</span>`).join('')}</div>
+          <div class="hint">בירוק: פונקציות שהבוט משתמש בהן (${usable.length}). האחרות (${others.length}) קיימות באתר ופתוחות לטוקן אבל הבוט עדיין לא משתמש בהן.</div></details>`;
+    }
 
     async function connectMoodleTest() {
       const tokenInput = document.getElementById('moodleTestTokenInput');
@@ -1128,7 +1148,9 @@
         }
         moodleTestToken = token;
         moodleTestUserId = data.userid;
-        resultEl.innerHTML = `<div class="text-emerald-700 font-bold">⟦check⟧ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>`;
+        moodleAvail = Array.isArray(data.available_functions) ? data.available_functions : null;
+        if (!moodleFunctionsCatalog.length) { try { await loadMoodleFunctions(); } catch (e) {} }
+        resultEl.innerHTML = `<div class="font-bold" style="color:var(--ok)">⟦check⟧ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>` + renderMoodleAvail();
         document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = false);
       } catch (err) {
         btn.disabled = false;
