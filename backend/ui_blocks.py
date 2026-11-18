@@ -89,7 +89,7 @@ UI_ADDENDUM = """
 
 מידע מהמאגר ומהכלים (אתה כותב את התוכן, קצר): כל מייל, טלפון וקישור חייבים להיות בדיוק כפי שהופיעו בחומר שקיבלת, אחרת השרת ימחק אותם. אל תמציא פרטים.
 - contact: איש קשר או מדור. title=שם, subtitle=תפקיד, text=שורה נוספת. items=פעולות {kind: email|phone|whatsapp|link|address, value, label?} - הסטודנט לוחץ ומתקשר/שולח מייל/פותח וואטסאפ או מעתיק. style card/row/big.
-- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style table / week (שבוע עם היום מודגש) / compact.
+- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style table / week (שבוע עם היום מודגש, רק כשיש טווח אחד ביום ובלי הערות) / compact. סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
 - steps: תהליך צעד אחר צעד. items {title, detail?}. style numbered / timeline / cards.
 - facts: זוגות שם-ערך. items {label, value, icon?}. style list / grid / chips.
 - highlight: מספר או סכום גדול. items {value, label, detail?} (עד 4). style big / pill / row. מתאים ל"6 ש"ח ליום איחור".
@@ -271,6 +271,29 @@ def _common(b: Dict[str, Any]) -> Dict[str, Any]:
     return d
 
 
+_RANGE_SPLIT = re.compile(r"\s*(?:,|;|\s\+\s|\sו-?(?=\d))\s*")
+
+
+def _hours_rows(raw_items: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Opening-hours rows. When the model writes the kind of service inside the time ("10:00-12:00 (טלפוני), 13:00-15:00 (קהל)"), each range becomes its own
+    row with the note as its label, so the app can show the note next to the time instead of cutting it into the hours."""
+    rows: List[Dict[str, str]] = []
+    for x in raw_items:
+        days, label, raw = _s(x.get("days"), 30), _s(x.get("label"), 40), _s(x.get("time"), 90)
+        if not raw:
+            continue
+        parts = [p for p in _RANGE_SPLIT.split(raw) if p.strip()] or [raw]
+        if any("(" in p for p in parts):
+            for p in parts:
+                m = re.search(r"\(([^)]{1,30})\)", p)
+                clean = (p.replace(m.group(0), "") if m else p).strip()
+                if clean:
+                    rows.append({"d": days, "h": _s(clean, 40), "l": _s(m.group(1), 30) if m else label})
+        else:
+            rows.append({"d": days, "h": _s(raw, 40), "l": label})
+    return rows[:16]
+
+
 def _icon(x: Any) -> str:
     i = _s(x, 12).lower()
     return i if i in ICONS else ""
@@ -337,7 +360,7 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
             out.append({**base, "tx": text, "it": acts})
         # ---------------- hours
         elif kind == "hours":
-            rows = [{"d": _s(x.get("days"), 30), "h": _s(x.get("time"), 40), "l": _s(x.get("label"), 40)} for x in raw_items if _s(x.get("time"), 40)]
+            rows = _hours_rows(raw_items)
             if rows:
                 out.append({**base, "tx": text, "it": rows})
         # ---------------- list-like with label/detail/value/icon
