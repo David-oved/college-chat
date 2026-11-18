@@ -2,7 +2,7 @@
 // Cache-first for the app shell, network-first fallback for everything else.
 // Never intercepts POST/streaming API calls.
 
-const CACHE_NAME = 'college-chat-v2';
+const CACHE_NAME = 'college-chat-v3';
 const APP_SHELL = [
   '/',
   '/manifest.json',

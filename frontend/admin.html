@@ -49,6 +49,12 @@
       50% { opacity: 0; }
     }
 
+    .pmSub { font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; color: #334155; }
+    .pmSub.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+    .pmSw { flex: none; width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; border: 0; padding: 0; }
+    .pmSw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px #0003; }
+    .pmSw.on { background: #059669; }
+    .pmSw.on::after { transform: translateX(-18px); }
     .btn-press { transition: transform .12s ease, box-shadow .15s ease, background-color .15s ease; }
     .btn-press:active { transform: scale(.97); }
 
@@ -190,6 +196,9 @@
         <button type="button" class="navbtn" data-tab="ai-context" onclick="switchTab('ai-context')">
           <span class="navbtn-icon">🧠</span><span>הקשר ל-AI</span>
         </button>
+        <button type="button" class="navbtn" data-tab="prompt" onclick="switchTab('prompt')">
+          <span class="navbtn-icon">🎛️</span><span>פרומט ועיצוב</span>
+        </button>
       </nav>
 
       <div class="px-3 py-4 border-t border-white/10 space-y-1">
@@ -213,6 +222,7 @@
           <button type="button" class="navbtn-mobile" data-tab="users" onclick="switchTab('users')">👥 משתמשים</button>
           <button type="button" class="navbtn-mobile" data-tab="usage" onclick="switchTab('usage')">📊 שימוש</button>
           <button type="button" class="navbtn-mobile" data-tab="ai-context" onclick="switchTab('ai-context')">🧠 הקשר ל-AI</button>
+          <button type="button" class="navbtn-mobile" data-tab="prompt" onclick="switchTab('prompt')">🎛️ פרומט ועיצוב</button>
           <a href="/" class="navbtn-mobile">📱 לצ'אט</a>
         </div>
       </div>
@@ -572,6 +582,94 @@
 
         </section>
 
+        <!-- ===================== טאב 6: פרומט ועיצוב ===================== -->
+        <section id="tabPanel-prompt" class="tab-panel space-y-4 hidden">
+          <div class="card-pro p-3 flex flex-wrap gap-2 items-center">
+            <button type="button" class="pmSub active" data-sub="notes" onclick="pmSub('notes')">✍️ הוראות הבוט</button>
+            <button type="button" class="pmSub" data-sub="gallery" onclick="pmSub('gallery')">🎨 גלריית עיצובים</button>
+            <button type="button" class="pmSub" data-sub="create" onclick="pmSub('create')">✨ עיצוב חדש עם AI</button>
+            <button type="button" class="pmSub" data-sub="history" onclick="pmSub('history')">🕘 גרסאות</button>
+            <span id="pmDirty" class="hidden text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 mr-auto">יש שינויים שלא נשמרו</span>
+            <button type="button" id="pmSaveTop" onclick="pmSave()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-sm mr-auto">💾 שמור ופרסם</button>
+          </div>
+          <div class="text-xs text-slate-500 px-1">כל שמירה נכנסת לתוקף מיד אצל כל המשתמשים, בלי עדכון תוכנה. הגרסה הקודמת נשמרת תמיד, אפשר לחזור אליה בלשונית "גרסאות".</div>
+
+          <!-- הוראות -->
+          <div id="pmView-notes" class="space-y-4">
+            <div class="card-pro p-5">
+              <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold">📝 ההוראות שלי לבוט</h2>
+                <button type="button" onclick="pmAddNote()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">＋ הוראה חדשה</button>
+              </div>
+              <p class="text-xs text-slate-500 mb-3">הערה זורקים בשפה חופשית, והיא מתווספת לפרומט. למשל: "בפעם הראשונה תעשה לסטודנט סקר על איזה קורסים באמת שלו". אפשר לקבוע מתי היא חלה.</p>
+              <div id="pmNotes" class="space-y-3"></div>
+            </div>
+            <div class="card-pro p-5">
+              <h2 class="text-lg font-bold mb-1">🧩 חלקי הפרומט (הבסיס שהבוט מקבל)</h2>
+              <p class="text-xs text-slate-500 mb-3">זה הפרומט הקיים, מחולק לחלקים. אפשר לכבות חלק, לערוך את הנוסח שלו או לאפס לנוסח המקורי. הטקסט לא מוצג עד שלוחצים "ערוך".</p>
+              <div id="pmSections" class="space-y-4"></div>
+            </div>
+          </div>
+
+          <!-- גלריה -->
+          <div id="pmView-gallery" class="hidden">
+            <div class="grid lg:grid-cols-5 gap-4">
+              <div class="lg:col-span-3 card-pro p-4">
+                <h2 class="text-lg font-bold mb-1">🎨 סוגי העיצוב שהבוט מכיר</h2>
+                <p class="text-xs text-slate-500 mb-3">לחץ על עיצוב כדי לראות אותו בדיוק כפי שהסטודנט רואה (בכל הסגנונות). אפשר לכבות עיצוב, לתת לו עדיפות, ולכתוב לבוט הערה ספציפית עליו.</p>
+                <div id="pmKinds" class="space-y-2"></div>
+              </div>
+              <div class="lg:col-span-2">
+                <div class="card-pro p-3 lg:sticky lg:top-4">
+                  <div id="pmGalTitle" class="font-bold text-sm mb-2">בחר עיצוב</div>
+                  <div id="pmGalHost"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- יצירה עם AI -->
+          <div id="pmView-create" class="hidden space-y-4">
+            <div class="grid lg:grid-cols-5 gap-4">
+              <div class="lg:col-span-3 card-pro p-5 space-y-3">
+                <h2 class="text-lg font-bold">✨ עיצוב חדש עם AI</h2>
+                <p class="text-xs text-slate-500">תאר בשפה חופשית איך הכרטיס צריך להיראות ומה הוא מציג. ה-AI בונה אותו, ואתה רואה תצוגה מקדימה. העיצוב נבנה מרכיבים שהאפליקציה כבר יודעת לצייר, ולכן הוא עובד אצל כולם מיד בלי עדכון תוכנה.</p>
+                <textarea id="pmGenDesc" rows="4" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="למשל: כרטיס מבצע עם כותרת גדולה, מחיר מודגש בצבע, ורשימת תנאים עם וי ליד כל שורה"></textarea>
+                <div class="flex gap-2 items-center flex-wrap">
+                  <button type="button" id="pmGenBtn" onclick="pmGenerate()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm">✨ צור עיצוב</button>
+                  <span id="pmGenMsg" class="text-xs text-slate-500"></span>
+                </div>
+                <div id="pmGenForm" class="hidden space-y-2 border-t border-slate-200 pt-3">
+                  <div class="grid sm:grid-cols-2 gap-2">
+                    <label class="text-xs font-bold text-slate-600">שם העיצוב<input id="pmGenName" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal"></label>
+                    <label class="text-xs font-bold text-slate-600">מזהה (לא ניתן לשינוי)<input id="pmGenId" disabled class="mt-1 w-full border border-slate-200 bg-slate-50 rounded-lg px-2 py-1.5 text-sm font-normal" dir="ltr"></label>
+                  </div>
+                  <label class="block text-xs font-bold text-slate-600">מתי הבוט משתמש בו<input id="pmGenWhen" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal"></label>
+                  <label class="block text-xs font-bold text-slate-600">רוצה לשנות משהו? תאר את התיקון ולחץ "תקן"<input id="pmGenFix" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal" placeholder="למשל: הצבע ירוק, המחיר יותר גדול, בלי המסגרת"></label>
+                  <div class="flex gap-2 flex-wrap">
+                    <button type="button" onclick="pmRefine()" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-1.5 rounded-xl text-sm">🔧 תקן</button>
+                    <button type="button" onclick="pmSaveDesign()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">💾 שמור עיצוב והפעל</button>
+                  </div>
+                </div>
+              </div>
+              <div class="lg:col-span-2 card-pro p-3"><div class="font-bold text-sm mb-2">תצוגה מקדימה</div><div id="pmGenHost" class="text-xs text-slate-400">עדיין לא נוצר עיצוב.</div></div>
+            </div>
+            <div class="card-pro p-5">
+              <h2 class="text-lg font-bold mb-3">🗂️ העיצובים שיצרתי</h2>
+              <div id="pmCustom" class="space-y-3"></div>
+            </div>
+          </div>
+
+          <!-- גרסאות -->
+          <div id="pmView-history" class="hidden">
+            <div class="card-pro p-5">
+              <h2 class="text-lg font-bold mb-1">🕘 גרסאות קודמות</h2>
+              <p class="text-xs text-slate-500 mb-3">כל שמירה שומרת את המצב שהיה לפניה. חזרה לגרסה מחליפה את המצב הנוכחי (והמצב הנוכחי נשמר כגרסה).</p>
+              <div id="pmVersions" class="space-y-2 text-sm"></div>
+            </div>
+          </div>
+        </section>
+
       </main>
     </div>
   </div>
@@ -600,7 +698,8 @@
       knowledge: { icon: '📚', title: 'מאגר ידע (RAG)' },
       users: { icon: '👥', title: 'משתמשים' },
       usage: { icon: '📊', title: 'מדדי שימוש' },
-      'ai-context': { icon: '🧠', title: 'הקשר ל-AI' }
+      'ai-context': { icon: '🧠', title: 'הקשר ל-AI' },
+      prompt: { icon: '🎛️', title: 'פרומט ועיצוב' }
     };
 
     function switchTab(name) {
@@ -615,6 +714,7 @@
       if (meta && titleEl) titleEl.textContent = `${meta.icon} ${meta.title}`;
       if (name === 'users') loadUsers();
       if (name === 'ai-context') loadMoodleFunctions();
+      if (name === 'prompt' && !PM) pmLoad().catch(e => showToast('שגיאה בטעינה: ' + e.message, true));
     }
 
     function showToast(msg, isError = false) {
@@ -1817,6 +1917,262 @@
       await adminFetch(`${API_BASE}/api/admin/knowledge/${id}`, { method: 'DELETE' });
       await loadKnowledge();
     }
+
+    // ===================== פרומט ועיצוב =====================
+    const PM_PREVIEW_URL = 'https://david-oved.github.io/moodle-task/beta/ui-preview.html';
+    const PM_GROUPS = ['זהות', 'תגובה', 'עיצוב', 'Moodle', 'זיכרון', 'חיפוש'];
+    let PM = null;            // { sections, notes, designs, custom, versions }
+    let PM_DIRTY = false;
+    let PM_KIND = null;       // the design selected in the gallery
+    let PM_CAT = null;
+    let PM_GEN = null;        // the design being made with AI (not yet saved)
+
+    function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+    const PM_INPUT = 'w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-indigo-500';
+
+    function pmDirty(on = true) {
+      PM_DIRTY = on;
+      document.getElementById('pmDirty').classList.toggle('hidden', !on);
+    }
+    function pmSub(name) {
+      document.querySelectorAll('.pmSub').forEach(b => b.classList.toggle('active', b.dataset.sub === name));
+      ['notes', 'gallery', 'create', 'history'].forEach(v => document.getElementById('pmView-' + v).classList.toggle('hidden', v !== name));
+      if (name === 'gallery') pmLoadGallery();
+      if (name === 'create') pmRenderCustom();
+      if (name === 'history') pmRenderVersions();
+    }
+
+    // --- a preview that draws blocks with the students' own code (an iframe of the app), so what the admin sees is what the student sees
+    function pmPreview(host) {
+      const fr = document.createElement('iframe');
+      fr.src = PM_PREVIEW_URL; fr.className = 'w-full rounded-xl border border-slate-200 bg-white'; fr.style.height = '120px'; fr.title = 'תצוגה מקדימה';
+      host.innerHTML = ''; host.appendChild(fr);
+      const st = { ready: false, items: null };
+      const post = (m) => { try { fr.contentWindow.postMessage(m, 'https://david-oved.github.io'); } catch (e) {} };
+      const flush = () => { if (st.ready && st.items) post({ t: 'render', items: st.items }); };
+      window.addEventListener('message', (e) => {
+        if (e.source !== fr.contentWindow || e.origin !== 'https://david-oved.github.io') return;
+        if (e.data && e.data.t === 'ready') { st.ready = true; post({ t: 'theme', dark: false }); flush(); }
+        if (e.data && e.data.t === 'h') fr.style.height = Math.min(1600, Math.max(80, e.data.h + 4)) + 'px';
+      });
+      return { show(items) { st.items = items; flush(); } };
+    }
+
+    async function pmLoad() {
+      const r = await adminFetch(`${API_BASE}/api/admin/prompt`);
+      PM = await r.json();
+      pmRender();
+      pmDirty(false);
+    }
+    function pmRender() { pmRenderNotes(); pmRenderSections(); pmRenderVersions(); pmRenderCustom(); if (PM_CAT) pmRenderKinds(); }
+
+    // ---------- notes
+    function pmAddNote() {
+      PM.notes.unshift({ id: Math.random().toString(36).slice(2, 10), title: '', text: '', enabled: true, when: { scope: 'always', moodle: 'any', lang: '', once: false } });
+      pmRenderNotes(); pmDirty();
+    }
+    function pmSelect(opts, val, onchange) {
+      const s = el('select', 'border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white');
+      opts.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; if (v === val) o.selected = true; s.appendChild(o); });
+      s.onchange = () => { onchange(s.value); pmDirty(); };
+      return s;
+    }
+    function pmSwitch(on, onchange) {
+      const b = el('button', 'pmSw' + (on ? ' on' : ''));
+      b.type = 'button'; b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.onclick = () => { const v = !b.classList.contains('on'); b.classList.toggle('on', v); b.setAttribute('aria-checked', v ? 'true' : 'false'); onchange(v); pmDirty(); };
+      return b;
+    }
+    function pmRenderNotes() {
+      const box = document.getElementById('pmNotes'); box.innerHTML = '';
+      if (!PM.notes.length) { box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין הוראות. לחץ "הוראה חדשה".')); return; }
+      PM.notes.forEach((n, i) => {
+        const c = el('div', 'rounded-xl border p-3 space-y-2 ' + (n.enabled ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-slate-50 opacity-70'));
+        const top = el('div', 'flex items-center gap-2');
+        const title = el('input', PM_INPUT + ' font-bold'); title.placeholder = 'כותרת קצרה (למשל: סקר קורסים)'; title.value = n.title; title.oninput = () => { n.title = title.value; pmDirty(); };
+        top.appendChild(title);
+        top.appendChild(pmSwitch(n.enabled, v => { n.enabled = v; c.className = c.className.replace(/opacity-70/, '') + (v ? '' : ' opacity-70'); }));
+        const del = el('button', 'text-rose-600 text-sm font-bold px-2', '🗑'); del.type = 'button'; del.title = 'מחק'; del.onclick = () => { if (confirm('למחוק את ההוראה?')) { PM.notes.splice(i, 1); pmRenderNotes(); pmDirty(); } };
+        top.appendChild(del); c.appendChild(top);
+        const ta = el('textarea', PM_INPUT); ta.rows = 3; ta.placeholder = 'מה הבוט צריך לעשות או לדעת (בשפה חופשית)'; ta.value = n.text; ta.oninput = () => { n.text = ta.value; pmDirty(); };
+        c.appendChild(ta);
+        const w = n.when || (n.when = { scope: 'always', moodle: 'any', lang: '', once: false });
+        const row = el('div', 'flex flex-wrap items-center gap-2 text-xs text-slate-600');
+        row.appendChild(el('span', 'font-bold', 'מתי:'));
+        row.appendChild(pmSelect([['always', 'תמיד'], ['first_message', 'רק בהודעה הראשונה בשיחה'], ['new_student', 'רק לסטודנט חדש (בלי זיכרון)']], w.scope, v => w.scope = v));
+        row.appendChild(pmSelect([['any', 'עם או בלי Moodle'], ['yes', 'רק מחובר ל-Moodle'], ['no', 'רק לא מחובר ל-Moodle']], w.moodle, v => w.moodle = v));
+        row.appendChild(pmSelect([['', 'כל השפות'], ['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']], w.lang || '', v => w.lang = v));
+        const lab = el('label', 'flex items-center gap-1 cursor-pointer'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!w.once;
+        cb.onchange = () => { w.once = cb.checked; pmDirty(); }; lab.appendChild(cb); lab.appendChild(el('span', '', 'פעם אחת בלבד לכל סטודנט'));
+        row.appendChild(lab); c.appendChild(row);
+        box.appendChild(c);
+      });
+    }
+
+    // ---------- sections
+    function pmRenderSections() {
+      const box = document.getElementById('pmSections'); box.innerHTML = '';
+      PM_GROUPS.forEach(g => {
+        const list = PM.sections.filter(s => s.group === g); if (!list.length) return;
+        const wrap = el('div', 'space-y-2'); wrap.appendChild(el('div', 'text-xs font-extrabold text-slate-500 tracking-wide', g));
+        list.forEach(s => {
+          const c = el('div', 'rounded-xl border border-slate-200 bg-white p-3 ' + (s.enabled ? '' : 'opacity-60'));
+          const top = el('div', 'flex items-center gap-2');
+          const info = el('div', 'flex-1 min-w-0'); const t = el('div', 'font-bold text-sm', s.title);
+          if (s.edited) { const b = el('span', 'mr-2 text-[10px] font-bold text-indigo-700 bg-indigo-100 rounded-full px-2 py-0.5', 'נערך'); t.appendChild(b); }
+          info.appendChild(t); info.appendChild(el('div', 'text-xs text-slate-500', s.desc)); top.appendChild(info);
+          const ed = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '✎ ערוך'); ed.type = 'button';
+          top.appendChild(ed); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
+          c.appendChild(top);
+          const body = el('div', 'hidden mt-2 space-y-2');
+          const ta = el('textarea', PM_INPUT + ' font-mono text-xs leading-relaxed'); ta.rows = 14; ta.dir = 'rtl'; ta.value = s.text;
+          ta.oninput = () => { s.text = ta.value; s.edited = ta.value.trim() !== s.default.trim(); pmDirty(); };
+          const bar = el('div', 'flex gap-2 text-xs');
+          const rs = el('button', 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5', '↺ אפס לנוסח המקורי'); rs.type = 'button';
+          rs.onclick = () => { if (confirm('לאפס את החלק "' + s.title + '" לנוסח המקורי?')) { s.text = s.default; s.edited = false; ta.value = s.default; pmDirty(); } };
+          bar.appendChild(rs); bar.appendChild(el('span', 'text-slate-400 self-center', 'שינוי נכנס לתוקף אחרי "שמור ופרסם".'));
+          body.appendChild(ta); body.appendChild(bar); c.appendChild(body);
+          ed.onclick = () => { const open = body.classList.toggle('hidden') === false; ed.textContent = open ? '✕ סגור' : '✎ ערוך'; };
+          wrap.appendChild(c);
+        });
+        box.appendChild(wrap);
+      });
+    }
+
+    // ---------- gallery
+    const PM_PRI = [['normal', 'עדיפות רגילה'], ['high', 'עדיפות גבוהה'], ['low', 'עדיפות נמוכה']];
+    async function pmLoadGallery() {
+      if (!PM_CAT) { const r = await adminFetch(`${API_BASE}/api/admin/ui/catalog`); PM_CAT = await r.json(); }
+      pmRenderKinds();
+      if (!PM_KIND && PM_CAT.kinds.length) pmSelectKind(PM_CAT.kinds[0].kind);
+    }
+    function pmDesignCfg(kind) { return PM.designs[kind] || (PM.designs[kind] = { enabled: true, priority: 'normal', note: '' }); }
+    function pmRenderKinds() {
+      const box = document.getElementById('pmKinds'); box.innerHTML = '';
+      PM_CAT.kinds.forEach(k => {
+        const cfg = PM.designs[k.kind] || { enabled: true, priority: 'normal', note: '' };
+        const c = el('div', 'rounded-xl border p-3 cursor-pointer ' + (PM_KIND === k.kind ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200 bg-white') + (cfg.enabled === false ? ' opacity-60' : ''));
+        c.dataset.kind = k.kind;
+        const top = el('div', 'flex items-center gap-2');
+        const info = el('div', 'flex-1 min-w-0');
+        info.appendChild(el('div', 'font-bold text-sm', k.name + '  '));
+        info.firstChild.appendChild(el('span', 'text-[11px] font-mono text-slate-400', k.kind));
+        info.appendChild(el('div', 'text-xs text-slate-500', k.desc)); top.appendChild(info);
+        const sw = pmSwitch(cfg.enabled !== false, v => { pmDesignCfg(k.kind).enabled = v; c.classList.toggle('opacity-60', !v); });
+        sw.onclick = (ev) => { ev.stopPropagation(); const v = !sw.classList.contains('on'); sw.classList.toggle('on', v); pmDesignCfg(k.kind).enabled = v; c.classList.toggle('opacity-60', !v); pmDirty(); };
+        top.appendChild(sw); c.appendChild(top);
+        const row = el('div', 'flex flex-wrap gap-2 mt-2'); row.onclick = ev => ev.stopPropagation();
+        row.appendChild(pmSelect(PM_PRI, cfg.priority || 'normal', v => pmDesignCfg(k.kind).priority = v));
+        const note = el('input', PM_INPUT + ' flex-1 min-w-[160px] text-xs'); note.placeholder = 'הערה לבוט על העיצוב הזה (למשל: השתמש בו רק לשאלות מחיר)'; note.value = cfg.note || '';
+        note.oninput = () => { pmDesignCfg(k.kind).note = note.value; pmDirty(); }; row.appendChild(note); c.appendChild(row);
+        c.onclick = () => pmSelectKind(k.kind);
+        box.appendChild(c);
+      });
+    }
+    let PM_GAL = null;
+    async function pmSelectKind(kind) {
+      PM_KIND = kind; pmRenderKinds();
+      const k = PM_CAT.kinds.find(x => x.kind === kind); if (!k) return;
+      document.getElementById('pmGalTitle').textContent = k.name + ' - כך זה נראה אצל הסטודנט';
+      if (!PM_GAL) PM_GAL = pmPreview(document.getElementById('pmGalHost'));
+      const styles = k.styles && k.styles.length ? k.styles : [''];
+      const items = [];
+      for (const st of styles) {
+        const r = await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: k.kind, ...(st ? { style: st } : {}), ...k.sample }] }) })).json();
+        if (r.marker) items.push({ name: st ? 'סגנון: ' + st : '', marker: r.marker });
+      }
+      if (PM_KIND === kind) PM_GAL.show(items);
+    }
+
+    // ---------- AI-made designs
+    async function pmGenerate(extra) {
+      const base = document.getElementById('pmGenDesc').value.trim();
+      const fix = (extra || '').trim();
+      if (!base && !fix) { showToast('תאר את העיצוב שאתה רוצה', true); return; }
+      const btn = document.getElementById('pmGenBtn'), msg = document.getElementById('pmGenMsg');
+      btn.disabled = true; msg.textContent = '⏳ ה-AI מעצב (עד חצי דקה)...';
+      try {
+        const res = await adminFetch(`${API_BASE}/api/admin/ui/design/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: fix ? (base + '\nתיקון: ' + fix) : base, design: PM_GEN && fix ? PM_GEN : null }) });
+        const d = await res.json();
+        if (!res.ok) { msg.textContent = '❌ ' + (d.detail || 'שגיאה'); return; }
+        PM_GEN = d.design; msg.textContent = '✅ מוכן. בדוק את התצוגה.';
+        document.getElementById('pmGenForm').classList.remove('hidden');
+        document.getElementById('pmGenName').value = d.design.name; document.getElementById('pmGenId').value = d.design.id; document.getElementById('pmGenWhen').value = d.design.when;
+        document.getElementById('pmGenFix').value = '';
+        pmShowGen(d.marker);
+      } catch (e) { msg.textContent = '❌ ' + e.message; } finally { btn.disabled = false; }
+    }
+    let PM_GENPV = null;
+    function pmShowGen(marker) {
+      const host = document.getElementById('pmGenHost');
+      if (!PM_GENPV) PM_GENPV = pmPreview(host);
+      PM_GENPV.show([{ name: '', marker }]);
+    }
+    function pmRefine() { const f = document.getElementById('pmGenFix').value.trim(); if (!f) { showToast('כתוב מה לתקן', true); return; } pmGenerate(f); }
+    async function pmSaveDesign() {
+      if (!PM_GEN) return;
+      PM_GEN.name = document.getElementById('pmGenName').value.trim() || PM_GEN.name; PM_GEN.when = document.getElementById('pmGenWhen').value.trim();
+      const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: PM_GEN }) });
+      const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+      if (res.ok) { PM_GEN = null; document.getElementById('pmGenForm').classList.add('hidden'); await pmReloadKeepEdits(); }
+    }
+    async function pmReloadKeepEdits() { // new designs are saved on their own; unsaved edits to notes/sections stay in the page
+      const r = await (await adminFetch(`${API_BASE}/api/admin/prompt`)).json(); PM.custom = r.custom; PM.versions = r.versions; PM_CAT = null; pmRenderCustom(); pmRenderVersions();
+    }
+    function pmRenderCustom() {
+      const box = document.getElementById('pmCustom'); if (!box || !PM) return; box.innerHTML = '';
+      if (!PM.custom.length) { box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין לא יצרת עיצובים.')); return; }
+      PM.custom.forEach(d => {
+        const c = el('div', 'rounded-xl border border-slate-200 p-3 grid sm:grid-cols-2 gap-3');
+        const left = el('div', 'space-y-2');
+        left.appendChild(el('div', 'font-bold text-sm', d.name + ' '));
+        left.firstChild.appendChild(el('span', 'text-[11px] font-mono text-slate-400', d.id));
+        left.appendChild(el('div', 'text-xs text-slate-500', d.when || ''));
+        const bar = el('div', 'flex flex-wrap gap-2 items-center text-xs');
+        const lab = el('span', 'font-bold', d.enabled === false ? 'כבוי' : 'פעיל');
+        bar.appendChild(pmSwitch(d.enabled !== false, async v => { d.enabled = v; lab.textContent = v ? 'פעיל' : 'כבוי'; await pmPutDesign(d); }));
+        bar.appendChild(lab);
+        const edit = el('button', 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '✎ שנה עם AI'); edit.type = 'button';
+        edit.onclick = () => { PM_GEN = { ...d }; document.getElementById('pmGenDesc').value = d.when || d.name; document.getElementById('pmGenForm').classList.remove('hidden');
+          document.getElementById('pmGenName').value = d.name; document.getElementById('pmGenId').value = d.id; document.getElementById('pmGenWhen').value = d.when || ''; document.getElementById('pmGenFix').focus();
+          adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => r.marker && pmShowGen(r.marker)); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+        const del = el('button', 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5', 'מחק'); del.type = 'button';
+        del.onclick = async () => { if (!confirm('למחוק את העיצוב "' + d.name + '"?')) return; await adminFetch(`${API_BASE}/api/admin/ui/design/${encodeURIComponent(d.id)}`, { method: 'DELETE' }); await pmReloadKeepEdits(); showToast('נמחק'); };
+        bar.appendChild(edit); bar.appendChild(del); left.appendChild(bar); c.appendChild(left);
+        const right = el('div'); c.appendChild(right); box.appendChild(c);
+        adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => { if (r.marker) pmPreview(right).show([{ name: '', marker: r.marker }]); });
+      });
+    }
+    async function pmPutDesign(d) {
+      const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) });
+      const j = await res.json(); showToast(j.message || j.detail || 'בוצע', !res.ok);
+    }
+
+    // ---------- save, versions
+    async function pmSave() {
+      const sections = {}; PM.sections.forEach(s => { sections[s.key] = { enabled: s.enabled, text: s.edited ? s.text : null }; });
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sections, notes: PM.notes.filter(n => (n.text || '').trim()), designs: PM.designs, label: 'שינוי ידני' }) });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.detail || 'שגיאה בשמירה', true); return; }
+      PM = d; pmRender(); pmDirty(false); showToast('✅ ' + d.message);
+    }
+    function pmRenderVersions() {
+      const box = document.getElementById('pmVersions'); if (!box || !PM) return; box.innerHTML = '';
+      if (!PM.versions.length) { box.appendChild(el('div', 'text-slate-400', 'עדיין אין גרסאות קודמות.')); return; }
+      PM.versions.forEach(v => {
+        const r = el('div', 'flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2');
+        const when = new Date(v.at).toLocaleString('he-IL');
+        r.appendChild(el('div', 'flex-1', when + '  ·  ' + (v.label || 'גרסה')));
+        const b = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '↩ חזור לגרסה'); b.type = 'button';
+        b.onclick = async () => { if (!confirm('לחזור לגרסה מ-' + when + '? המצב הנוכחי יישמר כגרסה.')) return;
+          const res = await adminFetch(`${API_BASE}/api/admin/prompt/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: v.id }) });
+          const d = await res.json(); if (res.ok) { PM = d; PM_CAT = null; pmRender(); pmDirty(false); } showToast(d.message || d.detail, !res.ok); };
+        r.appendChild(b); box.appendChild(r);
+      });
+    }
+    window.addEventListener('beforeunload', (e) => { if (PM_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
 
     if (getToken()) {
       showApp();
