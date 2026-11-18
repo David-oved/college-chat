@@ -490,6 +490,9 @@
               <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px">
                 <div id="pmGalTitle" class="text-sm font-bold mb-3">בחר עיצוב</div>
                 <div id="pmGalCtl" class="mb-3"></div>
+                <div class="text-[12.5px] font-bold mb-1.5" style="color:var(--text-2)">איך זה נראה במכשירים</div>
+                <div id="pmGalDev" class="mb-2"></div>
+                <div id="pmGalCheck" class="mb-2"></div>
                 <div id="pmGalCount" class="hint" style="margin:0 0 8px"></div>
                 <div id="pmGalHost"></div>
               </div>
@@ -514,10 +517,10 @@
                   </div>
                 </div>
               </div>
-              <div class="lg:col-span-2 card" style="padding:14px"><div class="text-sm font-bold mb-3">תצוגה מקדימה</div><div id="pmGenHost" class="hint" style="margin:0">עדיין לא נוצר עיצוב.</div></div>
+              <div class="lg:col-span-2 card" style="padding:14px"><div class="text-sm font-bold mb-2">תצוגה מקדימה</div><div id="pmGenDev" class="mb-2"></div><div id="pmGenCheck" class="mb-2"></div><div id="pmGenHost" class="hint" style="margin:0">עדיין לא נוצר עיצוב.</div></div>
             </div>
             <div class="card">
-              <div class="card-head"><div><h2>ספריית עיצובים מוכנים</h2><p>עיצובים מוכנים להתקנה בלחיצה. אחרי ההתקנה הם עיצובים שלך: אפשר לשנות אותם עם AI, לכבות ולמחוק.</p></div></div>
+              <div class="card-head"><div><div id="pmLibDev" class="mb-2"></div><h2>ספריית עיצובים מוכנים</h2><p>עיצובים מוכנים להתקנה בלחיצה. אחרי ההתקנה הם עיצובים שלך: אפשר לשנות אותם עם AI, לכבות ולמחוק.</p></div></div>
               <div class="card-body"><div id="pmLibrary" class="grid md:grid-cols-2 gap-3"><div class="empty" style="grid-column:1/-1">טוען...</div></div></div>
             </div>
             <div class="card">
@@ -2048,19 +2051,45 @@
     }
     function pmDiscard() { if (confirm('לבטל את כל השינויים שלא נשמרו?')) pmLoad(); }
     // --- a preview that draws blocks with the students' own code (an iframe of the app), so what the admin sees is what the student sees
-    function pmPreview(host) {
+    // the width the previews are drawn at: a chat panel as narrow as a small phone, a phone, a tablet, a desktop, or all of them one under the other
+    let PM_DEV = '390'; try { PM_DEV = localStorage.getItem('pm_dev') || '390'; } catch (e) {}
+    const PM_DEVICES = [['320', 'טלפון צר'], ['390', 'טלפון'], ['768', 'טאבלט'], ['1280', 'מחשב'], ['all', 'כל הרוחבים']];
+    const PM_PREVIEWS = [];
+    function pmDevBar(host) {
+      if (!host) return; host.innerHTML = '';
+      const seg = el('div', 'seg pmDevBar');
+      PM_DEVICES.forEach(([w, label]) => {
+        const b = el('button', PM_DEV === w ? 'active' : '', label); b.type = 'button'; b.dataset.w = w;
+        b.onclick = () => { PM_DEV = w; try { localStorage.setItem('pm_dev', w); } catch (e) {} document.querySelectorAll('.pmDevBar button').forEach(x => x.classList.toggle('active', x.dataset.w === w)); PM_PREVIEWS.forEach(p => p.setWidth(w)); };
+        seg.appendChild(b);
+      });
+      host.appendChild(seg);
+    }
+    // what the automatic check found in the cards: anything that sticks out of the bubble, is cut off, or a time that breaks in two
+    function pmCheckSummary(box, results) {
+      if (!box) return; box.innerHTML = '';
+      const bad = (results || []).filter(r => r.warns && r.warns.length);
+      if (!results || !results.length) return;
+      if (!bad.length) { box.appendChild(el('span', 'badge badge-ok', '⟦check⟧בדיקת התאמה: תקין ב-' + results.length + ' תצוגות (' + [...new Set(results.map(r => r.width))].join(', ') + ' פיקסלים)')); return; }
+      box.appendChild(el('div', 'badge badge-err mb-1', '⟦alert⟧בדיקת התאמה: נמצאו בעיות ב-' + bad.length + ' מתוך ' + results.length + ' תצוגות'));
+      bad.slice(0, 8).forEach(r => box.appendChild(el('div', 'hint', 'ברוחב ' + r.width + (r.name ? ' · ' + r.name : '') + ': ' + r.warns.join(', '))));
+    }
+    function pmPreview(host, checkBox) {
       const fr = document.createElement('iframe');
       fr.src = PM_PREVIEW_URL; fr.className = 'w-full rounded-xl border border-slate-200 bg-white'; fr.style.minHeight = '80px'; fr.style.height = '120px'; fr.title = 'תצוגה מקדימה';
       host.innerHTML = ''; host.appendChild(fr);
       const st = { ready: false, items: null };
       const post = (m) => { try { fr.contentWindow.postMessage(m, 'https://david-oved.github.io'); } catch (e) {} };
-      const flush = () => { if (st.ready && st.items) post({ t: 'render', items: st.items }); };
+      const flush = () => { if (st.ready && st.items) post({ t: 'render', items: st.items, width: PM_DEV === 'all' ? 'all' : Number(PM_DEV) }); };
       window.addEventListener('message', (e) => {
         if (e.source !== fr.contentWindow || e.origin !== 'https://david-oved.github.io') return;
         if (e.data && e.data.t === 'ready') { st.ready = true; post({ t: 'theme', dark: false }); flush(); }
-        if (e.data && e.data.t === 'h') fr.style.height = Math.min(1600, Math.max(80, e.data.h + 4)) + 'px';
+        if (e.data && e.data.t === 'h') fr.style.height = Math.min(6000, Math.max(80, e.data.h + 4)) + 'px';
+        if (e.data && e.data.t === 'check') pmCheckSummary(checkBox, e.data.results);
       });
-      return { show(items) { st.items = items; flush(); } };
+      const api = { show(items) { st.items = items; flush(); }, setWidth() { flush(); } };
+      PM_PREVIEWS.push(api);
+      return api;
     }
 
     async function pmLoad() {
@@ -2393,7 +2422,8 @@
       const k = PM_CAT.kinds.find(x => x.kind === kind); if (!k) return;
       document.getElementById('pmGalTitle').textContent = k.name;
       pmRenderStyleCtl(k);
-      if (!PM_GAL) PM_GAL = pmPreview(document.getElementById('pmGalHost'));
+      if (!PM_GAL) { PM_GAL = pmPreview(document.getElementById('pmGalHost'), document.getElementById('pmGalCheck')); pmDevBar(document.getElementById('pmGalDev')); }
+      document.getElementById('pmGalCheck').innerHTML = '';
       const styles = k.styles && k.styles.length ? k.styles : [''];
       const samples = k.samples && k.samples.length ? k.samples : [{ name: '', sample: k.sample }];
       document.getElementById('pmGalCount').textContent = `מוצגים כל ${styles.length} הסגנונות${samples.length > 1 ? ` על ${samples.length} דוגמאות תוכן שונות` : ''}, בדיוק כפי שהסטודנט רואה. אין סגנונות נסתרים.`;
@@ -2411,7 +2441,7 @@
     async function pmRenderLibrary() {
       const box = document.getElementById('pmLibrary'); if (!box) return;
       if (!PM_LIB) { try { PM_LIB = (await (await adminFetch(`${API_BASE}/api/admin/ui/library`)).json()).items; } catch (e) { box.innerHTML = '<div class="empty" style="grid-column:1/-1">שגיאה בטעינת הספרייה</div>'; return; } }
-      box.innerHTML = '';
+      box.innerHTML = ''; pmDevBar(document.getElementById('pmLibDev'));
       PM_LIB.forEach(it => {
         const c = el('div', 'rounded-xl border border-slate-200 bg-white p-3 space-y-2');
         const head = el('div', 'flex items-start justify-between gap-2');
@@ -2424,8 +2454,8 @@
           if (res.ok) { it.installed = true; await pmReloadKeepEdits(); pmRenderLibrary(); } else btn.disabled = false;
         };
         head.appendChild(btn); c.appendChild(head);
-        const host = el('div'); c.appendChild(host); box.appendChild(c);
-        if (it.marker) pmPreview(host).show([{ name: '', marker: it.marker }]);
+        const host = el('div'), chk = el('div', 'mt-1'); c.appendChild(host); c.appendChild(chk); box.appendChild(c);
+        if (it.marker) pmPreview(host, chk).show([{ name: '', marker: it.marker }]);
       });
     }
 
@@ -2451,7 +2481,7 @@
     let PM_GENPV = null;
     function pmShowGen(marker) {
       const host = document.getElementById('pmGenHost');
-      if (!PM_GENPV) PM_GENPV = pmPreview(host);
+      if (!PM_GENPV) { PM_GENPV = pmPreview(host, document.getElementById('pmGenCheck')); pmDevBar(document.getElementById('pmGenDev')); }
       PM_GENPV.show([{ name: '', marker }]);
     }
     function pmRefine() { const f = document.getElementById('pmGenFix').value.trim(); if (!f) { showToast('כתוב מה לתקן', true); return; } pmGenerate(f); }
