@@ -1765,6 +1765,51 @@ def _design_preview(design: dict) -> dict:
     return {"marker": ("[[ui:" + _encode_blocks([blk]) + "]]") if blk else ""}
 
 
+# =====================================================================
+# Uri, the character: the settings the app's one renderer reads (see mascot.py). Public read (the app fetches it), admin write.
+# =====================================================================
+class MascotSaveRequest(BaseModel):
+    config: dict
+
+
+async def _mascot_cfg() -> dict:
+    import mascot
+    raw = await db.get_state_kv("mascot")
+    try:
+        return mascot.clean(json.loads(raw)) if raw else mascot.clean({})
+    except Exception:
+        return mascot.clean({})
+
+
+@app.get("/api/mascot")
+async def public_mascot():
+    """The character's settings. No login: it is how the character looks, nothing about any user."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(await _mascot_cfg(), headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/api/admin/mascot", dependencies=[Depends(require_admin)])
+async def admin_get_mascot():
+    import mascot
+    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS}
+
+
+@app.put("/api/admin/mascot", dependencies=[Depends(require_admin)])
+async def admin_save_mascot(req: MascotSaveRequest):
+    import mascot
+    cfg = mascot.clean(req.config)
+    await db.set_state_kv("mascot", json.dumps(cfg, ensure_ascii=False))
+    return {"message": "אורי עודכן בכל האפליקציה (עד דקה, עד שהמכשירים מרעננים).", "config": cfg}
+
+
+@app.post("/api/admin/mascot/reset", dependencies=[Depends(require_admin)])
+async def admin_reset_mascot():
+    import mascot
+    cfg = mascot.clean({})
+    await db.set_state_kv("mascot", json.dumps(cfg, ensure_ascii=False))
+    return {"message": "אורי חזר להגדרות המקוריות.", "config": cfg}
+
+
 @app.get("/api/admin/ui/library", dependencies=[Depends(require_admin)])
 async def admin_ui_library():
     """Ready-made designs, each with its preview already rendered, and whether it is installed."""

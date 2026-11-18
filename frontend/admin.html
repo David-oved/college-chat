@@ -199,6 +199,7 @@
       <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 1 2.5 5.8M4 12V7M4 12h5"/></symbol>
       <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5h3.5M3 14.5h3.5M17.5 9.5H21M17.5 14.5H21"/></symbol>
       <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4l9 4.5-9 4.5-9-4.5zM3 12.5l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></symbol>
+      <symbol id="i-face" viewBox="0 0 24 24"><path d="M6.5 5h11A3.5 3.5 0 0 1 21 8.5v6a3.5 3.5 0 0 1-3.5 3.5H12l-3.6 3v-3H6.5A3.5 3.5 0 0 1 3 14.5v-6A3.5 3.5 0 0 1 6.5 5z"/><path d="M9 11v.01M15 11v.01M9.5 14.2q2.5 1.8 5 0"/></symbol>
       <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
     </defs>
   </svg>
@@ -240,6 +241,7 @@
         <div class="nav-group">הבוט</div>
         <button type="button" class="nav-item" data-tab="models" onclick="switchTab('models')"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span>ספקים ומודלים</span></button>
         <button type="button" class="nav-item" data-tab="identity" onclick="switchTab('identity')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg><span>זהות והוראות</span></button>
+        <button type="button" class="nav-item" data-tab="mascot" onclick="switchTab('mascot')"><svg class="ic" aria-hidden="true"><use href="#i-face"/></svg><span>אורי, הדמות</span></button>
         <button type="button" class="nav-item" data-tab="designs" onclick="switchTab('designs')"><svg class="ic" aria-hidden="true"><use href="#i-layout"/></svg><span>עיצובים</span></button>
         <button type="button" class="nav-item" data-tab="moodle" onclick="switchTab('moodle')"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg><span>חיבור Moodle</span></button>
         <div class="nav-group">מערכת</div>
@@ -258,6 +260,7 @@
         <button type="button" class="tab-m" data-tab="knowledge" onclick="switchTab('knowledge')"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg>מאגר ידע</button>
         <button type="button" class="tab-m" data-tab="models" onclick="switchTab('models')"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>מודלים</button>
         <button type="button" class="tab-m" data-tab="identity" onclick="switchTab('identity')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>זהות והוראות</button>
+        <button type="button" class="tab-m" data-tab="mascot" onclick="switchTab('mascot')"><svg class="ic" aria-hidden="true"><use href="#i-face"/></svg>אורי</button>
         <button type="button" class="tab-m" data-tab="designs" onclick="switchTab('designs')"><svg class="ic" aria-hidden="true"><use href="#i-layout"/></svg>עיצובים</button>
         <button type="button" class="tab-m" data-tab="moodle" onclick="switchTab('moodle')"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Moodle</button>
         <button type="button" class="tab-m" data-tab="system" onclick="switchTab('system')"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>הגדרות</button>
@@ -530,6 +533,22 @@
           </div>
         </section>
 
+        <!-- ================= אורי, הדמות ================= -->
+        <section id="tabPanel-mascot" class="tab-panel page hidden">
+          <div class="card" style="padding:14px 18px">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="min-w-0 flex-1"><b class="text-[15px]">אורי</b><div class="hint" style="margin:2px 0 0">דמות אחת שמצוירת מאותו מקום בכל האפליקציה: הכפתור הצף, ההודעות, מסך הפתיחה, הסיור, סרטון ההדגמה ופינת המשחק. מה שתשנה כאן יתעדכן אצל כולם (עד דקה).</div></div>
+              <span id="mcDirty" class="badge badge-warn hidden">יש שינויים שלא נשמרו</span>
+              <button type="button" onclick="mcReset()" class="btn">איפוס למקור</button>
+              <button type="button" onclick="mcSave()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור ופרסם</button>
+            </div>
+          </div>
+          <div class="grid lg:grid-cols-5 gap-4 items-start">
+            <div class="lg:col-span-3 space-y-4" id="mcControls"><div class="empty">טוען...</div></div>
+            <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px"><div class="text-sm font-bold mb-2">התצוגה של אורי</div><div id="mcHost"></div></div>
+          </div>
+        </section>
+
         <!-- ================= חיבור Moodle ================= -->
         <section id="tabPanel-moodle" class="tab-panel page hidden">
           <div class="card">
@@ -694,6 +713,7 @@
       knowledge: ['מאגר ידע', 'המידע הרשמי של המכללה שהבוט מחפש בו: הוספה, עריכה ובדיקת חיפוש.'],
       models: ['ספקים ומודלים', 'מפתחות, איזה ספק עונה לסטודנטים ואילו מודלים משמשים אותו.'],
       identity: ['זהות והוראות', 'מי הבוט ואיך הוא מתנהג: כללים בנויים מקוביות, זהות, ותצוגת מה שהוא מקבל.'],
+      mascot: ['אורי, הדמות', 'איך אורי נראה, מה הוא לובש, איך הוא מתנהג ומה אפשר לעשות איתו. כל שינוי חל בכל האפליקציה בלי עדכון.'],
       designs: ['עיצובים', 'כל סוגי הכרטיסים שהבוט מציג, ויצירת עיצובים חדשים עם AI.'],
       moodle: ['חיבור Moodle', 'בדיקת טוקן והפעלה או כיבוי של הפונקציות שהבוט יכול להפעיל.'],
       system: ['הגדרות', 'מכסה, איפוס משתמש וסיסמת כניסה.'],
@@ -712,6 +732,7 @@
       if (name === 'users') loadUsers();
       if (name === 'usage') loadUsage();
       if (name === 'moodle') loadMoodleFunctions();
+      if (name === 'mascot') mcLoad().catch(e => showToast('שגיאה בטעינה: ' + e.message, true));
       if (name === 'identity' || name === 'designs') {
         const go = () => { if (name === 'designs') pmSub(document.getElementById('pmView-create').classList.contains('hidden') ? 'gallery' : 'create'); };
         if (PM) go(); else pmLoad().then(go).catch(e => showToast('שגיאה בטעינה: ' + e.message, true));
@@ -2606,6 +2627,111 @@
       } catch (e) { body.innerHTML = '<div class="empty" style="color:var(--err)">שגיאה בטעינת ההשוואה</div>'; }
     }
     window.addEventListener('beforeunload', (e) => { if (PM_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+
+    // ===================== אורי, הדמות =====================
+    let MC = null, MC_DIRTY = false, MC_T = null, MC_FR = null, MC_READY = false;
+    const MC_MOODS = { happy: 'שמח', grin: 'צוחק', wow: 'מופתע', think: 'חושב', love: 'אוהב', sleep: 'ישן' };
+    const MC_BODIES = [['לבן', '#ffffff'], ['מנטה', '#d9f7ec'], ['אפרסק', '#ffe3d1'], ['לבנדר', '#e9e1ff'], ['שמיים', '#dbeeff'], ['לימון', '#fff4c2'], ['ורוד', '#ffdfe9']];
+    const MC_SLOT_HE = { hat: 'כובע', face: 'פנים', neck: 'צוואר' };
+    function mcDirty(on = true) { MC_DIRTY = on; const b = document.getElementById('mcDirty'); if (b) b.classList.toggle('hidden', !on); }
+    function mcChanged() { mcDirty(); clearTimeout(MC_T); MC_T = setTimeout(mcSend, 120); }
+    function mcSend() {
+      if (!MC_FR || !MC_READY || !MC) return;
+      const slotOf = {}; Object.entries(MC.slots).forEach(([sl, items]) => items.forEach(i => { slotOf[i] = sl; }));
+      try { MC_FR.contentWindow.postMessage({ t: 'uri', cfg: MC.cfg, labels: { moods: MC_MOODS, items: MC.labels, slots: slotOf, hMoods: 'מצבי רוח', hSizes: 'בגדלים שבהם הוא מופיע', hItems: 'הפריטים שאפשר ללבוש', hSeasons: 'עונות וחגים',
+        fab: 'הכפתור הצף', hdr: 'כותרת הצ׳אט', bub: 'בהודעות', dead: 'כשיש תקלה' } }, 'https://david-oved.github.io'); } catch (e) {}
+    }
+    async function mcLoad() {
+      if (!MC) { MC = await (await adminFetch(`${API_BASE}/api/admin/mascot`)).json(); MC.cfg = MC.config; }
+      const host = document.getElementById('mcHost');
+      if (!MC_FR) {
+        MC_FR = document.createElement('iframe'); MC_FR.src = PM_PREVIEW_URL; MC_FR.className = 'w-full rounded-xl border border-slate-200 bg-white'; MC_FR.style.height = '420px'; MC_FR.title = 'אורי';
+        host.innerHTML = ''; host.appendChild(MC_FR);
+        window.addEventListener('message', (e) => {
+          if (e.source !== MC_FR.contentWindow || e.origin !== 'https://david-oved.github.io') return;
+          if (e.data && e.data.t === 'ready') { MC_READY = true; try { MC_FR.contentWindow.postMessage({ t: 'theme', dark: false }, 'https://david-oved.github.io'); } catch (x) {} mcSend(); }
+          if (e.data && e.data.t === 'h') MC_FR.style.height = Math.min(1600, Math.max(200, e.data.h + 4)) + 'px';
+        });
+      }
+      mcRender(); mcSend();
+    }
+    function mcSel(opts, val, on) { const s = el('select', 'select select-sm'); opts.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; if (v === val) o.selected = true; s.appendChild(o); }); s.onchange = () => { on(s.value); mcChanged(); }; return s; }
+    function mcSw(on, f) { const b = el('button', 'pmSw' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'switch'); b.onclick = () => { const v = !b.classList.contains('on'); b.classList.toggle('on', v); f(v); mcChanged(); }; return b; }
+    function mcSeg(opts, val, on) { const seg = el('div', 'seg'); opts.forEach(([v, t]) => { const b = el('button', v === val ? 'active' : '', t); b.type = 'button'; b.onclick = () => { seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b)); on(v); mcChanged(); }; seg.appendChild(b); }); return seg; }
+    function mcRow(label, ctl, hint) { const r = el('div', 'flex flex-wrap items-center gap-3 py-2'); r.style.borderTop = '1px solid var(--line)'; const l = el('div', 'w-40 shrink-0'); l.appendChild(el('div', 'text-[13px] font-bold', label)); if (hint) l.appendChild(el('div', 'hint', hint)); r.appendChild(l); const c = el('div', 'flex-1 min-w-0 flex flex-wrap items-center gap-2'); (Array.isArray(ctl) ? ctl : [ctl]).forEach(x => c.appendChild(x)); r.appendChild(c); return r; }
+    function mcCard(title, desc) { const c = el('div', 'card'); const h = el('div', 'card-head'); const d = el('div'); d.appendChild(el('h2', '', title)); if (desc) d.appendChild(el('p', '', desc)); h.appendChild(d); c.appendChild(h); const b = el('div', 'card-body'); c.appendChild(b); return [c, b]; }
+    function mcOutfitSelects(o, onchange) {
+      return Object.keys(MC.slots).map(sl => { const w = el('label', 'flex items-center gap-1.5 text-[12.5px]'); w.appendChild(el('span', 'font-semibold', MC_SLOT_HE[sl]));
+        w.appendChild(mcSel([['', 'ללא']].concat(MC.slots[sl].map(i => [i, MC.labels[i] || i])), o[sl] || '', v => { o[sl] = v; onchange && onchange(); })); return w; });
+    }
+    function mcRender() {
+      const box = document.getElementById('mcControls'); box.innerHTML = ''; const c = MC.cfg;
+      // look
+      let [card, b] = mcCard('המראה', 'צורה, צבע, עיניים ולחיים. האפליקציה מציירת את אורי מההגדרות האלה בלבד.');
+      b.appendChild(mcRow('צורת הגוף', mcSeg([['bubble', 'בועת שיחה'], ['blob', 'כדור רך']], c.shape, v => { c.shape = v; })));
+      const sw = el('div', 'flex flex-wrap items-center gap-2');
+      MC_BODIES.forEach(([n, hex]) => { const x = el('button', 'rounded-full'); x.type = 'button'; x.title = n; x.style.cssText = 'width:30px;height:30px;border:2px solid ' + (c.body.toLowerCase() === hex ? 'var(--accent)' : 'var(--line-strong)') + ';background:' + hex; x.onclick = () => { c.body = hex; mcChanged(); mcRender(); }; sw.appendChild(x); });
+      const ci = el('input', ''); ci.type = 'color'; ci.value = c.body; ci.title = 'צבע אחר'; ci.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; ci.oninput = () => { c.body = ci.value; mcChanged(); }; sw.appendChild(ci);
+      b.appendChild(mcRow('צבע הגוף', sw));
+      b.appendChild(mcRow('עיניים', mcSeg([['big', 'גדולות ונוצצות'], ['oval', 'עגולות קטנות'], ['happy', 'מחייכות']], c.eyes, v => { c.eyes = v; })));
+      const chk = el('input', ''); chk.type = 'color'; chk.value = c.cheek; chk.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; chk.oninput = () => { c.cheek = chk.value; mcChanged(); };
+      b.appendChild(mcRow('לחיים', [mcSw(c.cheeks, v => { c.cheeks = v; }), chk]));
+      b.appendChild(mcRow('כוכב נוצץ', mcSw(c.spark, v => { c.spark = v; })));
+      box.appendChild(card);
+      // outfit + wardrobe
+      [card, b] = mcCard('לבוש וארון', 'מה אורי לובש כברירת מחדל, ומה הסטודנטים יכולים להלביש לו בפינת המשחק. פריט עם מספר נגיעות נפתח רק אחרי שמשחקים איתו מספיק.');
+      b.appendChild(mcRow('לבוש ברירת מחדל', mcOutfitSelects(c.outfit)));
+      b.appendChild(mcRow('הסטודנטים מלבישים אותו', mcSw(c.wardrobe, v => { c.wardrobe = v; }), 'פינת משחק עם ארון'));
+      const grid = el('div', 'grid sm:grid-cols-2 gap-x-6');
+      Object.entries(MC.slots).forEach(([sl, items]) => items.forEach(i => {
+        const r = el('div', 'flex items-center gap-2 py-1.5'); const on = c.available.includes(i);
+        r.appendChild(mcSw(on, v => { c.available = c.available.filter(x => x !== i); if (v) c.available.push(i); }));
+        r.appendChild(el('span', 'text-[13px] flex-1', (MC.labels[i] || i) + ' · ' + MC_SLOT_HE[sl]));
+        const n = el('input', 'input input-sm'); n.type = 'number'; n.min = 1; n.max = 500; n.placeholder = 'פתוח'; n.style.width = '74px'; n.title = 'כמה נגיעות עד שנפתח (ריק = פתוח מההתחלה)'; n.value = (c.unlocks || {})[i] || '';
+        n.oninput = () => { c.unlocks = c.unlocks || {}; if (n.value) c.unlocks[i] = Math.max(1, Math.min(500, parseInt(n.value, 10) || 1)); else delete c.unlocks[i]; mcChanged(); };
+        r.appendChild(n); grid.appendChild(r);
+      }));
+      b.appendChild(grid); box.appendChild(card);
+      // seasons
+      [card, b] = mcCard('עונות וחגים', 'בין שני תאריכים אורי לובש משהו אחר, אוטומטית. השנה לא משנה, והתאריכים חוזרים כל שנה.');
+      const list = el('div', 'space-y-2');
+      const md2date = md => '2000-' + md, date2md = d => (d || '').slice(5);
+      (c.seasons || []).forEach((x, idx) => {
+        const r = el('div', 'rounded-xl border border-slate-200 p-2.5 space-y-2');
+        const top = el('div', 'flex flex-wrap items-center gap-2');
+        const lab = el('input', 'input input-sm'); lab.placeholder = 'שם (למשל: פורים)'; lab.value = x.label || ''; lab.style.width = '150px'; lab.oninput = () => { x.label = lab.value; mcChanged(); };
+        const f = el('input', 'input input-sm'); f.type = 'date'; f.value = md2date(x.from); f.style.width = '140px'; f.onchange = () => { x.from = date2md(f.value); mcChanged(); };
+        const t = el('input', 'input input-sm'); t.type = 'date'; t.value = md2date(x.to); t.style.width = '140px'; t.onchange = () => { x.to = date2md(t.value); mcChanged(); };
+        const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.type = 'button'; del.onclick = () => { c.seasons.splice(idx, 1); mcChanged(); mcRender(); };
+        top.append(lab, el('span', 'text-xs', 'מ-'), f, el('span', 'text-xs', 'עד'), t, del); r.appendChild(top);
+        const o = el('div', 'flex flex-wrap items-center gap-3'); o.appendChild(el('span', 'text-[12.5px] font-bold', 'לובש:')); mcOutfitSelects(x.outfit || (x.outfit = { hat: '', face: '', neck: '' })).forEach(n => o.appendChild(n)); r.appendChild(o);
+        list.appendChild(r);
+      });
+      const add = el('button', 'btn btn-sm', 'הוסף עונה'); add.type = 'button';
+      add.onclick = () => { c.seasons = c.seasons || []; c.seasons.push({ label: '', from: '03-01', to: '03-07', outfit: { hat: 'partyhat', face: '', neck: '' } }); mcChanged(); mcRender(); };
+      b.appendChild(list); b.appendChild(add); box.appendChild(card);
+      // behaviour
+      [card, b] = mcCard('איך אורי חי', 'כל מה שאורי עושה מעצמו ובתגובה למגע.');
+      [['blink', 'מצמץ', ''], ['look', 'העיניים עוקבות אחרי האצבע או העכבר', 'רק בפנים הגדולות'], ['bounce', 'נושם ומתנועע בהמתנה', ''], ['react', 'מגיב כשנוגעים בו', 'קפיצה, סיבוב, מבוכה ולבבות'],
+        ['play', 'פינת משחק', 'נגיעה באווטאר בכותרת פותחת מסך עם ארון ומצבי רוח'], ['sleepy', 'ישן בלילה', 'בין חצות לחמש בבוקר']].forEach(([k, l, h]) => b.appendChild(mcRow(l, mcSw(c.behavior[k] !== false, v => { c.behavior[k] = v; }), h)));
+      box.appendChild(card);
+      // phrases
+      [card, b] = mcCard('מה אורי אומר', 'משפטים שאורי אומר כשנוגעים בו. אחד בכל שורה (עד 14).');
+      const ta = el('textarea', 'textarea'); ta.rows = 6; ta.value = (c.phrases || []).join('\n'); ta.oninput = () => { c.phrases = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); };
+      b.appendChild(ta); box.appendChild(card);
+    }
+    async function mcSave() {
+      const res = await adminFetch(`${API_BASE}/api/admin/mascot`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: MC.cfg }) });
+      const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+      if (res.ok) { MC.cfg = d.config; mcDirty(false); mcRender(); mcSend(); }
+    }
+    async function mcReset() {
+      if (!confirm('להחזיר את אורי להגדרות המקוריות? השינויים ששמרת יימחקו.')) return;
+      const res = await adminFetch(`${API_BASE}/api/admin/mascot/reset`, { method: 'POST' });
+      const d = await res.json(); showToast(d.message || d.detail || 'בוצע', !res.ok);
+      if (res.ok) { MC.cfg = d.config; mcDirty(false); mcRender(); mcSend(); }
+    }
+    window.addEventListener('beforeunload', (e) => { if (MC_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
 
     if (getToken()) {
       showApp();
