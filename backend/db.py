@@ -74,6 +74,14 @@ class Database:
                         await cur.execute(f"alter table system_config add column if not exists {col} text;")
             except Exception as e:
                 print(f"[db] could not ensure system_config.{col}: {e}")
+        # the admin's control over the prompt: one JSON state (sections, notes, designs) plus a history of versions
+        try:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("create table if not exists prompt_state (k text primary key, v text not null);")
+                    await cur.execute("create table if not exists prompt_versions (id bigserial primary key, created_at timestamptz not null default now(), label text, snapshot text not null);")
+        except Exception as e:
+            print(f"[db] could not ensure the prompt tables: {e}")
         # the student's own AI key/model (developers): one encrypted text on the account, and their own usage per day and model (kept 7 days)
         try:
             async with pool.connection() as conn:
@@ -206,6 +214,38 @@ class Database:
         from cryptography.fernet import Fernet
         from auth import _session_secret
         return Fernet(_b.urlsafe_b64encode(_h.sha256(b"user-ai-key-v1:" + _session_secret()).digest()))
+
+    async def get_prompt_state(self) -> Optional[str]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select v from prompt_state where k = 'main';")
+                row = await cur.fetchone()
+        return row[0] if row else None
+
+    async def set_prompt_state(self, raw: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("insert into prompt_state(k, v) values ('main', %s) on conflict (k) do update set v = excluded.v;", (raw,))
+
+    async def add_prompt_version(self, label: str, raw: str):
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("insert into prompt_versions(label, snapshot) values (%s, %s);", (label[:120], raw))
+                await cur.execute("delete from prompt_versions where id not in (select id from prompt_versions order by id desc limit 40);")
+
+    async def list_prompt_versions(self) -> List[Dict[str, Any]]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select id, created_at, label from prompt_versions order by id desc limit 40;")
+                rows = await cur.fetchall()
+        return [{"id": r[0], "at": r[1].isoformat(), "label": r[2] or ""} for r in rows]
+
+    async def get_prompt_version(self, vid: int) -> Optional[str]:
+        async with _get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("select snapshot from prompt_versions where id = %s;", (vid,))
+                row = await cur.fetchone()
+        return row[0] if row else None
 
     async def get_user_ai(self, user_id: str) -> Optional[Dict[str, Any]]:
         """{"mode": "personal"|"public", "kind", "key", "models": []} or None."""

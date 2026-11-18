@@ -12,7 +12,8 @@ from http_client import shared_client
 import ai_providers
 import gemini_stats
 from hebdate import hebrew_date_str
-from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks
+from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks, ui_text
+import prompt_store as PS
 
 from db import db
 
@@ -51,10 +52,15 @@ def build_system_prompt(bot_identity: str = "", catalog: Optional[List[Dict[str,
 =============================================================================
 """
 
-    return f"""אתה העוזר האקדמי הרשמי והחכם של המכללה.
-תפקידך לענות על שאלות של סטודנטים ("למי פונים כש...", "מה עושים כש...") בצורה אדיבה, ברורה ותמציתית בעברית.
+    return f"""{PS.text("persona")}
 {identity_block}{catalog_block}
-חוקי ברזל שאסור לך להפר בשום מצב:
+{PS.text("rules")}"""
+
+
+PERSONA_DEFAULT = """אתה העוזר האקדמי הרשמי והחכם של המכללה.
+תפקידך לענות על שאלות של סטודנטים ("למי פונים כש...", "מה עושים כש...") בצורה אדיבה, ברורה ותמציתית בעברית."""
+
+RULES_DEFAULT = """חוקי ברזל שאסור לך להפר בשום מצב:
 1. על שאלות הנוגעות לנהלי המכללה - ענה אך ורק על סמך "מידע המכללה הרלוונטי" המצורף למטה. על שאלות הנוגעות אליך עצמך (מי אתה, מה שמך, מטעם מי אתה פועל, מה אתה יודע לעשות) - ענה אך ורק על סמך "מידע בסיסי על עצמך" שמופיע למעלה, אם סופק.
 2. אל תמציא שום מידע, מספרי טלפון, שמות, חדרים, שעות פעילות או נהלים שאינם כתובים במפורש במידע המצורף!
 3. אם התשובה לשאלת הסטודנט אינה מופיעה באף אחד מהמקורות המצורפים, אמור בנימוס: "אין לי מידע רשמי על כך בנהלי המכללה המעודכנים במערכת. מומלץ לפנות למזכירות הסטודנטים לבירור."
@@ -645,6 +651,11 @@ MOODLE_SYSTEM_ADDENDUM = """
 7. אל תכתוב "הנה הקובץ" או ניסוח דומה אלא אם הדבקת בפועל, באותה תשובה, סמן [[file:...]] מתוצאת הכלי. אם הכלי לא החזיר קובץ מתאים או שנכשל: אמור בשורה אחת מה קרה (לא נמצא קובץ מתאים / הייתה בעיה בשליפה) והצע המשך עם כפתורי quick שמבוססים על מה שכן קיים בקורס.
 6. אתה לא קורא את תוכן הקבצים - רק שולח אותם ומתאר אותם לפי שם/נושא/תיאור. אם הוא מבקש הסבר על התוכן עצמו, אמור לו זאת בכנות."""
 
+# the built-in text of every section the admin can edit (the admin's version, if any, is read through prompt_store.text)
+for _key, _val in (("persona", PERSONA_DEFAULT), ("rules", RULES_DEFAULT), ("rich", RICH_ADDENDUM), ("moodle", MOODLE_SYSTEM_ADDENDUM),
+                   ("no_moodle", NO_MOODLE_NOTE), ("kb_tool", KB_TOOL_NOTE), ("precedence", PRECEDENCE_ADDENDUM)):
+    PS.register(_key, _val)
+
 
 # ---------------------------------------------------------------------
 # סטטוס חי: אירועים קטנים בתוך זרם התשובה ("מחפש קבצים בקורס X...") - רק ללקוח שביקש (status=true), ולא נשמרים ב-DB
@@ -722,12 +733,14 @@ async def _stream_chat_inner(
         db.bump_api_usage("prefetch")
         prefetch_text = "\n\n=== נתוני Moodle שכבר נשלפו עבורך עכשיו (אל תקרא שוב לאותם כלים; הצג מהם ישר ב-show_ui, והמזהים d/g/c בסוגריים) ===\n" + "\n\n".join(str(x) for x in pre_results)
 
-    extra = RICH_ADDENDUM + UI_ADDENDUM + prefetch_text
+    extra = PS.text("rich") + ui_text() + prefetch_text
     if moodle_names:
-        extra += MOODLE_SYSTEM_ADDENDUM
+        extra += PS.text("moodle")
     if user_id:
-        extra += MEMORY_ADDENDUM + build_memory_block(memories)
-    extra += moodle_off_note + (KB_TOOL_NOTE if kb_search is not None else "") + PRECEDENCE_ADDENDUM
+        extra += PS.text("memory") + build_memory_block(memories)
+    extra += (PS.text("no_moodle") if moodle_off_note else "") + (PS.text("kb_tool") if kb_search is not None else "") + PS.text("precedence")
+    extra += PS.notes_text({"first": not conversation_summary and not recent_messages, "new_student": not memories, "moodle": bool(moodle_token and moodle_user_id),
+                            "lang": lang or "he", "has_user": bool(user_id)})
 
     user_turn_text = _build_chat_user_turn(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
@@ -958,7 +971,7 @@ async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[s
             "הצג עכשיו את אותה תשובה בדיוק בעזרת הכלי show_ui, כמה בלוקים (2 עד 5) שמסודרים לפי המתכונים שלמטה.\n"
             "אל תוסיף מידע שלא נמצא בתשובה, אל תשמיט עובדה, מספר, תאריך או פרט קשר, ואל תכתוב טקסט מחוץ לקריאה לכלי. "
             "שמור על הניסוח הקצר והישיר; המטרה היא מבנה ובהירות. כתוב את תוכן הבלוקים באותה שפה שבה כתובה התשובה.\n"
-            f"{UI_ADDENDUM}\n\nשאלת הסטודנט:\n{q}\n\nהתשובה שכתבת:\n{text[:3500]}"
+            f"{ui_text()}\n\nשאלת הסטודנט:\n{q}\n\nהתשובה שכתבת:\n{text[:3500]}"
         )
         content = await _generate_once(
             [{"role": "user", "parts": [{"text": prompt}]}], api_key, tools=UI_TOOLS, max_output_tokens=2200, call_type="ui_guard",
@@ -1112,7 +1125,7 @@ async def stream_gemini_answer_with_moodle_tools(
 
     user_turn_text = _build_chat_user_turn(
         question, context_chunks, bot_identity, catalog, conversation_summary, recent_messages,
-        username=username, extra_system_instructions=MOODLE_SYSTEM_ADDENDUM,
+        username=username, extra_system_instructions=PS.text("moodle"),
     )
     contents = [{"role": "user", "parts": [{"text": user_turn_text}]}]
 

@@ -31,6 +31,11 @@ from db import db
 from auth import admin_auth, require_admin, hash_password, student_auth, require_student
 from gemini_diagnostics import run_full_diagnostics, test_connectivity, list_chat_models
 import ai_providers
+import prompt_store
+import custom_designs
+import memory  # registers the memory section of the prompt
+import ui_catalog
+from ui_blocks import resolve_blocks as _resolve_blocks, encode_blocks as _encode_blocks, STYLES as _UI_STYLES
 from push import send_push_to_subscription, VAPID_PUBLIC_KEY
 from moodle_tools import decode_file_ref, MOODLE_FILE_BASE
 from rag_engine import (
@@ -593,8 +598,9 @@ async def preview_prompt(question: str = "מתי הבחינה במבוא לתכ�
     לדוגמה הזו (זהות הבוט + קטלוג הנושאים + מידע בסיסי בזמן אמת + מקטעי הידע הרלוונטיים) -
     בלי לשלוח אותו בפועל למודל הסופי (רק שליפת ה-embedding לשאלה, כדי שהתצוגה תהיה אמיתית).
     """
-    from rag_engine import _build_chat_user_turn, MOODLE_SYSTEM_ADDENDUM
+    from rag_engine import _build_chat_user_turn
     from moodle_tools import MOODLE_FUNCTION_NAMES
+    await prompt_store.refresh(True)
 
     api_key = await db.get_api_key()
     bot_identity = await db.get_bot_identity()
@@ -609,7 +615,7 @@ async def preview_prompt(question: str = "מתי הבחינה במבוא לתכ�
     composed_prompt = _build_chat_user_turn(
         question, relevant_chunks, bot_identity, catalog, "", [],
         username="<שם הסטודנט המחובר>",
-        extra_system_instructions=MOODLE_SYSTEM_ADDENDUM if enabled_functions else "",
+        extra_system_instructions=prompt_store.text("moodle") if enabled_functions else "",
     )
 
     return {
@@ -1216,6 +1222,7 @@ async def _stream_chat_response(
     עם emit_status הזרם כולל אירועי סטטוס (\x01{json}\x02) שלא נשמרים ב-DB.
     """
     api_key = await db.get_api_key()          # (במטמון)
+    await prompt_store.refresh()              # the admin's prompt sections, notes and design controls (cached a few seconds)
 
     async def response_generator():
         full_answer = ""
@@ -1560,6 +1567,140 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fronten
 @app.get("/")
 async def serve_student_app():
     return FileResponse(os.path.join(FRONTEND_DIR, "student.html"))
+
+# =====================================================================
+# The admin's control over the bot's prompt, the display designs and new designs made with AI (no software update needed)
+# =====================================================================
+class PromptSaveRequest(BaseModel):
+    sections: Dict[str, dict] = {}
+    notes: List[dict] = []
+    designs: Dict[str, dict] = {}
+    label: str = ""
+
+
+class PromptRestoreRequest(BaseModel):
+    id: int
+
+
+class UiRenderRequest(BaseModel):
+    blocks: List[dict]
+
+
+class DesignGenRequest(BaseModel):
+    description: str
+    id: str = ""            # when set: change this saved design instead of making a new one
+    design: Optional[dict] = None
+
+
+class DesignSaveRequest(BaseModel):
+    design: dict
+
+
+def _prompt_payload() -> dict:
+    st = prompt_store.state()
+    secs = []
+    for key, group, title, desc in prompt_store.SECTIONS:
+        over = (st.get("sections") or {}).get(key) or {}
+        cur = prompt_store.default(key) if not over.get("text") else over["text"]
+        secs.append({"key": key, "group": group, "title": title, "desc": desc, "enabled": over.get("enabled") is not False,
+                     "edited": bool(over.get("text")), "text": cur, "default": prompt_store.default(key)})
+    return {"sections": secs, "notes": st.get("notes", []), "designs": st.get("designs", {}), "custom": st.get("custom", [])}
+
+
+@app.get("/api/admin/prompt", dependencies=[Depends(require_admin)])
+async def admin_get_prompt():
+    await prompt_store.refresh(True)
+    return {**_prompt_payload(), "versions": await db.list_prompt_versions()}
+
+
+@app.put("/api/admin/prompt", dependencies=[Depends(require_admin)])
+async def admin_save_prompt(req: PromptSaveRequest):
+    await prompt_store.refresh(True)
+    cur = prompt_store.state()
+    await prompt_store.save({"sections": req.sections, "notes": req.notes, "designs": req.designs, "custom": cur.get("custom", [])}, req.label or "שינוי בפרומט")
+    return {"message": "נשמר ופעיל מיד אצל כל המשתמשים.", **_prompt_payload(), "versions": await db.list_prompt_versions()}
+
+
+@app.post("/api/admin/prompt/restore", dependencies=[Depends(require_admin)])
+async def admin_restore_prompt(req: PromptRestoreRequest):
+    st = await prompt_store.restore(req.id)
+    if st is None:
+        raise HTTPException(status_code=404, detail="הגרסה לא נמצאה.")
+    return {"message": "הגרסה שוחזרה.", **_prompt_payload(), "versions": await db.list_prompt_versions()}
+
+
+@app.get("/api/admin/ui/catalog", dependencies=[Depends(require_admin)])
+async def admin_ui_catalog():
+    await prompt_store.refresh(True)
+    kinds = [{**{k: v for k, v in c.items() if k != "sample"}, "styles": list(_UI_STYLES.get(c["kind"], ())), "sample": c["sample"]} for c in ui_catalog.CATALOG]
+    return {"kinds": kinds, "custom": prompt_store.state().get("custom", []), "designs": prompt_store.state().get("designs", {})}
+
+
+def _preview_marker(blocks: list) -> dict:
+    allowed = json.dumps(blocks, ensure_ascii=False)
+    out, msg = _resolve_blocks(blocks, ui_catalog.sample_items(), allowed, preview=True)
+    return {"marker": ("[[ui:" + _encode_blocks(out) + "]]") if out else "", "message": msg}
+
+
+@app.post("/api/admin/ui/render", dependencies=[Depends(require_admin)])
+async def admin_ui_render(req: UiRenderRequest):
+    return _preview_marker(req.blocks[:12])
+
+
+def _design_preview(design: dict) -> dict:
+    s = design.get("sample") or {}
+    b = {"title": s.get("title", ""), "subtitle": s.get("subtitle", ""), "text": s.get("text", ""), "icon": s.get("icon"), "color": s.get("color") or "blue", "items": s.get("items") or []}
+    blk = custom_designs.build_block(design, b, {"co": b["color"] if b["color"] in ("blue", "green", "orange", "red", "purple", "teal", "pink", "gray") else "blue", "an": "rise"})
+    return {"marker": ("[[ui:" + _encode_blocks([blk]) + "]]") if blk else ""}
+
+
+@app.post("/api/admin/ui/design/generate", dependencies=[Depends(require_admin)])
+async def admin_design_generate(req: DesignGenRequest):
+    if not req.description.strip():
+        raise HTTPException(status_code=400, detail="תאר את העיצוב שתרצה.")
+    api_key = await db.get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="אין מפתח Google שמור.")
+    await prompt_store.refresh(True)
+    prev = req.design if isinstance(req.design, dict) and req.design.get("template") else (next((c for c in prompt_store.state().get("custom", []) if c.get("id") == req.id), None) if req.id else None)
+    try:
+        design = await asyncio.wait_for(custom_designs.generate(req.description, api_key, prev), timeout=60)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"לא הצלחתי ליצור עיצוב תקין: {e}")
+    return {"design": design, **_design_preview(design)}
+
+
+@app.post("/api/admin/ui/design/preview", dependencies=[Depends(require_admin)])
+async def admin_design_preview(req: DesignSaveRequest):
+    try:
+        design = custom_designs.normalize(req.design)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"design": design, **_design_preview(design)}
+
+
+@app.post("/api/admin/ui/design", dependencies=[Depends(require_admin)])
+async def admin_design_save(req: DesignSaveRequest):
+    try:
+        design = custom_designs.normalize(req.design)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    await prompt_store.refresh(True)
+    cur = prompt_store.state()
+    custom = [c for c in cur.get("custom", []) if c.get("id") != design["id"]] + [design]
+    await prompt_store.save({**cur, "custom": custom}, f"עיצוב {design['name']}")
+    return {"message": "העיצוב נשמר ופעיל מיד (הבוט יכול להשתמש בו).", "design": design}
+
+
+@app.delete("/api/admin/ui/design/{design_id}", dependencies=[Depends(require_admin)])
+async def admin_design_delete(design_id: str):
+    await prompt_store.refresh(True)
+    cur = prompt_store.state()
+    await prompt_store.save({**cur, "custom": [c for c in cur.get("custom", []) if c.get("id") != design_id]}, f"מחיקת עיצוב {design_id}")
+    return {"message": "נמחק."}
+
 
 @app.get("/admin")
 async def serve_admin_app():

@@ -150,3 +150,7 @@ async def run_memory_tool(name: str, args: Dict[str, Any], user_id: str, memorie
     except Exception as e:
         return f"לא ניתן היה לעדכן את הזיכרון כרגע ({type(e).__name__}).", None
     return f"כלי זיכרון לא מוכר: {name}", None
+
+
+import prompt_store as _ps
+_ps.register("memory", MEMORY_ADDENDUM)

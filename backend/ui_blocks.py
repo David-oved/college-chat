@@ -10,6 +10,9 @@ import json
 import re
 from typing import Any, Dict, List, Tuple
 
+import custom_designs
+import prompt_store
+
 # kind -> allowed styles (first one is the default)
 STYLES = {
     "deadlines": ("tickets", "timeline", "focus"),
@@ -109,6 +112,33 @@ UI_ADDENDUM = """
 לכל בלוק אפשר: color (blue/green/orange/red/purple/teal/pink/gray), icon (phone/mail/clock/pin/book/money/warning/info/user/calendar/file/link/key/shield/heart/star/school/tool/chat/check/bolt/globe/id/food/home/bus/wifi/print/lock/bell/gift/flag), anim (fade/rise/pop/slide/glow - כניסה מונפשת, none לבלי), title.
 עיצוב: בחר צבע לפי משמעות (אדום לאזהרה, ירוק להצלחה, כתום לתשלום/דחיפות, כחול למידע, סגול לטיפ) ושלב בלוקים: למשל banner קצר, ואחריו contact, ואחריו steps. מהירות: אם צריך כמה כלים - קרא להם כולם באותו צעד במקביל. אל תשתמש בשם של אדם או במספר שלא מופיעים בחומר.
 """
+
+# The long instruction is kept in sections the admin can edit (prompt_store); UI_ADDENDUM stays the built-in whole.
+def _split_ui(full: str) -> Dict[str, str]:
+    marks = [("ui_recipes", "איך מרכיבים תשובה טובה"), ("ui_standard", "הסטנדרט לעיצוב"), ("ui_moodle", "מידע מ-Moodle (מטלות"), ("ui_reference", "מידע מהמאגר ומהכלים")]
+    out: Dict[str, str] = {}
+    cur, buf = "ui_iron", []
+    for ln in full.splitlines(keepends=True):
+        for key, m in marks:
+            if ln.startswith(m):
+                out[cur] = "".join(buf)
+                cur, buf = key, []
+                break
+        buf.append(ln)
+    out[cur] = "".join(buf)
+    return out
+
+
+UI_PARTS = _split_ui(UI_ADDENDUM)
+for _k, _v in UI_PARTS.items():
+    prompt_store.register(_k, _v)
+UI_KEYS = ("ui_iron", "ui_recipes", "ui_standard", "ui_moodle", "ui_reference")
+
+
+def ui_text() -> str:
+    """The display instructions as the admin set them (sections switched off are left out), plus the admin's design controls."""
+    return "".join(prompt_store.text(k) for k in UI_KEYS) + prompt_store.design_text()
+
 
 _ITEM = {
     "type": "OBJECT",
@@ -246,7 +276,7 @@ def _icon(x: Any) -> str:
     return i if i in ICONS else ""
 
 
-def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str = "") -> Tuple[List[Dict[str, Any]], str]:
+def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str = "", preview: bool = False) -> Tuple[List[Dict[str, Any]], str]:
     """מאמת את מה שהמודל ביקש. מחזיר (בלוקים נקיים, הודעה למודל)."""
     out: List[Dict[str, Any]] = []
     problems: List[str] = []
@@ -269,6 +299,19 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         if sub:
             base["su"] = sub
 
+        # ---------------- the admin's controls: a switched-off kind is not shown, a custom design (made in the admin app) is filled from its template
+        if kind in prompt_store.disabled_kinds() and not preview:
+            problems.append(f"סוג הבלוק {kind} כבוי על ידי המנהל - השתמש בסוג אחר.")
+            continue
+        if kind.startswith("x_"):
+            design = prompt_store.custom_design(kind)
+            blk = custom_designs.build_block(design, {"title": title, "subtitle": sub, "text": text, "icon": b.get("icon"), "color": b.get("color"), "items": raw_items},
+                                             _common(b)) if design else None
+            if blk:
+                out.append(blk)
+            elif not design:
+                problems.append(f"סוג בלוק לא מוכר: {kind}")
+            continue
         # ---------------- Moodle items by id
         if kind in ITEM_KINDS:
             want = ITEM_KINDS[kind]
