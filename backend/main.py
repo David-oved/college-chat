@@ -1791,7 +1791,7 @@ async def public_mascot():
 @app.get("/api/admin/mascot", dependencies=[Depends(require_admin)])
 async def admin_get_mascot():
     import mascot
-    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS, "mood_labels": mascot.MOOD_LABELS, "personas": mascot.PERSONAS,
+    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS, "mood_labels": mascot.MOOD_LABELS, "shape_labels": mascot.SHAPE_LABELS,
             "anims": mascot.ANIMS, "triggers": mascot.TRIGGERS, "phrase_keys": mascot.PHRASE_KEYS}
 
 

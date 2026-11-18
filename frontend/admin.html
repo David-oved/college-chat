@@ -537,7 +537,7 @@
         <section id="tabPanel-mascot" class="tab-panel page hidden">
           <div class="card" style="padding:14px 18px">
             <div class="flex flex-wrap items-center gap-3">
-              <div class="min-w-0 flex-1"><b class="text-[15px]">אורי</b><div class="hint" style="margin:2px 0 0">דמות אחת שמצוירת מאותו מקום בכל האפליקציה: הכפתור הצף, ההודעות, מסך הפתיחה, הסיור, סרטון ההדגמה ופינת המשחק. מה שתשנה כאן יתעדכן אצל כולם (מכשיר פתוח בודק כל דקה, ופתיחת הצ'אט או חזרה לאפליקציה בודקות מיד).</div></div>
+              <div class="min-w-0 flex-1"><b class="text-[15px]">אורי</b><div class="hint" style="margin:2px 0 0">דמות אחת שמצוירת מאותו מקום בכל האפליקציה: הכפתור הצף, ההודעות, מסך הפתיחה, הסיור וההדגמה. רק אתה מעצב אותה, לסטודנטים אין מה לשנות. מה שתפרסם יתעדכן אצל כולם (מכשיר פתוח בודק כל דקה, ופתיחת הצ'אט או חזרה לאפליקציה בודקות מיד).</div></div>
               <span id="mcDirty" class="badge badge-warn hidden">יש שינויים שלא נשמרו</span>
               <button type="button" onclick="mcReset()" class="btn">איפוס למקור</button>
               <button type="button" id="mcSaveBtn" onclick="mcSave()" class="btn btn-primary" disabled title="כפתור פעיל רק אחרי שינוי"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור ופרסם</button>
@@ -2630,8 +2630,7 @@
 
     // ===================== אורי, הדמות =====================
     let MC = null, MC_DIRTY = false, MC_T = null, MC_FR = null, MC_READY = false;
-    const MC_MOODS = { happy: 'שמח', grin: 'צוחק', wow: 'מופתע', think: 'חושב', love: 'אוהב', sleep: 'ישן', sleepy: 'ישנוני', wink: 'קורץ', dizzy: 'מסוחרר' };
-    const MC_DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+    const MC_MOODS = { happy: 'רגיל', think: 'חושב', wow: 'מופתע', wink: 'קורץ' };
     const MC_BODIES = [['לבן', '#ffffff'], ['מנטה', '#d9f7ec'], ['אפרסק', '#ffe3d1'], ['לבנדר', '#e9e1ff'], ['שמיים', '#dbeeff'], ['לימון', '#fff4c2'], ['ורוד', '#ffdfe9']];
     const MC_SLOT_HE = { hat: 'כובע', face: 'פנים', neck: 'צוואר' };
     // "dirty" is not a flag somebody remembered to raise: it is whether the settings differ from what is saved (change something and put it back, and nothing is left to save)
@@ -2645,7 +2644,7 @@
     function mcSend() {
       if (!MC_FR || !MC_READY || !MC) return;
       const slotOf = {}; Object.entries(MC.slots).forEach(([sl, items]) => items.forEach(i => { slotOf[i] = sl; }));
-      try { MC_FR.contentWindow.postMessage({ t: 'uri', cfg: MC.cfg, labels: { moods: MC_MOODS, items: MC.labels, slots: slotOf, hMoods: 'מצבי רוח', hSizes: 'בגדלים שבהם הוא מופיע', hItems: 'הפריטים שאפשר ללבוש', hSeasons: 'עונות וחגים',
+      try { MC_FR.contentWindow.postMessage({ t: 'uri', cfg: MC.cfg, labels: { moods: MC_MOODS, items: MC.labels, slots: slotOf, hMoods: 'הבעות', hSizes: 'בגדלים שבהם הוא מופיע', hItems: 'מה אפשר להלביש עליו', hSeasons: 'עונות וחגים', hBubble: 'הבועה שהוא מדבר בה', sample: MC.cfg.phrases.open[0] || 'היי, במה אפשר לעזור?',
         fab: 'הכפתור הצף', hdr: 'כותרת הצ׳אט', bub: 'בהודעות', dead: 'כשיש תקלה' } }, 'https://david-oved.github.io'); } catch (e) {}
     }
     async function mcLoad() {
@@ -2673,40 +2672,27 @@
     }
     function mcRender() {
       const box = document.getElementById('mcControls'); box.innerHTML = ''; const c = MC.cfg;
-      // look
-      let [card, b] = mcCard('המראה', 'צורה, צבע, עיניים ולחיים. האפליקציה מציירת את אורי מההגדרות האלה בלבד.');
-      b.appendChild(mcRow('צורת הגוף', mcSeg([['bubble', 'בועת שיחה'], ['blob', 'כדור רך']], c.shape, v => { c.shape = v; })));
+      const colorCtl = (obj, key, clearable, dflt) => { const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'color'; i.value = obj[key] || dflt || '#3b5bdb'; i.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; i.oninput = () => { obj[key] = i.value; mcChanged(); };
+        w.appendChild(i); if (clearable) { const x = el('button', 'btn btn-sm btn-ghost', 'ברירת מחדל'); x.type = 'button'; x.onclick = () => { obj[key] = ''; mcChanged(); mcRender2(); }; w.appendChild(x); } if (!obj[key]) w.appendChild(el('span', 'hint', 'לפי נושא האפליקציה')); return w; };
+      // the body
+      let [card, b] = mcCard('איך אורי נראה', 'הצורה, הצבע והעיניים. האפליקציה מציירת אותו מההגדרות האלה בלבד.');
+      b.appendChild(mcRow('צורה', mcSeg(MC.shapes.map(k => [k, MC.shape_labels[k] || k]), c.shape, v => { c.shape = v; })));
       const sw = el('div', 'flex flex-wrap items-center gap-2');
       MC_BODIES.forEach(([n, hex]) => { const x = el('button', 'rounded-full'); x.type = 'button'; x.title = n; x.style.cssText = 'width:30px;height:30px;border:2px solid ' + (c.body.toLowerCase() === hex ? 'var(--accent)' : 'var(--line-strong)') + ';background:' + hex; x.onclick = () => { c.body = hex; mcChanged(); mcRender(); }; sw.appendChild(x); });
       const ci = el('input', ''); ci.type = 'color'; ci.value = c.body; ci.title = 'צבע אחר'; ci.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; ci.oninput = () => { c.body = ci.value; mcChanged(); }; sw.appendChild(ci);
-      b.appendChild(mcRow('צבע הגוף', sw));
-      b.appendChild(mcRow('עיניים', mcSeg([['big', 'גדולות ונוצצות'], ['oval', 'עגולות קטנות'], ['happy', 'מחייכות']], c.eyes, v => { c.eyes = v; })));
-      const chk = el('input', ''); chk.type = 'color'; chk.value = c.cheek; chk.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; chk.oninput = () => { c.cheek = chk.value; mcChanged(); };
-      b.appendChild(mcRow('לחיים', [mcSw(c.cheeks, v => { c.cheeks = v; }), chk]));
-      b.appendChild(mcRow('כוכב נוצץ', mcSw(c.spark, v => { c.spark = v; })));
+      b.appendChild(mcRow('צבע', sw));
+      b.appendChild(mcRow('עיניים', mcSeg([['oval', 'עגולות קטנות (המקורי)'], ['big', 'גדולות ונוצצות'], ['happy', 'מחייכות']], c.eyes, v => { c.eyes = v; })));
+      b.appendChild(mcRow('כוכב קטן בפינה', mcSw(c.spark, v => { c.spark = v; })));
       box.appendChild(card);
-      // outfit + wardrobe
-      [card, b] = mcCard('לבוש וארון', 'מה אורי לובש כברירת מחדל, ומה הסטודנטים יכולים להלביש לו בפינת המשחק. פריט עם מספר נגיעות נפתח רק אחרי שמשחקים איתו מספיק.');
-      b.appendChild(mcRow('לבוש ברירת מחדל', mcOutfitSelects(c.outfit)));
-      b.appendChild(mcRow('הסטודנטים מלבישים אותו', mcSw(c.wardrobe, v => { c.wardrobe = v; }), 'פינת משחק עם ארון'));
-      const grid = el('div', 'grid sm:grid-cols-2 gap-x-6');
-      Object.entries(MC.slots).forEach(([sl, items]) => items.forEach(i => {
-        const r = el('div', 'flex items-center gap-2 py-1.5'); const on = c.available.includes(i);
-        r.appendChild(mcSw(on, v => { c.available = c.available.filter(x => x !== i); if (v) c.available.push(i); }));
-        r.appendChild(el('span', 'text-[13px] flex-1', (MC.labels[i] || i) + ' · ' + MC_SLOT_HE[sl]));
-        const n = el('input', 'input input-sm'); n.type = 'number'; n.min = 1; n.max = 500; n.placeholder = 'פתוח'; n.style.width = '74px'; n.title = 'כמה נגיעות עד שנפתח (ריק = פתוח מההתחלה)'; n.value = (c.unlocks || {})[i] || '';
-        n.oninput = () => { c.unlocks = c.unlocks || {}; if (n.value) c.unlocks[i] = Math.max(1, Math.min(500, parseInt(n.value, 10) || 1)); else delete c.unlocks[i]; mcChanged(); };
-        r.appendChild(n); grid.appendChild(r);
-      }));
-      b.appendChild(grid); box.appendChild(card);
-      // seasons
-      [card, b] = mcCard('עונות וחגים', 'בין שני תאריכים אורי לובש משהו אחר, אוטומטית. השנה לא משנה, והתאריכים חוזרים כל שנה.');
-      const list = el('div', 'space-y-2');
+      // what he wears: only the admin dresses him
+      [card, b] = mcCard('מה אורי לובש', 'רק אתה מלביש אותו: משקפיים, כובע, צעיף. אפשר גם להלביש אותו אחרת בין שני תאריכים (למשל כובע בוגרים בתקופת מבחנים).');
+      b.appendChild(mcRow('ברירת מחדל', mcOutfitSelects(c.outfit)));
+      const list = el('div', 'space-y-2 mt-2');
       const md2date = md => '2000-' + md, date2md = d => (d || '').slice(5);
       (c.seasons || []).forEach((x, idx) => {
         const r = el('div', 'rounded-xl border border-slate-200 p-2.5 space-y-2');
         const top = el('div', 'flex flex-wrap items-center gap-2');
-        const lab = el('input', 'input input-sm'); lab.placeholder = 'שם (למשל: פורים)'; lab.value = x.label || ''; lab.style.width = '150px'; lab.oninput = () => { x.label = lab.value; mcChanged(); };
+        const lab = el('input', 'input input-sm'); lab.placeholder = 'שם (למשל: תקופת מבחנים)'; lab.value = x.label || ''; lab.style.width = '170px'; lab.oninput = () => { x.label = lab.value; mcChanged(); };
         const f = el('input', 'input input-sm'); f.type = 'date'; f.value = md2date(x.from); f.style.width = '140px'; f.onchange = () => { x.from = date2md(f.value); mcChanged(); };
         const t = el('input', 'input input-sm'); t.type = 'date'; t.value = md2date(x.to); t.style.width = '140px'; t.onchange = () => { x.to = date2md(t.value); mcChanged(); };
         const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.type = 'button'; del.onclick = () => { c.seasons.splice(idx, 1); mcChanged(); mcRender(); };
@@ -2714,18 +2700,25 @@
         const o = el('div', 'flex flex-wrap items-center gap-3'); o.appendChild(el('span', 'text-[12.5px] font-bold', 'לובש:')); mcOutfitSelects(x.outfit || (x.outfit = { hat: '', face: '', neck: '' })).forEach(n => o.appendChild(n)); r.appendChild(o);
         list.appendChild(r);
       });
-      const add = el('button', 'btn btn-sm', 'הוסף עונה'); add.type = 'button';
-      add.onclick = () => { c.seasons = c.seasons || []; c.seasons.push({ label: '', from: '03-01', to: '03-07', outfit: { hat: 'partyhat', face: '', neck: '' } }); mcChanged(); mcRender(); };
+      const add = el('button', 'btn btn-sm', 'הוסף תקופה'); add.type = 'button';
+      add.onclick = () => { c.seasons = c.seasons || []; c.seasons.push({ label: '', from: '01-01', to: '01-31', outfit: { hat: 'gradcap', face: '', neck: '' } }); mcChanged(); mcRender(); };
       b.appendChild(list); b.appendChild(add); box.appendChild(card);
-      // behaviour
-      [card, b] = mcCard('איך אורי חי', 'כל מה שאורי עושה מעצמו ובתגובה למגע.');
-      [['blink', 'מצמץ', ''], ['look', 'העיניים עוקבות אחרי האצבע או העכבר', 'רק בפנים הגדולות'], ['bounce', 'נושם ומתנועע בהמתנה', ''], ['react', 'מגיב כשנוגעים בו', 'קפיצה, סיבוב, מבוכה ולבבות'],
-        ['play', 'פינת משחק', 'נגיעה באווטאר בכותרת פותחת מסך עם ארון ומצבי רוח']].forEach(([k, l, h]) => b.appendChild(mcRow(l, mcSw(c.behavior[k] !== false, v => { c.behavior[k] = v; }), h)));
+      // speech bubble
+      [card, b] = mcCard('הבועה שאורי מדבר בה', 'הצורה והצבעים של הבועה שבה מופיע המשפט.');
+      b.appendChild(mcRow('צורה', mcSeg([['round', 'מעוגלת'], ['square', 'מרובעת'], ['pill', 'אליפסה']], c.bubble.shape, v => { c.bubble.shape = v; })));
+      b.appendChild(mcRow('צבע הרקע', colorCtl(c.bubble, 'bg', true, '#ffffff')));
+      b.appendChild(mcRow('צבע הטקסט', colorCtl(c.bubble, 'text', true, '#1f2937')));
+      b.appendChild(mcRow('צבע המסגרת', colorCtl(c.bubble, 'border', true, '#d0d5dd')));
+      const tryB = el('button', 'btn btn-sm btn-soft', 'הצג בועה על הבמה'); tryB.type = 'button'; tryB.onclick = () => mcPlay('', (c.phrases.open || [])[0] || 'היי, במה אפשר לעזור?'); b.appendChild(mcRow('', tryB));
       box.appendChild(card);
-      // animations
-      [card, b] = mcCard('אנימציות', 'כל התנועות שאורי יודע לעשות. כבה תנועה כדי שלא תופיע בשום מקום. "נגן" מראה אותה על הבמה בצד.');
+      // behaviour
+      [card, b] = mcCard('התנהגות', 'מה אורי עושה מעצמו. כבוי = הוא יושב בשקט.');
+      [['blink', 'מצמץ', ''], ['look', 'העיניים עוקבות אחרי האצבע או העכבר', 'רק בפנים הגדולות'], ['react', 'זז ומדבר ברגעים שמוגדרים למטה', 'פתיחת צ\'אט, המתנה, תשובה, שגיאה'], ['idle', 'זז לפעמים מעצמו', 'בפרקי זמן שמוגדרים למטה']]
+        .forEach(([k, l, h]) => b.appendChild(mcRow(l, mcSw(c.behavior[k] !== false, v => { c.behavior[k] = v; }), h)));
+      box.appendChild(card);
+      // movements
+      [card, b] = mcCard('תנועות', 'כמה תנועות עדינות. כבה תנועה כדי שלא תופיע בשום מקום. "נגן" מראה אותה על הבמה בצד.');
       b.appendChild(mcRow('מהירות', mcSlider(0.5, 2, 0.1, c.anim.speed, v => { c.anim.speed = v; }, v => v.toFixed(1) + 'x'), '0.5 איטי, 2 מהיר'));
-      b.appendChild(mcRow('חלקיקים (לבבות, כוכבים, קונפטי)', [mcSw(c.anim.particles, v => { c.anim.particles = v; }), mcSlider(2, 14, 1, c.anim.amount, v => { c.anim.amount = v; }, v => v + ' חלקיקים')]));
       const grid2 = el('div', 'grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2');
       Object.entries(MC.anims).forEach(([id, label]) => {
         const t = el('div', 'rounded-xl border border-slate-200 p-2 flex items-center gap-2');
@@ -2734,85 +2727,8 @@
         const pl = el('button', 'btn btn-sm btn-soft', 'נגן'); pl.type = 'button'; pl.onclick = () => mcPlay(id); t.appendChild(pl); grid2.appendChild(t);
       });
       b.appendChild(grid2); box.appendChild(card);
-      // characters: every mood has its own personality
-      [card, b] = mcCard('הדמויות: לכל מצב רוח אופי משלו', 'שמח קופץ, קורץ קורץ, ישן מתעורר לאט. לכל דמות בוחרים מה היא עושה כשפותחים את הצ׳אט, כשהיא לבד, כשנוגעים בה, ומה היא אומרת. בכל פעם נבחרת אחת מהרשימה באקראי.');
-      b.appendChild(mcRow('הדמות הרגילה', mcSel(Object.entries(MC_MOODS), c.baseMood, v => { c.baseMood = v; }), 'איך אורי נראה כשאף אוטומציה לא פעילה'));
-      Object.entries(MC_MOODS).forEach(([m, label]) => {
-        const per = c.personas[m] || (c.personas[m] = { open: [], idle: [], tap: [], lines: [] });
-        const dt = el('details', 'py-2'); dt.style.borderTop = '1px solid var(--line)';
-        const sm = el('summary', 'flex flex-wrap items-center gap-2 cursor-pointer'); sm.appendChild(el('b', 'text-[13.5px] flex-1', label));
-        sm.appendChild(el('span', 'hint', 'פתיחה ' + per.open.length + ' · לבד ' + per.idle.length + ' · מגע ' + per.tap.length + ' · משפטים ' + per.lines.length));
-        const t = el('button', 'btn btn-sm btn-soft', 'נסה פתיחה'); t.type = 'button'; t.onclick = ev => { ev.preventDefault(); mcSimPlay({ fab: m, chat: m === 'sleep' ? 'sleepy' : m, seq: per.open.length ? [per.open[Math.floor(Math.random() * per.open.length)]] : [], line: per.lines[0] || '' }); };
-        sm.appendChild(t); dt.appendChild(sm);
-        [['open', 'כשפותחים את הצ׳אט'], ['idle', 'כשהוא לבד, מדי פעם'], ['tap', 'כשנוגעים בו']].forEach(([k, l]) => {
-          const g = el('div', 'mt-2'); g.appendChild(el('div', 'text-[12.5px] font-bold mb-1', l));
-          const chips = el('div', 'flex flex-wrap gap-1.5');
-          Object.entries(MC.anims).forEach(([id, an]) => {
-            const on = per[k].includes(id), x = el('button', 'badge ' + (on ? 'badge-accent' : ''), an); x.type = 'button'; x.style.cursor = 'pointer'; x.style.border = '1px solid ' + (on ? 'var(--accent-line)' : 'var(--line)');
-            x.onclick = () => { const i = per[k].indexOf(id); if (i >= 0) per[k].splice(i, 1); else per[k].push(id); mcChanged(); mcRender2(); };
-            chips.appendChild(x);
-          }); g.appendChild(chips); dt.appendChild(g);
-        });
-        const g = el('div', 'mt-2'); g.appendChild(el('div', 'text-[12.5px] font-bold mb-1', 'מה הדמות אומרת (משפט בכל שורה)'));
-        const ta = el('textarea', 'textarea'); ta.rows = 2; ta.value = per.lines.join('\n'); ta.oninput = () => { per.lines = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); }; g.appendChild(ta); dt.appendChild(g);
-        b.appendChild(dt);
-      });
-      box.appendChild(card);
-      // automations
-      [card, b] = mcCard('אוטומציות מיוחדות', 'כלל לפי שעה, יום בשבוע ותאריך. הכלל הראשון ברשימה שמתאים לרגע קובע: איך אורי נראה על הכפתור, מה הוא עושה כשפותחים את הצ׳אט (תנועות לפי הסדר), ואיך הוא נראה בתוך הצ׳אט. למשל: בלילה הכפתור ישן, בפתיחה הוא מתעורר, ובצ׳אט הוא ער אבל ישנוני.');
-      b.appendChild(mcRow('אוטומציות פועלות', mcSw(c.behavior.sleepy !== false, v => { c.behavior.sleepy = v; }), 'כבוי: אורי תמיד נראה כמו הדמות הרגילה'));
-      const rules = el('div', 'space-y-3 mt-2');
-      const ok = v => /^([01]\d|2[0-4]):[0-5]\d$/.test(v);
-      (c.auto || []).forEach((r, idx) => {
-        const w = el('div', 'rounded-xl border border-slate-200 p-3 space-y-2.5'); if (r.enabled === false) w.style.opacity = '.6';
-        const top = el('div', 'flex flex-wrap items-center gap-2');
-        top.appendChild(mcSw(r.enabled !== false, v => { r.enabled = v; mcRender2(); }));
-        const lab = el('input', 'input input-sm flex-1'); lab.style.minWidth = '140px'; lab.value = r.label || ''; lab.placeholder = 'שם האוטומציה'; lab.oninput = () => { r.label = lab.value; mcChanged(); }; top.appendChild(lab);
-        const mv = (d) => { const j = idx + d; if (j < 0 || j >= c.auto.length) return; [c.auto[idx], c.auto[j]] = [c.auto[j], c.auto[idx]]; mcChanged(); mcRender2(); };
-        [['▲', 'קדימות גבוהה יותר', -1], ['▼', 'קדימות נמוכה יותר', 1]].forEach(([g, tt, d]) => { const x = el('button', 'btn btn-sm btn-ghost', g); x.type = 'button'; x.title = tt; x.onclick = () => mv(d); top.appendChild(x); });
-        const sim = el('button', 'btn btn-sm btn-soft', 'נסה'); sim.type = 'button'; sim.onclick = () => mcSimPlay(mcRuleView(c, r)); top.appendChild(sim);
-        const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.type = 'button'; del.onclick = () => { c.auto.splice(idx, 1); mcChanged(); mcRender2(); }; top.appendChild(del);
-        w.appendChild(top);
-        const tmr = el('div', 'flex flex-wrap items-center gap-2'); tmr.appendChild(el('span', 'text-[12.5px] font-bold', 'בין השעות'));
-        [['from', '00:00'], ['to', '24:00']].forEach(([k, d], i) => { if (i) tmr.appendChild(el('span', 'text-[12.5px]', 'ל'));
-          const t = el('input', 'input input-sm'); t.style.width = '78px'; t.dir = 'ltr'; t.maxLength = 5; t.value = r[k] || d; t.placeholder = 'HH:MM';
-          t.onchange = () => { if (ok(t.value)) { r[k] = t.value; mcChanged(); } else { t.value = r[k] || d; showToast('שעה בפורמט 07:30 (עד 24:00)', true); } }; tmr.appendChild(t); });
-        tmr.appendChild(el('span', 'hint', 'אפשר לעבור חצות, למשל 22:00 עד 05:00')); w.appendChild(tmr);
-        const dys = el('div', 'flex flex-wrap items-center gap-1.5'); dys.appendChild(el('span', 'text-[12.5px] font-bold', 'בימים'));
-        MC_DAYS.forEach((dn, d) => { const on = (r.days || []).includes(d), x = el('button', 'badge ' + (on ? 'badge-accent' : ''), dn); x.type = 'button'; x.style.cursor = 'pointer'; x.style.border = '1px solid ' + (on ? 'var(--accent-line)' : 'var(--line)');
-          x.onclick = () => { r.days = r.days || []; const i = r.days.indexOf(d); if (i >= 0) r.days.splice(i, 1); else r.days.push(d); r.days.sort(); mcChanged(); mcRender2(); }; dys.appendChild(x); });
-        dys.appendChild(el('span', 'hint', (r.days || []).length ? '' : 'לא נבחר יום = כל הימים')); w.appendChild(dys);
-        const dts = el('div', 'flex flex-wrap items-center gap-2'); dts.appendChild(el('span', 'text-[12.5px] font-bold', 'בתאריכים'));
-        [['dateFrom', 'מ-'], ['dateTo', 'עד']].forEach(([k, l]) => { dts.appendChild(el('span', 'text-[12.5px]', l)); const t = el('input', 'input input-sm'); t.type = 'date'; t.style.width = '140px'; t.value = r[k] ? '2000-' + r[k] : ''; t.onchange = () => { r[k] = (t.value || '').slice(5); mcChanged(); }; dts.appendChild(t); });
-        const clr = el('button', 'btn btn-sm btn-ghost', 'כל השנה'); clr.type = 'button'; clr.onclick = () => { r.dateFrom = ''; r.dateTo = ''; mcChanged(); mcRender2(); }; dts.appendChild(clr); w.appendChild(dts);
-        const fm = el('div', 'flex flex-wrap items-center gap-3');
-        const lbl = (t, x) => { const q = el('label', 'flex items-center gap-1.5 text-[12.5px]'); q.appendChild(el('span', 'font-bold', t)); q.appendChild(x); return q; };
-        fm.appendChild(lbl('על הכפתור', mcSel([['', 'הדמות הרגילה']].concat(Object.entries(MC_MOODS)), r.fab || '', v => { r.fab = v; })));
-        fm.appendChild(lbl('בתוך הצ׳אט', mcSel([['', 'כמו הכפתור (ישן יתעורר ישנוני)']].concat(Object.entries(MC_MOODS)), r.chat || '', v => { r.chat = v; })));
-        const cs = el('input', 'input input-sm'); cs.type = 'number'; cs.min = 0; cs.max = 900; cs.style.width = '76px'; cs.value = r.chatSec || 0; cs.oninput = () => { r.chatSec = Math.max(0, Math.min(900, parseInt(cs.value, 10) || 0)); mcChanged(); };
-        fm.appendChild(lbl('נשאר כך (שניות)', cs)); fm.appendChild(el('span', 'hint', '0 = כל זמן שהצ׳אט פתוח, אחרת חוזר לדמות הרגילה')); w.appendChild(fm);
-        const sq = el('div', 'flex flex-wrap items-center gap-1.5'); sq.appendChild(el('span', 'text-[12.5px] font-bold', 'כשפותחים את הצ׳אט (לפי הסדר)'));
-        (r.open || []).forEach((id, i) => { const x = el('button', 'badge badge-accent', (i + 1) + '. ' + (MC.anims[id] || id) + ' ×'); x.type = 'button'; x.style.cursor = 'pointer'; x.title = 'הסר'; x.onclick = () => { r.open.splice(i, 1); mcChanged(); mcRender2(); }; sq.appendChild(x); });
-        const ad = mcSel([['', 'הוסף תנועה...']].concat(Object.entries(MC.anims)), '', v => { if (v) { r.open = r.open || []; if (r.open.length < 6) r.open.push(v); mcRender2(); } }); sq.appendChild(ad);
-        sq.appendChild(el('span', 'hint', (r.open || []).length ? '' : 'ריק = הדמות בוחרת לפי האופי שלה')); w.appendChild(sq);
-        const ln = el('input', 'input input-sm w-full'); ln.maxLength = 70; ln.value = r.line || ''; ln.placeholder = 'משפט שאורי אומר כשפותחים (ריק = לפי האופי והשעה)'; ln.oninput = () => { r.line = ln.value; mcChanged(); }; w.appendChild(ln);
-        rules.appendChild(w);
-      });
-      const addR = el('button', 'btn btn-sm', 'הוסף אוטומציה'); addR.type = 'button';
-      addR.onclick = () => { c.auto = c.auto || []; if (c.auto.length >= 12) { showToast('עד 12 אוטומציות', true); return; } c.auto.push({ id: 'r' + Date.now().toString(36).slice(-6), label: 'אוטומציה חדשה', enabled: true, from: '08:00', to: '10:00', days: [], dateFrom: '', dateTo: '', fab: 'wink', open: ['wink'], chat: '', chatSec: 0, line: '' }); mcChanged(); mcRender2(); };
-      b.appendChild(rules); b.appendChild(addR);
-      // what does he do at a certain moment?
-      const sm = el('div', 'rounded-xl p-3 mt-3 flex flex-wrap items-center gap-2'); sm.style.background = 'var(--accent-soft, #eef2ff)';
-      sm.appendChild(el('b', 'text-[13px]', 'מה אורי עושה ב...'));
-      const pad = n => String(n).padStart(2, '0'), now = new Date();
-      const dt = el('input', 'input input-sm'); dt.type = 'datetime-local'; dt.value = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-      const out = el('div', 'text-[13px] w-full'); out.id = 'mcSimOut';
-      const go = el('button', 'btn btn-sm btn-primary', 'בדוק והראה על הבמה'); go.type = 'button';
-      go.onclick = () => { const v = mcRuleAt(c, new Date(dt.value)); out.textContent = v.rule ? ('פועל: ' + (v.rule.label || 'אוטומציה') + ' · על הכפתור: ' + MC_MOODS[v.fab] + ' · בצ׳אט: ' + MC_MOODS[v.chat]) : ('אין אוטומציה לרגע הזה · הדמות: ' + MC_MOODS[v.fab]); mcSimPlay(v); };
-      sm.append(dt, go, out); b.appendChild(sm);
-      box.appendChild(card);
       // moments
-      [card, b] = mcCard('מתי אורי עושה מה', 'לכל רגע בוחרים אילו תנועות מתאימות לו (אורי בוחר אחת באקראי), ובכמה אחוזים מהפעמים הוא גם אומר משפט.');
+      [card, b] = mcCard('מתי אורי זז ומדבר', 'לכל רגע בוחרים אילו תנועות מתאימות לו (נבחרת אחת באקראי), ובכמה אחוזים מהפעמים הוא גם אומר משפט.');
       Object.entries(MC.triggers).forEach(([key, label]) => {
         const r = el('div', 'py-3 space-y-2'); r.style.borderTop = '1px solid var(--line)';
         const top = el('div', 'flex flex-wrap items-center gap-3'); top.appendChild(el('b', 'text-[13.5px]', label));
@@ -2820,7 +2736,7 @@
         top.appendChild(el('span', 'text-[12px]', 'אומר משפט ב-'));
         top.appendChild(mcSlider(0, 100, 5, c.talk[key], v => { c.talk[key] = v; }, v => v + '%'));
         const t = el('button', 'btn btn-sm btn-soft', 'נסה'); t.type = 'button';
-        t.onclick = () => { const l = (c.triggers[key] || []).filter(i => c.anim.enabled.includes(i)); const ph = c.phrases[key === 'open' ? 'open' : key] || c.phrases.tap || []; mcPlay(l[Math.floor(Math.random() * l.length)] || '', ph[Math.floor(Math.random() * ph.length)] || ''); };
+        t.onclick = () => { const l = (c.triggers[key] || []).filter(i => c.anim.enabled.includes(i)); const ph = c.phrases[key === 'open' ? 'open' : key] || []; mcPlay(l[Math.floor(Math.random() * l.length)] || '', ph[Math.floor(Math.random() * ph.length)] || ''); };
         top.appendChild(t); r.appendChild(top);
         const chips = el('div', 'flex flex-wrap gap-1.5');
         c.anim.enabled.forEach(id => {
@@ -2832,29 +2748,27 @@
       });
       const idl = el('div', 'flex flex-wrap items-center gap-2 py-2'); idl.style.borderTop = '1px solid var(--line)';
       idl.appendChild(el('span', 'text-[13px] font-bold', 'כשאף אחד לא עושה כלום, אורי זז כל'));
-      const mi = el('input', 'input input-sm'); mi.type = 'number'; mi.min = 6; mi.max = 600; mi.value = c.idle.min; mi.style.width = '72px'; mi.oninput = () => { c.idle.min = Math.max(6, parseInt(mi.value, 10) || 6); mcChanged(); };
-      const ma = el('input', 'input input-sm'); ma.type = 'number'; ma.min = 6; ma.max = 1200; ma.value = c.idle.max; ma.style.width = '72px'; ma.oninput = () => { c.idle.max = Math.max(c.idle.min, parseInt(ma.value, 10) || c.idle.min); mcChanged(); };
+      const mi = el('input', 'input input-sm'); mi.type = 'number'; mi.min = 10; mi.max = 600; mi.value = c.idle.min; mi.style.width = '72px'; mi.oninput = () => { c.idle.min = Math.max(10, parseInt(mi.value, 10) || 10); mcChanged(); };
+      const ma = el('input', 'input input-sm'); ma.type = 'number'; ma.min = 10; ma.max = 1200; ma.value = c.idle.max; ma.style.width = '72px'; ma.oninput = () => { c.idle.max = Math.max(c.idle.min, parseInt(ma.value, 10) || c.idle.min); mcChanged(); };
       idl.append(mi, el('span', 'text-[13px]', 'עד'), ma, el('span', 'text-[13px]', 'שניות'));
       b.appendChild(idl); box.appendChild(card);
       // phrases
-      [card, b] = mcCard('מה אורי אומר', 'משפטים לכל מצב, אחד בכל שורה (עד 14). בפתיחת הצ\'אט הוא בוחר לפי השעה. אם משאירים קטגוריה ריקה חוזרים למשפטי ברירת המחדל שלה.');
+      [card, b] = mcCard('מה אורי אומר', 'משפטים לכל מצב, אחד בכל שורה (עד 14). בפתיחת הצ\'אט הוא בוחר לפי השעה. קטגוריה ריקה חוזרת למשפטי ברירת המחדל שלה.');
       Object.entries(MC.phrase_keys).forEach(([key, label]) => {
         const w = el('div', 'py-2'); w.style.borderTop = '1px solid var(--line)';
         const top = el('div', 'flex items-center gap-2 mb-1'); top.appendChild(el('b', 'text-[13px] flex-1', label));
         const t = el('button', 'btn btn-sm', 'נסה'); t.type = 'button'; t.onclick = () => { const l = c.phrases[key] || []; mcPlay('', l[Math.floor(Math.random() * l.length)] || ''); }; top.appendChild(t); w.appendChild(top);
-        const ta = el('textarea', 'textarea'); ta.rows = 3; ta.value = (c.phrases[key] || []).join('\n');
+        const ta = el('textarea', 'textarea'); ta.rows = 2; ta.value = (c.phrases[key] || []).join('\n');
         ta.oninput = () => { c.phrases[key] = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); };
         w.appendChild(ta); b.appendChild(w);
       });
       box.appendChild(card);
       // advanced look
       [card, b] = mcCard('תצוגה מתקדמת', 'צבע עיניים, מסגרת, הילה, הכפתור הצף והתג הקטן.');
-      const colorCtl = (key, clearable) => { const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'color'; i.value = c.look[key] || '#3b5bdb'; i.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; i.oninput = () => { c.look[key] = i.value; mcChanged(); };
-        w.appendChild(i); if (clearable) { const x = el('button', 'btn btn-sm btn-ghost', 'ברירת מחדל'); x.type = 'button'; x.onclick = () => { c.look[key] = ''; mcChanged(); mcRender2(); }; w.appendChild(x); } if (!c.look[key]) w.appendChild(el('span', 'hint', 'לפי נושא האפליקציה')); return w; };
-      b.appendChild(mcRow('צבע עיניים ופה', colorCtl('eye', true)));
-      b.appendChild(mcRow('מסגרת', [colorCtl('outline', true), mcSlider(0, 3, 0.5, c.look.outlineW, v => { c.look.outlineW = v; }, v => 'עובי ' + v)]));
-      b.appendChild(mcRow('הילה זוהרת', [colorCtl('aura', true), mcSlider(0, 24, 1, c.look.auraSize, v => { c.look.auraSize = v; }, v => 'עוצמה ' + v)]));
-      b.appendChild(mcRow('צבעי הכפתור הצף וההודעות', [colorCtl('fab1', true), colorCtl('fab2', true)], 'מעבר צבע משני הצבעים'));
+      b.appendChild(mcRow('צבע עיניים ופה', colorCtl(c.look, 'eye', true)));
+      b.appendChild(mcRow('מסגרת', [colorCtl(c.look, 'outline', true), mcSlider(0, 3, 0.5, c.look.outlineW, v => { c.look.outlineW = v; }, v => 'עובי ' + v)]));
+      b.appendChild(mcRow('הילה זוהרת', [colorCtl(c.look, 'aura', true), mcSlider(0, 24, 1, c.look.auraSize, v => { c.look.auraSize = v; }, v => 'עוצמה ' + v)]));
+      b.appendChild(mcRow('צבעי הכפתור הצף וההודעות', [colorCtl(c.look, 'fab1', true), colorCtl(c.look, 'fab2', true)], 'מעבר צבע משני הצבעים'));
       b.appendChild(mcRow('גודל הכפתור הצף', mcSlider(0.8, 1.5, 0.05, c.look.fabScale, v => { c.look.fabScale = v; }, v => Math.round(v * 100) + '%')));
       const tg = el('input', 'input input-sm'); tg.maxLength = 4; tg.value = c.look.tag; tg.style.width = '84px'; tg.oninput = () => { c.look.tag = tg.value; mcChanged(); };
       b.appendChild(mcRow('התג הקטן ליד אורי', [tg, el('span', 'hint', 'עד 4 תווים. ריק מסתיר אותו.')]));
@@ -2869,26 +2783,6 @@
     function mcPlay(id, text) {
       if (!MC_FR || !MC_READY || !MC) return;
       try { MC_FR.contentWindow.postMessage({ t: 'uriPlay', id: id || '', text: text || '', cfg: MC.cfg }, 'https://david-oved.github.io'); } catch (e) {}
-    }
-    // the same matching the app does on a phone (first enabled rule that fits the day, the dates and the time)
-    function mcRuleAt(c, d) {
-      const pad = n => String(n).padStart(2, '0'), mins = d.getHours() * 60 + d.getMinutes(), md = pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-      const tm = v => { const a = String(v || '').split(':').map(Number); return (a[0] || 0) * 60 + (a[1] || 0); };
-      const rule = c.behavior.sleepy === false ? null : (c.auto || []).find(r => {
-        if (r.enabled === false) return false;
-        if ((r.days || []).length && !r.days.includes(d.getDay())) return false;
-        if (r.dateFrom && r.dateTo && !(r.dateFrom <= r.dateTo ? (md >= r.dateFrom && md <= r.dateTo) : (md >= r.dateFrom || md <= r.dateTo))) return false;
-        const a = tm(r.from), b = tm(r.to); return a === b ? true : a < b ? (mins >= a && mins < b) : (mins >= a || mins < b);
-      }) || null;
-      return rule ? mcRuleView(c, rule) : { rule: null, fab: c.baseMood, chat: c.baseMood === 'sleep' ? 'sleepy' : c.baseMood, seq: [], line: '' };
-    }
-    function mcRuleView(c, r) {
-      const fab = r.fab || c.baseMood, per = c.personas[fab] || { open: [], lines: [] };
-      return { rule: r, fab, chat: r.chat || (fab === 'sleep' ? 'sleepy' : fab), seq: (r.open || []).length ? r.open : (per.open.length ? [per.open[Math.floor(Math.random() * per.open.length)]] : []), line: r.line || (per.lines[0] || '') };
-    }
-    function mcSimPlay(v) {
-      if (!MC_FR || !MC_READY || !MC) return;
-      try { MC_FR.contentWindow.postMessage({ t: 'uriSim', cfg: MC.cfg, fab: v.fab, chat: v.chat, seq: v.seq || [], line: v.line || '' }, 'https://david-oved.github.io'); } catch (e) {}
     }
     async function mcSave() {
       mcDirty(); if (!MC_DIRTY) { showToast('אין שינוי לשמור', false); return; }
