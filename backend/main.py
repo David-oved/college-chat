@@ -1698,6 +1698,16 @@ async def admin_prompt_preview(req: RulePreviewRequest):
     return {"rules": out}
 
 
+@app.get("/api/admin/prompt/diff", dependencies=[Depends(require_admin)])
+async def admin_prompt_diff(id: int):
+    """What going back to this version would change: the old version against what the bot uses now."""
+    await prompt_store.refresh(True)
+    d = await prompt_store.diff_with_version(id)
+    if d is None:
+        raise HTTPException(status_code=404, detail="הגרסה לא נמצאה.")
+    return d
+
+
 @app.post("/api/admin/prompt/restore", dependencies=[Depends(require_admin)])
 async def admin_restore_prompt(req: PromptRestoreRequest):
     st = await prompt_store.restore(req.id)

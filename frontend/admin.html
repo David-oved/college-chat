@@ -535,7 +535,8 @@
           </div>
           <div id="moodleAllCard" class="card hidden">
             <div class="card-head"><div><h2>כל הפונקציות שהטוקן מורשה להפעיל</h2><p>הרשימה המלאה מהאתר, מקובצת לפי רכיב. "נתח עם AI" מוסיף לכל פונקציה הסבר בעברית, ציון שימושיות לסטודנט ושאלה לדוגמה שהיא עונה עליה, כדי לגלות מה אנחנו מפספסים.</p></div>
-              <button type="button" id="moodleAnnBtn" onclick="annotateMoodle()" class="btn btn-soft">⟦sparkle⟧נתח עם AI</button></div>
+              <div class="flex gap-2 flex-wrap"><button type="button" onclick="copyMoodleDoc()" class="btn">⟦file⟧העתק מסמך</button>
+              <button type="button" id="moodleAnnBtn" onclick="annotateMoodle()" class="btn btn-soft">⟦sparkle⟧נתח עם AI</button></div></div>
             <div class="card-body">
               <div class="flex flex-wrap gap-2 mb-2">
                 <input id="moodleAllSearch" type="search" oninput="renderMoodleAll()" placeholder="חיפוש לפי שם או הסבר" class="input flex-1" style="min-width:200px" dir="rtl" />
@@ -603,6 +604,18 @@
           <div id="pmPickHost" style="min-height:100px"></div>
           <button type="button" onclick="pmPickDone()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>בחר את העיצוב הזה</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- השוואת גרסה: מה היה, מה פעיל עכשיו, ומה ישתנה בחזרה -->
+  <div id="pmDiffModal" class="hidden modal-bg" onclick="if (event.target === this) pmDiffClose()">
+    <div class="modal" style="max-width:900px">
+      <div class="modal-head"><span id="pmDiffTitle">השוואת גרסה</span><button type="button" onclick="pmDiffClose()" class="btn btn-ghost btn-sm">⟦x⟧</button></div>
+      <div id="pmDiffBody" class="p-5 overflow-y-auto space-y-3 text-sm"></div>
+      <div class="flex flex-wrap items-center justify-between gap-2 p-4" style="border-top:1px solid var(--line)">
+        <span id="pmDiffNote" class="hint" style="margin:0"></span>
+        <div class="flex gap-2"><button type="button" class="btn" onclick="pmDiffClose()">סגור</button><button type="button" id="pmDiffGo" class="btn btn-primary">⟦history⟧חזור לגרסה הזו</button></div>
       </div>
     </div>
   </div>
@@ -1136,7 +1149,16 @@
 
     // ---- every function the token may call, grouped by component, with the AI's notes on which ones would help students
     let MOODLE_ANN = {};
-    const MW_WRITE = /_(add|create|delete|remove|update|set|submit|send|save|mark|toggle|unenrol|duplicate|move|reset|import|upload|start|finish|process|edit|change|assign|unassign|suspend|revoke|invite|reorder|block|unblock|enrol|join|leave|favourite|unfavourite)(_|$)/;
+    // read or write is decided by the first verb AFTER the component name ("mod_assign_get_assignments": the component is mod_assign, the verb is get)
+    const MW_READ_VERBS = new Set(['get', 'is', 'search', 'view', 'list', 'check', 'count', 'has', 'fetch', 'load', 'find', 'can', 'validate', 'preview']);
+    const MW_WRITE_VERBS = new Set(['add', 'create', 'delete', 'remove', 'update', 'set', 'submit', 'send', 'save', 'mark', 'toggle', 'unenrol', 'enrol', 'duplicate', 'move', 'reset', 'import',
+      'upload', 'start', 'finish', 'process', 'edit', 'change', 'assign', 'unassign', 'suspend', 'revoke', 'invite', 'reorder', 'block', 'unblock', 'join', 'leave', 'favourite', 'unfavourite',
+      'lock', 'unlock', 'approve', 'reject', 'copy', 'restore', 'grade', 'confirm', 'cancel', 'complete', 'override', 'unlink', 'link', 'sync', 'run', 'launch', 'enable', 'disable', 'register', 'unregister', 'subscribe', 'unsubscribe', 'follow', 'unfollow', 'pin', 'unpin', 'star', 'unstar']);
+    function mwIsWrite(n) {
+      const skip = mwGroup(n).split('_').length;
+      for (const t of n.split('_').slice(skip)) { if (MW_READ_VERBS.has(t)) return false; if (MW_WRITE_VERBS.has(t)) return true; }
+      return false;
+    }
     const MW_PREFIX = ['core', 'mod', 'gradereport', 'block', 'local', 'tool', 'report', 'enrol', 'auth', 'format', 'qtype', 'assignsubmission', 'assignfeedback', 'workshopform'];
     function mwGroup(n) { const p = n.split('_'); return MW_PREFIX.includes(p[0]) && p.length > 2 ? p[0] + '_' + p[1] : p[0]; }
     function renderMoodleAll() {
@@ -1147,7 +1169,7 @@
       const flt = document.getElementById('moodleAllFilter').value;
       const ours = new Set((moodleFunctionsCatalog || []).map(f => f.moodle_function));
       const annotated = Object.keys(MOODLE_ANN).length;
-      const isWrite = n => MOODLE_ANN[n] ? MOODLE_ANN[n].w : MW_WRITE.test(n);
+      const isWrite = n => MOODLE_ANN[n] ? MOODLE_ANN[n].w : mwIsWrite(n);
       const rows = moodleAvail.filter(n => {
         const a = MOODLE_ANN[n];
         if (q && !(n.toLowerCase().includes(q) || (a && (a.d + ' ' + a.i).toLowerCase().includes(q)))) return false;
@@ -1177,6 +1199,37 @@
         }).join('');
         return `<details ${q || flt === 'useful' ? 'open' : ''} class="rounded-xl border border-slate-200 bg-white"><summary class="cursor-pointer select-none px-3.5 py-2.5 flex items-center justify-between gap-2"><span class="font-bold text-[13.5px]" dir="ltr">${escapeHtmlAdmin(g)}</span><span class="badge">${names.length}</span></summary><div class="px-3.5 pb-1">${items}</div></details>`;
       }).join('');
+    }
+    // a plain-text document of every function the token may call (and what the bot already uses), to paste into a chat and ask which ones matter for us
+    async function copyMoodleDoc() {
+      if (!moodleAvail) { showToast('התחבר קודם עם טוקן לבדיקה', true); return; }
+      const ours = moodleFunctionsCatalog || [], oursSet = new Set(ours.map(f => f.moodle_function)), have = new Set(moodleAvail);
+      const isWrite = n => MOODLE_ANN[n] ? MOODLE_ANN[n].w : mwIsWrite(n);
+      const L = [];
+      L.push('# פונקציות Moodle הזמינות לטוקן של סטודנט באתר המכללה');
+      L.push('הקשר: זהו בוט צ\'אט ("אורי") של המרכז האקדמי לב שעונה לסטודנטים על הלימודים שלהם, ומשתמש בפונקציות Moodle Web Services בשם הסטודנט (קריאה בלבד).');
+      L.push(`סך הכל ${moodleAvail.length} פונקציות פתוחות לטוקן (${moodleAvail.filter(n => !isWrite(n)).length} קריאה בלבד לפי השם). הבוט משתמש כרגע ב-${ours.length} פונקציות.`);
+      L.push('');
+      L.push('## מה הבוט כבר משתמש בו');
+      ours.forEach(f => L.push(`- ${f.moodle_function} | כלי: ${f.name} | ${f.label}${have.has(f.moodle_function) ? '' : ' | חסרה בטוקן'}`));
+      L.push('');
+      L.push('## כל הפונקציות שהטוקן יכול להפעיל, לפי רכיב');
+      const groups = new Map();
+      moodleAvail.forEach(n => { const g = mwGroup(n); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(n); });
+      [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([g, names]) => {
+        L.push(''); L.push(`### ${g} (${names.length})`);
+        names.sort().forEach(n => {
+          const a = MOODLE_ANN[n];
+          L.push(`- ${n} [${isWrite(n) ? 'משנה נתונים' : 'קריאה'}]${oursSet.has(n) ? ' [בשימוש הבוט]' : ''}` + (a ? ` | שימושיות ${a.u}/3 | ${a.d}${a.i ? ' | שאלה לדוגמה: ' + a.i : ''}` : ''));
+        });
+      });
+      L.push('');
+      L.push('## מה לבדוק');
+      L.push('אילו מהפונקציות שהבוט עדיין לא משתמש בהן שימושיות לעוזר שעונה לסטודנט על הלימודים שלו (מטלות, מועדים, ציונים, מבחנים, קבצים, הודעות והכרזות, נוכחות, לוח זמנים), מה כל אחת נותנת, ובאיזה סדר כדאי לחבר אותן.');
+      const text = L.join('\n');
+      try { await navigator.clipboard.writeText(text); }
+      catch (e) { const t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (e2) {} t.remove(); }
+      showToast(`המסמך הועתק (${moodleAvail.length} פונקציות). הדבק אותו בצ'אט.`);
     }
     async function annotateMoodle() {
       if (!moodleAvail) return;
@@ -1969,9 +2022,12 @@
     function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
     const PM_INPUT = 'input input-sm';
 
+    let PM_SNAP = {};         // rule id -> the rule as last saved on the server, to tell a new or edited rule from a saved one
+    function pmSnapshot() { PM_SNAP = {}; [].concat(...PM.sections.map(x => x.rules), PM.mine).forEach(r => { PM_SNAP[r.id] = JSON.stringify(r); }); }
     function pmDirty(on = true) {
       PM_DIRTY = on;
       document.getElementById('pmDirty').classList.toggle('hidden', !on);
+      document.querySelectorAll('[data-rstat]').forEach(e => { if (e._upd) e._upd(); });
     }
     const PM_SUBS = { identity: ['notes', 'ident', 'preview', 'history'], designs: ['gallery', 'create'] };
     function pmSub(name) {
@@ -2003,6 +2059,7 @@
     async function pmLoad() {
       const r = await adminFetch(`${API_BASE}/api/admin/prompt`);
       PM = await r.json();
+      pmSnapshot();
       if (!PM_META) PM_META = await (await adminFetch(`${API_BASE}/api/admin/prompt/meta`)).json();
       if (!PM_CAT) PM_CAT = await (await adminFetch(`${API_BASE}/api/admin/ui/catalog`)).json();
       pmRender();
@@ -2147,6 +2204,19 @@
       const title = pmField('input', rule.title, (first.text || 'שם הכלל').slice(0, 60), v => { rule.title = v; }, PM_INPUT + ' font-bold text-sm border-transparent bg-transparent hover:border-slate-300 flex-1 min-w-0');
       top.appendChild(title);
       if (machine) top.appendChild(el('span', 'text-[10px] font-bold rounded-full px-2 py-0.5 ' + (active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'), active ? 'חל בתרחיש' : 'לא חל'));
+      const stBadge = el('span', 'badge'); stBadge.dataset.rstat = '1'; top.appendChild(stBadge);
+      const foot = el('div', 'flex flex-wrap items-center justify-between gap-2 pt-3'); foot.style.borderTop = '1px solid var(--line)';
+      const footMsg = el('span', 'hint'); footMsg.style.margin = '0';
+      const saveBtn = el('button', 'btn btn-primary btn-sm', '⟦save⟧שמור ופרסם'); saveBtn.type = 'button'; saveBtn.onclick = () => pmSave();
+      stBadge._upd = () => {
+        const snap = PM_SNAP[rule.id]; const st = snap == null ? 'new' : (snap !== JSON.stringify(rule) ? 'edited' : 'saved');
+        stBadge.className = 'badge ' + (st === 'saved' ? 'badge-ok' : 'badge-warn');
+        stBadge.style.display = (st === 'saved' && rule.section !== 'mine') ? 'none' : '';
+        stBadge.textContent = st === 'new' ? 'חדש, עוד לא נשמר' : st === 'edited' ? 'שונה, עוד לא נשמר' : 'נשמר';
+        footMsg.textContent = st === 'new' ? 'הכלל עוד לא נשמר: הבוט לא מכיר אותו עד שתשמור.' : st === 'edited' ? 'יש שינויים בכלל שלא נשמרו.' : 'הכלל שמור ופעיל.';
+        saveBtn.disabled = st === 'saved';
+      };
+      stBadge._upd();
       top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
       const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
       [['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
@@ -2163,7 +2233,8 @@
       const eye = el('button', 'text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1', '⟦eye⟧ הטקסט שהבוט מקבל'); eye.type = 'button';
       const out = el('pre', 'hidden whitespace-pre-wrap text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 leading-relaxed'); out.dir = 'rtl';
       eye.onclick = () => { const h = out.classList.toggle('hidden'); if (!h) pmEye(rule, out); };
-      body.appendChild(eye); body.appendChild(out); card.appendChild(body);
+      body.appendChild(eye); body.appendChild(out);
+      foot.appendChild(footMsg); foot.appendChild(saveBtn); body.appendChild(foot); card.appendChild(body);
       return card;
     }
     function pmRenderMine() {
@@ -2350,21 +2421,77 @@
         body: JSON.stringify({ sections, rules, ruled, designs: PM.designs, label: 'שינוי ידני' }) });
       const d = await res.json();
       if (!res.ok) { showToast(d.detail || 'שגיאה בשמירה', true); return; }
-      PM = d; pmRender(); pmDirty(false); showToast('⟦check⟧ ' + d.message);
+      PM = d; pmSnapshot(); pmRender(); pmDirty(false); showToast('⟦check⟧ ' + d.message);
     }
     function pmRenderVersions() {
       const box = document.getElementById('pmVersions'); if (!box || !PM) return; box.innerHTML = '';
-      if (!PM.versions.length) { box.appendChild(el('div', 'text-slate-400', 'עדיין אין גרסאות קודמות.')); return; }
+      if (!PM.versions.length) { box.appendChild(el('div', 'empty', 'עדיין אין גרסאות קודמות. גרסה נשמרת בכל פעם שאתה שומר שינוי.')); return; }
       PM.versions.forEach(v => {
-        const r = el('div', 'flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2');
-        const when = new Date(v.at).toLocaleString('he-IL');
-        r.appendChild(el('div', 'flex-1', when + '  ·  ' + (v.label || 'גרסה')));
-        const b = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '⟦rotate⟧ חזור לגרסה'); b.type = 'button';
-        b.onclick = async () => { if (!confirm('לחזור לגרסה מ-' + when + '? המצב הנוכחי יישמר כגרסה.')) return;
-          const res = await adminFetch(`${API_BASE}/api/admin/prompt/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: v.id }) });
-          const d = await res.json(); if (res.ok) { PM = d; PM_CAT = null; pmRender(); pmDirty(false); } showToast(d.message || d.detail, !res.ok); };
+        const r = el('div', 'flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5');
+        const d = new Date(v.at);
+        const info = el('div', 'flex-1 min-w-0');
+        info.appendChild(el('div', 'font-semibold text-[13.5px]', d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }) + ' · ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })));
+        info.appendChild(el('div', 'hint', 'המצב שהיה לפני: ' + (v.label || 'שמירה')));
+        r.appendChild(info);
+        const b = el('button', 'btn btn-sm btn-soft', '⟦eye⟧השוואה וחזרה'); b.type = 'button'; b.onclick = () => pmDiffOpen(v);
         r.appendChild(b); box.appendChild(r);
       });
+    }
+
+    // a word-level comparison of two texts: what changed is marked in each
+    function pmWordDiff(a, b) {
+      const esc1 = escapeHtmlAdmin;
+      const mk = (t, c) => (/^\s+$/.test(t) ? esc1(t) : '<mark style="background:' + c + ';border-radius:3px;padding:0 2px">' + esc1(t) + '</mark>');
+      const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
+      if (n * m > 400000) return [esc1(a), esc1(b)];
+      const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+      for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      let i = 0, j = 0, ha = '', hb = '';
+      while (i < n && j < m) {
+        if (A[i] === B[j]) { ha += esc1(A[i]); hb += esc1(B[j]); i++; j++; }
+        else if (L[i + 1][j] >= L[i][j + 1]) { ha += mk(A[i], '#fee4e2'); i++; }
+        else { hb += mk(B[j], '#d1fadf'); j++; }
+      }
+      while (i < n) ha += mk(A[i++], '#fee4e2');
+      while (j < m) hb += mk(B[j++], '#d1fadf');
+      return [ha, hb];
+    }
+    function pmDiffClose() { document.getElementById('pmDiffModal').classList.add('hidden'); }
+    async function pmRestoreVersion(v) {
+      if (PM_DIRTY && !confirm('יש בעמוד שינויים שלא נשמרו, והם יימחקו בחזרה לגרסה. להמשיך?')) return;
+      const res = await adminFetch(`${API_BASE}/api/admin/prompt/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: v.id }) });
+      const d = await res.json();
+      if (res.ok) { PM = d; pmSnapshot(); PM_CAT = null; pmRender(); pmDirty(false); pmDiffClose(); }
+      showToast(d.message || d.detail, !res.ok);
+    }
+    async function pmDiffOpen(v) {
+      const modal = document.getElementById('pmDiffModal'), body = document.getElementById('pmDiffBody'), go = document.getElementById('pmDiffGo');
+      const when = new Date(v.at).toLocaleString('he-IL');
+      document.getElementById('pmDiffTitle').textContent = 'גרסה מ-' + when + ' מול מה שפעיל עכשיו';
+      document.getElementById('pmDiffNote').textContent = 'ההשוואה מול מה ששמור ופעיל בשרת. המצב הנוכחי יישמר כגרסה, אז אפשר לחזור גם מזה.';
+      body.innerHTML = '<div class="empty">טוען...</div>'; modal.classList.remove('hidden'); go.disabled = true; go.onclick = () => pmRestoreVersion(v);
+      try {
+        const d = await (await adminFetch(`${API_BASE}/api/admin/prompt/diff?id=${v.id}`)).json();
+        const ch = d.changes || [];
+        go.disabled = !ch.length;
+        if (!ch.length) { body.innerHTML = '<div class="callout">⟦info⟧<div>אין הבדל: הגרסה הזו זהה למה שפעיל עכשיו.</div></div>'; return; }
+        const n = k => ch.filter(c => c.change === k).length;
+        const kinds = { changed: ['ישתנה', 'badge-warn', '#f79009'], removed: ['יחזור', 'badge-ok', '#12b76a'], added: ['יימחק', 'badge-err', '#f04438'] };
+        let html = `<div class="callout">⟦info⟧<div>חזרה לגרסה הזו: <b>${n('changed')}</b> ישתנו, <b>${n('removed')}</b> יחזרו, <b>${n('added')}</b> יימחקו. מה שלא מופיע כאן נשאר כמו שהוא.</div></div>`;
+        ['changed', 'removed', 'added'].forEach(kind => {
+          ch.filter(c => c.change === kind).forEach(c => {
+            const [lab, cls, col] = kinds[kind];
+            let cols = '';
+            const pre = (title, htm, tone) => `<div><div class="text-[11.5px] font-bold mb-1" style="color:var(--muted)">${title}</div><div class="whitespace-pre-wrap rounded-lg p-2.5 text-[13px] leading-relaxed" style="background:${tone};border:1px solid var(--line)">${htm}</div></div>`;
+            if (kind === 'changed') { const [ho, hn] = pmWordDiff(c.old, c.new); cols = `<div class="grid md:grid-cols-2 gap-2">${pre('פעיל עכשיו (יוחלף)', hn, '#f9fafb')}${pre('בגרסה שתחזור', ho, '#f9fafb')}</div>`; }
+            else if (kind === 'removed') cols = pre('בגרסה שתחזור', escapeHtmlAdmin(c.old), '#ecfdf3');
+            else cols = pre('פעיל עכשיו (יימחק בחזרה)', escapeHtmlAdmin(c.new), '#fef3f2');
+            html += `<div class="rounded-xl bg-white p-3" style="border:1px solid var(--line);border-inline-start:4px solid ${col}">
+              <div class="flex flex-wrap items-center gap-2 mb-2"><span class="badge ${cls}">${lab}</span><b class="text-[13.5px]">${escapeHtmlAdmin(c.title)}</b><span class="hint" style="margin:0">${escapeHtmlAdmin(c.where)}</span></div>${cols}</div>`;
+          });
+        });
+        body.innerHTML = html;
+      } catch (e) { body.innerHTML = '<div class="empty" style="color:var(--err)">שגיאה בטעינת ההשוואה</div>'; }
     }
     window.addEventListener('beforeunload', (e) => { if (PM_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
 

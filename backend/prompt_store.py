@@ -163,6 +163,68 @@ async def restore(version_id: int) -> Optional[Dict[str, Any]]:
     return await save(json.loads(raw), f"לפני חזרה לגרסה {version_id}")
 
 
+# ------------------------------------------------------------------ comparing two saved states (for "go back to version")
+def _describe(raw: str) -> Dict[str, Any]:
+    """A saved state as comparable pieces: every rule with the text the bot gets from it, the section switches, the design controls and the custom designs."""
+    st = _clean(json.loads(raw)) if raw else json.loads(json.dumps(_EMPTY))
+    titles = {k: t for k, _, t, _ in SECTIONS}
+    titles["mine"] = "ההוראות שלי"
+    ruled = set(st["ruled"])
+    rules = list(st["rules"])
+    for key in SECTION_KEYS:
+        if key not in ruled:                                        # a section still in its text form is compared through the same lossless conversion the builder uses
+            sec = (st["sections"].get(key) or {})
+            over = sec.get("text")
+            rules += PR.convert_section(key, over if isinstance(over, str) and over.strip() else _DEFAULTS.get(key, ""))
+    out_rules: Dict[str, Any] = {}
+    for r in rules:
+        text = PR.compile_rule({**r, "enabled": True, "pre": "", "post": ""}, None).strip()
+        first = next((c.get("text") for c in r["cubes"] if c.get("text")), "")
+        out_rules[r["id"]] = {"section": titles.get(r["section"], r["section"]), "title": (r.get("title") or first or "כלל")[:70], "enabled": r.get("enabled", True), "text": text or "(ריק)"}
+    secs = {k: ((st["sections"].get(k) or {}).get("enabled") is not False) for k in SECTION_KEYS}
+    return {"rules": out_rules, "sections": secs, "titles": titles, "designs": st["designs"], "custom": {c["id"]: c for c in st["custom"]}}
+
+
+def diff_states(old_raw: str, new_raw: str) -> list:
+    """What differs between a saved version (old) and the live state (new). Written from the point of view of going back to the old one."""
+    a, b = _describe(old_raw), _describe(new_raw)
+    ch: list = []
+    for rid, nb in b["rules"].items():
+        na = a["rules"].get(rid)
+        if na is None:
+            ch.append({"kind": "rule", "change": "added", "where": nb["section"], "title": nb["title"], "old": "", "new": nb["text"] + ("" if nb["enabled"] else "\n(הכלל כבוי)")})
+        elif na["text"] != nb["text"] or na["enabled"] != nb["enabled"]:
+            ch.append({"kind": "rule", "change": "changed", "where": nb["section"], "title": nb["title"],
+                       "old": na["text"] + ("" if na["enabled"] else "\n(הכלל כבוי)"), "new": nb["text"] + ("" if nb["enabled"] else "\n(הכלל כבוי)")})
+    for rid, na in a["rules"].items():
+        if rid not in b["rules"]:
+            ch.append({"kind": "rule", "change": "removed", "where": na["section"], "title": na["title"], "old": na["text"] + ("" if na["enabled"] else "\n(הכלל כבוי)"), "new": ""})
+    for k, on in b["sections"].items():
+        if a["sections"].get(k) != on:
+            ch.append({"kind": "section", "change": "changed", "where": "חלקי הפרומט", "title": b["titles"].get(k, k), "old": "פעיל" if a["sections"].get(k) else "כבוי", "new": "פעיל" if on else "כבוי"})
+    fmt = lambda d: ("פעיל" if d.get("enabled", True) else "כבוי") + " · עדיפות " + {"high": "גבוהה", "low": "נמוכה"}.get(d.get("priority"), "רגילה") + ((" · " + d["note"]) if d.get("note") else "")
+    for k in sorted(set(a["designs"]) | set(b["designs"])):
+        da, db_ = a["designs"].get(k, {"enabled": True, "priority": "normal", "note": ""}), b["designs"].get(k, {"enabled": True, "priority": "normal", "note": ""})
+        if fmt(da) != fmt(db_):
+            ch.append({"kind": "design", "change": "changed", "where": "בקרת עיצובים", "title": k, "old": fmt(da), "new": fmt(db_)})
+    for cid in sorted(set(a["custom"]) | set(b["custom"])):
+        ca, cb = a["custom"].get(cid), b["custom"].get(cid)
+        if ca is None:
+            ch.append({"kind": "custom", "change": "added", "where": "עיצוב שיצרתי", "title": cb.get("name", cid), "old": "", "new": cb.get("when", "")})
+        elif cb is None:
+            ch.append({"kind": "custom", "change": "removed", "where": "עיצוב שיצרתי", "title": ca.get("name", cid), "old": ca.get("when", ""), "new": ""})
+        elif (ca.get("template"), ca.get("css"), ca.get("enabled"), ca.get("when")) != (cb.get("template"), cb.get("css"), cb.get("enabled"), cb.get("when")):
+            ch.append({"kind": "custom", "change": "changed", "where": "עיצוב שיצרתי", "title": cb.get("name", cid), "old": ca.get("when", "") + ("" if ca.get("enabled", True) else " (כבוי)"), "new": cb.get("when", "") + ("" if cb.get("enabled", True) else " (כבוי)")})
+    return ch
+
+
+async def diff_with_version(version_id: int) -> Optional[Dict[str, Any]]:
+    raw = await db.get_prompt_version(version_id)
+    if raw is None:
+        return None
+    return {"changes": diff_states(raw, _RAW)}
+
+
 # ------------------------------------------------------------------ notes (extra instructions with conditions)
 def notes_text(ctx: Dict[str, Any]) -> str:
     """The admin's own rules (section "mine"), those whose server-checkable conditions hold for this request."""
