@@ -51,6 +51,9 @@
 
     .pmSub { font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; color: #334155; }
     .pmSub.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+    .pmJoin { flex: none; align-self: center; font-size: 11px; font-weight: 800; color: #475569; background: #f1f5f9; border: 1px dashed #94a3b8; border-radius: 999px; padding: 3px 9px; }
+    .pmCube { width: 230px; max-width: 100%; border: 2px solid; border-radius: 12px; padding: 6px 8px 8px; }
+    .pmType { font-size: 12px; font-weight: 800; border: 0; border-radius: 999px; padding: 2px 8px; }
     .pmSw { flex: none; width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; border: 0; padding: 0; }
     .pmSw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px #0003; }
     .pmSw.on { background: #059669; }
@@ -596,18 +599,52 @@
 
           <!-- הוראות -->
           <div id="pmView-notes" class="space-y-4">
-            <div class="card-pro p-5">
-              <div class="flex items-center justify-between mb-1">
-                <h2 class="text-lg font-bold">📝 ההוראות שלי לבוט</h2>
-                <button type="button" onclick="pmAddNote()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">＋ הוראה חדשה</button>
+            <div class="card-pro p-4 space-y-2">
+              <div class="flex flex-wrap items-center gap-3">
+                <h2 class="text-base font-bold">🧪 תרחיש לבדיקה</h2>
+                <span class="text-xs text-slate-500">סמן מצב של סטודנט, וכל כלל יראה אם הוא חל עליו.</span>
               </div>
-              <p class="text-xs text-slate-500 mb-3">הערה זורקים בשפה חופשית, והיא מתווספת לפרומט. למשל: "בפעם הראשונה תעשה לסטודנט סקר על איזה קורסים באמת שלו". אפשר לקבוע מתי היא חלה.</p>
-              <div id="pmNotes" class="space-y-3"></div>
+              <div class="flex flex-wrap gap-4 text-sm">
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simFirst" onchange="pmSimChange()"> הודעה ראשונה בשיחה</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simNew" onchange="pmSimChange()"> סטודנט חדש (בלי זיכרון)</label>
+                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simMoodle" onchange="pmSimChange()" checked> מחובר ל-Moodle</label>
+                <label class="flex items-center gap-1.5">שפה
+                  <select id="simLang" onchange="pmSimChange()" class="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"><option value="he">עברית</option><option value="en">אנגלית</option><option value="fr">צרפתית</option></select></label>
+              </div>
             </div>
+
             <div class="card-pro p-5">
-              <h2 class="text-lg font-bold mb-1">🧩 חלקי הפרומט (הבסיס שהבוט מקבל)</h2>
-              <p class="text-xs text-slate-500 mb-3">זה הפרומט הקיים, מחולק לחלקים. אפשר לכבות חלק, לערוך את הנוסח שלו או לאפס לנוסח המקורי. הטקסט לא מוצג עד שלוחצים "ערוך".</p>
-              <div id="pmSections" class="space-y-4"></div>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h2 class="text-lg font-bold">📝 הכללים שלי</h2>
+                <div class="flex gap-2 flex-wrap">
+                  <select id="pmTplSel" class="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">📋 תבנית מוכנה...</option></select>
+                  <button type="button" onclick="pmAddRule()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">＋ כלל חדש</button>
+                </div>
+              </div>
+              <p class="text-xs text-slate-500 mb-3">כלל בנוי מקוביות: מתחילים ב"כאשר...", מוסיפים "ואז", "וגם" או "או", ובוחרים פעולה: להציג עיצוב מהגלריה, לשאול סקר, לקרוא לכלי ועוד. תנאים כמו "הודעה ראשונה" או "מחובר ל-Moodle" השרת בודק בעצמו; תנאי על תוכן השאלה הבוט מבין לבד.</p>
+              <div id="pmMine" class="space-y-3"></div>
+            </div>
+
+            <div class="card-pro p-5">
+              <h2 class="text-lg font-bold mb-1">🧩 הפרומט הקיים, בצורת כללים</h2>
+              <p class="text-xs text-slate-500 mb-3">כל מה שהבוט מקבל היום הומר לכללים וקוביות, בלי לשנות אף מילה. אפשר לערוך כל קובייה, להזיז, לכבות כלל או חלק שלם, ולהוסיף קוביות. "אפס" מחזיר את החלק לנוסח המקורי.</p>
+              <div id="pmSections" class="space-y-3"></div>
+            </div>
+          </div>
+
+          <!-- בוחר עיצוב מהגלריה -->
+          <div id="pmPicker" class="hidden fixed inset-0 z-50 bg-slate-900/60 p-3 sm:p-6 overflow-auto">
+            <div class="bg-white rounded-2xl max-w-5xl mx-auto p-4 sm:p-5">
+              <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-lg">🎨 בחר עיצוב</h3><button type="button" onclick="pmPickClose()" class="text-slate-500 text-xl px-2">✕</button></div>
+              <div class="grid md:grid-cols-5 gap-4">
+                <div class="md:col-span-2 space-y-2 max-h-[60vh] overflow-auto" id="pmPickList"></div>
+                <div class="md:col-span-3 space-y-2">
+                  <div class="flex flex-wrap gap-1.5" id="pmPickStyles"></div>
+                  <div class="flex flex-wrap gap-1.5" id="pmPickColors"></div>
+                  <div id="pmPickHost" class="min-h-[100px]"></div>
+                  <button type="button" onclick="pmPickDone()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-sm">✔ בחר את העיצוב הזה</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1961,18 +1998,51 @@
     async function pmLoad() {
       const r = await adminFetch(`${API_BASE}/api/admin/prompt`);
       PM = await r.json();
+      if (!PM_META) PM_META = await (await adminFetch(`${API_BASE}/api/admin/prompt/meta`)).json();
+      if (!PM_CAT) PM_CAT = await (await adminFetch(`${API_BASE}/api/admin/ui/catalog`)).json();
       pmRender();
       pmDirty(false);
     }
-    function pmRender() { pmRenderNotes(); pmRenderSections(); pmRenderVersions(); pmRenderCustom(); if (PM_CAT) pmRenderKinds(); }
+    function pmRender() { pmRenderMine(); pmRenderSections(); pmRenderVersions(); pmRenderCustom(); if (PM_CAT) pmRenderKinds(); }
 
-    // ---------- notes
-    function pmAddNote() {
-      PM.notes.unshift({ id: Math.random().toString(36).slice(2, 10), title: '', text: '', enabled: true, when: { scope: 'always', moodle: 'any', lang: '', once: false } });
-      pmRenderNotes(); pmDirty();
+    // ---------- rule builder: rules made of cubes
+    const CUBE_META = {
+      when: { label: 'כאשר', color: '#2563eb', bg: '#dbeafe' }, say: { label: 'אז', color: '#047857', bg: '#d1fae5' },
+      design: { label: 'עיצוב', color: '#7c3aed', bg: '#ede9fe' }, poll: { label: 'סקר', color: '#c2410c', bg: '#ffedd5' },
+      quick: { label: 'כפתורים', color: '#be185d', bg: '#fce7f3' }, tool: { label: 'כלי', color: '#0f766e', bg: '#ccfbf1' },
+      length: { label: 'אורך', color: '#4338ca', bg: '#e0e7ff' }, tone: { label: 'טון', color: '#a16207', bg: '#fef9c3' },
+      remember: { label: 'זיכרון', color: '#0369a1', bg: '#e0f2fe' }, dont: { label: 'אל תעשה', color: '#b91c1c', bg: '#fee2e2' },
+      must: { label: 'חובה', color: '#9a3412', bg: '#ffedd5' }, example: { label: 'דוגמה', color: '#475569', bg: '#e2e8f0' },
+      info: { label: 'מידע', color: '#334155', bg: '#f1f5f9' }, text: { label: 'טקסט חופשי', color: '#334155', bg: '#f1f5f9' },
+    };
+    const JOINS = [['', '—'], ['and', 'וגם'], ['then', 'ואז'], ['or', 'או'], ['else', 'אחרת'], ['except', 'חוץ מ']];
+    const WHEN_KINDS = [['topic', 'על תוכן השאלה (כתוב)'], ['first_message', 'הודעה ראשונה בשיחה'], ['new_student', 'סטודנט חדש'], ['moodle', 'מחובר ל-Moodle'], ['no_moodle', 'לא מחובר ל-Moodle'], ['lang', 'שפת האפליקציה'], ['once', 'פעם אחת לכל סטודנט']];
+    const MACHINE = ['first_message', 'new_student', 'moodle', 'no_moodle', 'lang', 'once'];
+    const LEAD_HINT = { say: 'מה הבוט עושה או אומר', info: 'מידע לבוט', text: 'טקסט חופשי', dont: 'אל... (מה לא לעשות)', must: 'חובה: ...', example: 'דוגמה: ...', tone: 'באיזה טון (למשל: חם וקצר)', remember: 'מה לשמור בזיכרון' };
+    const COLORS8 = ['blue', 'green', 'orange', 'red', 'purple', 'teal', 'pink', 'gray'];
+    const COLOR_HEX = { blue: '#3b82f6', green: '#22a55e', orange: '#f08c1a', red: '#e5484d', purple: '#8b5cf6', teal: '#14b8a6', pink: '#ec4899', gray: '#64748b' };
+    let PM_META = null;
+    const uid = () => Math.random().toString(36).slice(2, 10);
+
+    function newCube(t, join) {
+      const p = { when: { kind: 'topic' }, design: { kind: '', style: '', color: '' }, poll: { mode: 'multi', q: '', options: ['', ''] }, quick: { options: ['', ''] }, tool: { name: 'search_college_info' }, length: { mode: 'short' } }[t] || {};
+      return { id: uid(), t, lead: '', text: '', join: join || '', raw: null, p };
     }
+    function newRule(section, title) { return { id: uid(), section, title: title || '', enabled: true, pre: '\n', post: '', cubes: [newCube('when'), newCube('say', 'then')] }; }
+    function pmCtx() { return { first: document.getElementById('simFirst').checked, new_student: document.getElementById('simNew').checked, moodle: document.getElementById('simMoodle').checked, lang: document.getElementById('simLang').value }; }
+    function machineOk(c, ctx) {
+      const k = c.p.kind;
+      return k === 'first_message' ? ctx.first : k === 'new_student' ? ctx.new_student : k === 'moodle' ? ctx.moodle : k === 'no_moodle' ? !ctx.moodle : k === 'lang' ? ctx.lang === (c.p.lang || 'he') : true;
+    }
+    function ruleHasMachine(r) { return r.cubes.some(c => c.t === 'when' && MACHINE.includes(c.p.kind)); }
+    function ruleActive(r) {
+      if (!r.enabled) return false; let res = null; const ctx = pmCtx();
+      r.cubes.forEach(c => { if (c.t === 'when' && MACHINE.includes(c.p.kind)) { const v = machineOk(c, ctx); res = res === null ? v : (c.join === 'or' ? (res || v) : (res && v)); } });
+      return res === null ? true : res;
+    }
+    function pmSimChange() { pmRenderMine(); pmRenderSections(true); }
     function pmSelect(opts, val, onchange) {
-      const s = el('select', 'border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white');
+      const s = el('select', 'border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white max-w-full');
       opts.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; if (v === val) o.selected = true; s.appendChild(o); });
       s.onchange = () => { onchange(s.value); pmDirty(); };
       return s;
@@ -1983,60 +2053,177 @@
       b.onclick = () => { const v = !b.classList.contains('on'); b.classList.toggle('on', v); b.setAttribute('aria-checked', v ? 'true' : 'false'); onchange(v); pmDirty(); };
       return b;
     }
-    function pmRenderNotes() {
-      const box = document.getElementById('pmNotes'); box.innerHTML = '';
-      if (!PM.notes.length) { box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין הוראות. לחץ "הוראה חדשה".')); return; }
-      PM.notes.forEach((n, i) => {
-        const c = el('div', 'rounded-xl border p-3 space-y-2 ' + (n.enabled ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-slate-50 opacity-70'));
-        const top = el('div', 'flex items-center gap-2');
-        const title = el('input', PM_INPUT + ' font-bold'); title.placeholder = 'כותרת קצרה (למשל: סקר קורסים)'; title.value = n.title; title.oninput = () => { n.title = title.value; pmDirty(); };
-        top.appendChild(title);
-        top.appendChild(pmSwitch(n.enabled, v => { n.enabled = v; c.className = c.className.replace(/opacity-70/, '') + (v ? '' : ' opacity-70'); }));
-        const del = el('button', 'text-rose-600 text-sm font-bold px-2', '🗑'); del.type = 'button'; del.title = 'מחק'; del.onclick = () => { if (confirm('למחוק את ההוראה?')) { PM.notes.splice(i, 1); pmRenderNotes(); pmDirty(); } };
-        top.appendChild(del); c.appendChild(top);
-        const ta = el('textarea', PM_INPUT); ta.rows = 3; ta.placeholder = 'מה הבוט צריך לעשות או לדעת (בשפה חופשית)'; ta.value = n.text; ta.oninput = () => { n.text = ta.value; pmDirty(); };
-        c.appendChild(ta);
-        const w = n.when || (n.when = { scope: 'always', moodle: 'any', lang: '', once: false });
-        const row = el('div', 'flex flex-wrap items-center gap-2 text-xs text-slate-600');
-        row.appendChild(el('span', 'font-bold', 'מתי:'));
-        row.appendChild(pmSelect([['always', 'תמיד'], ['first_message', 'רק בהודעה הראשונה בשיחה'], ['new_student', 'רק לסטודנט חדש (בלי זיכרון)']], w.scope, v => w.scope = v));
-        row.appendChild(pmSelect([['any', 'עם או בלי Moodle'], ['yes', 'רק מחובר ל-Moodle'], ['no', 'רק לא מחובר ל-Moodle']], w.moodle, v => w.moodle = v));
-        row.appendChild(pmSelect([['', 'כל השפות'], ['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']], w.lang || '', v => w.lang = v));
-        const lab = el('label', 'flex items-center gap-1 cursor-pointer'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!w.once;
-        cb.onchange = () => { w.once = cb.checked; pmDirty(); }; lab.appendChild(cb); lab.appendChild(el('span', '', 'פעם אחת בלבד לכל סטודנט'));
-        row.appendChild(lab); c.appendChild(row);
-        box.appendChild(c);
-      });
-    }
 
-    // ---------- sections
-    function pmRenderSections() {
-      const box = document.getElementById('pmSections'); box.innerHTML = '';
+    function pmField(tag, val, ph, on, cls) {
+      const e = el(tag, cls || PM_INPUT); if (ph) e.placeholder = ph; e.value = val || '';
+      e.oninput = () => { on(e.value); pmDirty(); if (tag === 'textarea') { e.style.height = 'auto'; e.style.height = Math.min(320, e.scrollHeight + 2) + 'px'; } };
+      if (tag === 'textarea') { e.rows = 1; setTimeout(() => { e.style.height = 'auto'; e.style.height = Math.min(320, e.scrollHeight + 2) + 'px'; }, 0); }
+      return e;
+    }
+    function pmOptionsEditor(c, min, max) {
+      const box = el('div', 'space-y-1'); const o = c.p.options || (c.p.options = ['', '']);
+      o.forEach((v, i) => {
+        const row = el('div', 'flex gap-1'); row.appendChild(pmField('input', v, 'אפשרות ' + (i + 1), val => { o[i] = val; c.raw = null; }, PM_INPUT + ' text-xs'));
+        if (o.length > min) { const x = el('button', 'text-rose-600 px-1', '✕'); x.type = 'button'; x.onclick = () => { o.splice(i, 1); pmRenderAll(); pmDirty(); }; row.appendChild(x); }
+        box.appendChild(row);
+      });
+      if (o.length < max) { const add = el('button', 'text-xs font-bold text-indigo-700', '＋ אפשרות'); add.type = 'button'; add.onclick = () => { o.push(''); pmRenderAll(); pmDirty(); }; box.appendChild(add); }
+      return box;
+    }
+    function pmCubeBody(c) {
+      const body = el('div', 'space-y-1.5 mt-1.5'); const t = c.t;
+      if (t === 'when') {
+        body.appendChild(pmSelect(WHEN_KINDS, c.p.kind || 'topic', v => { c.p.kind = v; c.raw = null; pmRenderAll(); }));
+        if (c.p.kind === 'topic') body.appendChild(pmField('input', c.text, 'למשל: שואלים על מחיר או שכר לימוד', v => { c.text = v; c.raw = null; }));
+        if (c.p.kind === 'lang') body.appendChild(pmSelect([['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']], c.p.lang || 'he', v => { c.p.lang = v; }));
+        if (MACHINE.includes(c.p.kind)) body.appendChild(el('div', 'text-[11px] text-slate-400', 'השרת בודק את התנאי הזה בעצמו.'));
+      } else if (t === 'design') {
+        const lab = c.p.kind ? ('עיצוב: ' + ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === c.p.kind) || {}).name) || c.p.kind) + (c.p.style ? ' · ' + c.p.style : '') + (c.p.color ? ' · ' + c.p.color : '')) : '🎨 בחר עיצוב מהגלריה';
+        const b = el('button', 'w-full text-right text-sm font-bold rounded-lg border border-violet-300 bg-violet-50 text-violet-800 px-3 py-2', lab); b.type = 'button';
+        if (c.p.color) b.style.borderInlineStartWidth = '6px', b.style.borderInlineStartColor = COLOR_HEX[c.p.color] || '#8b5cf6';
+        b.onclick = () => pmPick(c); body.appendChild(b);
+        body.appendChild(pmField('input', c.text, 'הערה לבוט (למשל: רק כשיש מבצע)', v => { c.text = v; c.raw = null; }, PM_INPUT + ' text-xs'));
+      } else if (t === 'poll') {
+        body.appendChild(pmSelect([['multi', 'בחירה מרובה'], ['single', 'בחירה אחת']], c.p.mode || 'multi', v => { c.p.mode = v; c.raw = null; }));
+        body.appendChild(pmField('input', c.p.q, 'שאלת הסקר', v => { c.p.q = v; c.raw = null; }));
+        body.appendChild(pmOptionsEditor(c, 2, 12));
+      } else if (t === 'quick') {
+        body.appendChild(pmOptionsEditor(c, 2, 4));
+      } else if (t === 'tool') {
+        const tools = (PM_META && PM_META.tools || []).map(x => [x.name, x.label + ' (' + x.name + ')']);
+        body.appendChild(pmSelect(tools.length ? tools : [[c.p.name || '', c.p.name || '']], c.p.name, v => { c.p.name = v; c.raw = null; }));
+        body.appendChild(pmField('input', c.text, 'מתי / איך (לא חובה)', v => { c.text = v; c.raw = null; }, PM_INPUT + ' text-xs'));
+      } else if (t === 'length') {
+        body.appendChild(pmSelect([['short', 'קצר, עד 3 שורות, טקסט'], ['long', 'מורחב ומפורט'], ['visual', 'ויזואלי, כרטיסים']], c.p.mode || 'short', v => { c.p.mode = v; c.raw = null; }));
+      } else {
+        body.appendChild(pmField('textarea', c.text, LEAD_HINT[t] || '', v => { c.text = v; c.raw = null; }, PM_INPUT + ' leading-snug'));
+      }
+      return body;
+    }
+    function pmCube(rule, i) {
+      const c = rule.cubes[i]; const meta = CUBE_META[c.t] || CUBE_META.info;
+      const wrap = el('div', 'flex items-start gap-1.5 min-w-0');
+      if (i > 0) {
+        const j = el('button', 'pmJoin', (JOINS.find(x => x[0] === c.join) || JOINS[0])[1]); j.type = 'button'; j.title = 'חיבור לקובייה הקודמת (לחץ להחלפה)';
+        j.onclick = () => { const k = JOINS.findIndex(x => x[0] === c.join); c.join = JOINS[(k + 1) % JOINS.length][0]; c.raw = c.raw && c.join === '' ? c.raw : (c.join ? null : c.raw); pmRenderAll(); pmDirty(); };
+        wrap.appendChild(j);
+      }
+      const card = el('div', 'pmCube'); card.style.borderColor = meta.color; card.style.background = '#fff';
+      const head = el('div', 'flex items-center gap-1');
+      const sel = el('select', 'pmType'); sel.style.background = meta.bg; sel.style.color = meta.color;
+      Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; if (k === c.t) o.selected = true; sel.appendChild(o); });
+      sel.onchange = () => { const old = c.text; Object.assign(c, newCube(sel.value, c.join), { id: c.id, text: old, raw: null }); pmRenderAll(); pmDirty(); };
+      head.appendChild(sel);
+      if (c.raw !== null && c.raw !== undefined) { const o = el('span', 'text-[10px] text-slate-400', 'מקורי'); o.title = 'הנוסח המקורי, לא שונה'; head.appendChild(o); }
+      const sp = el('span', 'flex-1'); head.appendChild(sp);
+      const mv = (d) => { const k = i + d; if (k < 0 || k >= rule.cubes.length) return; const a = rule.cubes; [a[i], a[k]] = [a[k], a[i]]; if (a[0].join) { a[0].join = ''; } pmRenderAll(); pmDirty(); };
+      [['▲', () => mv(-1), 'הזז קודם'], ['▼', () => mv(1), 'הזז אחר כך'], ['✕', () => { rule.cubes.splice(i, 1); if (rule.cubes[0]) rule.cubes[0].join = ''; pmRenderAll(); pmDirty(); }, 'מחק קובייה']].forEach(([t, f, ti]) => {
+        const b = el('button', 'text-slate-400 hover:text-slate-700 text-xs px-1', t); b.type = 'button'; b.title = ti; b.onclick = f; head.appendChild(b);
+      });
+      card.appendChild(head); card.appendChild(pmCubeBody(c)); wrap.appendChild(card);
+      return wrap;
+    }
+    let PM_EYE = {};      // rule id -> compiled text shown (when its eye panel is open)
+    let PM_OPEN = {};     // rule id -> expanded
+    async function pmEye(rule, box) {
+      box.textContent = '⏳';
+      try {
+        const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: [rule], ctx: pmCtx() }) })).json();
+        const x = (r.rules || {})[rule.id]; box.textContent = x ? (x.active ? (x.text || '(כלל ריק)') : '(כלל לא חל בתרחיש הזה, הבוט לא מקבל אותו)') : '';
+      } catch (e) { box.textContent = 'שגיאה'; }
+    }
+    function pmRule(rule, list, idx, collapsedDefault) {
+      const open = PM_OPEN[rule.id] != null ? PM_OPEN[rule.id] : !collapsedDefault;
+      const active = ruleActive(rule), machine = ruleHasMachine(rule);
+      const card = el('div', 'rounded-xl border bg-white ' + (rule.enabled ? (machine && !active ? 'border-slate-200 opacity-60' : 'border-slate-300') : 'border-slate-200 opacity-50'));
+      const top = el('div', 'flex items-center gap-2 p-2');
+      const tg = el('button', 'text-slate-500 text-sm px-1', open ? '▾' : '◂'); tg.type = 'button'; tg.onclick = () => { PM_OPEN[rule.id] = !open; pmRenderAll(); }; top.appendChild(tg);
+      const first = rule.cubes[0] || {};
+      const title = pmField('input', rule.title, (first.text || 'שם הכלל').slice(0, 60), v => { rule.title = v; }, PM_INPUT + ' font-bold text-sm border-transparent bg-transparent hover:border-slate-300 flex-1 min-w-0');
+      top.appendChild(title);
+      if (machine) top.appendChild(el('span', 'text-[10px] font-bold rounded-full px-2 py-0.5 ' + (active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'), active ? 'חל בתרחיש' : 'לא חל'));
+      top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
+      const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
+      [['▲', () => mv(-1)], ['▼', () => mv(1)], ['🗑', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
+      card.appendChild(top);
+      if (!open) { if (!rule.title) { const pv = el('div', 'px-3 pb-2 text-xs text-slate-500 truncate', rule.cubes.map(c => c.text || (CUBE_META[c.t] || {}).label || '').join(' ').slice(0, 140)); card.appendChild(pv); } return card; }
+      const body = el('div', 'p-2 pt-0 space-y-2');
+      const row = el('div', 'flex flex-wrap gap-2 items-start');
+      rule.cubes.forEach((c, i) => row.appendChild(pmCube(rule, i)));
+      const add = el('select', 'border border-dashed border-slate-300 rounded-lg px-2 py-1 text-xs bg-white self-center');
+      const o0 = el('option', '', '＋ קובייה'); o0.value = ''; add.appendChild(o0);
+      Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; add.appendChild(o); });
+      add.onchange = () => { if (!add.value) return; rule.cubes.push(newCube(add.value, rule.cubes.length ? 'then' : '')); pmRenderAll(); pmDirty(); };
+      row.appendChild(add); body.appendChild(row);
+      const eye = el('button', 'text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1', '👁 הטקסט שהבוט מקבל'); eye.type = 'button';
+      const out = el('pre', 'hidden whitespace-pre-wrap text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 leading-relaxed'); out.dir = 'rtl';
+      eye.onclick = () => { const h = out.classList.toggle('hidden'); if (!h) pmEye(rule, out); };
+      body.appendChild(eye); body.appendChild(out); card.appendChild(body);
+      return card;
+    }
+    function pmRenderMine() {
+      const box = document.getElementById('pmMine'); if (!box || !PM) return; box.innerHTML = '';
+      if (!PM.mine.length) box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין כללים. לחץ "כלל חדש" או בחר תבנית מוכנה.'));
+      PM.mine.forEach((r, i) => box.appendChild(pmRule(r, PM.mine, i, false)));
+      const sel = document.getElementById('pmTplSel');
+      if (PM_META && sel.options.length === 1) {
+        PM_META.templates.forEach((t, i) => { const o = el('option', '', t.name + ' - ' + t.desc); o.value = i; sel.appendChild(o); });
+        sel.onchange = () => { if (sel.value === '') return; const t = JSON.parse(JSON.stringify(PM_META.templates[+sel.value].rule)); const r = { ...newRule('mine', t.title), cubes: t.cubes.map(c => ({ ...newCube(c.t), ...c, id: uid() })) }; PM.mine.unshift(r); PM_OPEN[r.id] = true; sel.value = ''; pmRenderAll(); pmDirty(); };
+      }
+    }
+    function pmAddRule() { const r = newRule('mine'); PM.mine.unshift(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); }
+    function pmRenderAll() { pmRenderMine(); pmRenderSections(true); }
+    function pmRenderSections(keep) {
+      const box = document.getElementById('pmSections'); if (!box || !PM) return;
+      const openSecs = {}; box.querySelectorAll('[data-sec]').forEach(d => { openSecs[d.dataset.sec] = !d.querySelector('.pmSecBody').classList.contains('hidden'); });
+      box.innerHTML = '';
       PM_GROUPS.forEach(g => {
         const list = PM.sections.filter(s => s.group === g); if (!list.length) return;
         const wrap = el('div', 'space-y-2'); wrap.appendChild(el('div', 'text-xs font-extrabold text-slate-500 tracking-wide', g));
         list.forEach(s => {
-          const c = el('div', 'rounded-xl border border-slate-200 bg-white p-3 ' + (s.enabled ? '' : 'opacity-60'));
-          const top = el('div', 'flex items-center gap-2');
-          const info = el('div', 'flex-1 min-w-0'); const t = el('div', 'font-bold text-sm', s.title);
-          if (s.edited) { const b = el('span', 'mr-2 text-[10px] font-bold text-indigo-700 bg-indigo-100 rounded-full px-2 py-0.5', 'נערך'); t.appendChild(b); }
-          info.appendChild(t); info.appendChild(el('div', 'text-xs text-slate-500', s.desc)); top.appendChild(info);
-          const ed = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '✎ ערוך'); ed.type = 'button';
-          top.appendChild(ed); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
+          const c = el('div', 'rounded-xl border border-slate-200 bg-slate-50/60 ' + (s.enabled ? '' : 'opacity-60')); c.dataset.sec = s.key;
+          const top = el('div', 'flex items-center gap-2 p-3');
+          const info = el('div', 'flex-1 min-w-0 cursor-pointer');
+          info.appendChild(el('div', 'font-bold text-sm', s.title + '  ')); info.firstChild.appendChild(el('span', 'text-[11px] text-slate-400 font-normal', s.rules.length + ' כללים'));
+          info.appendChild(el('div', 'text-xs text-slate-500', s.desc)); top.appendChild(info);
+          const rs = el('button', 'text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1', '↺ אפס'); rs.type = 'button';
+          rs.onclick = async () => { if (!confirm('לאפס את "' + s.title + '" לנוסח המקורי? שינויים שעשית בחלק הזה יימחקו.')) return; const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/default-rules?key=${s.key}`)).json(); s.rules = r.rules; pmRenderAll(); pmDirty(); };
+          top.appendChild(rs); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
           c.appendChild(top);
-          const body = el('div', 'hidden mt-2 space-y-2');
-          const ta = el('textarea', PM_INPUT + ' font-mono text-xs leading-relaxed'); ta.rows = 14; ta.dir = 'rtl'; ta.value = s.text;
-          ta.oninput = () => { s.text = ta.value; s.edited = ta.value.trim() !== s.default.trim(); pmDirty(); };
-          const bar = el('div', 'flex gap-2 text-xs');
-          const rs = el('button', 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5', '↺ אפס לנוסח המקורי'); rs.type = 'button';
-          rs.onclick = () => { if (confirm('לאפס את החלק "' + s.title + '" לנוסח המקורי?')) { s.text = s.default; s.edited = false; ta.value = s.default; pmDirty(); } };
-          bar.appendChild(rs); bar.appendChild(el('span', 'text-slate-400 self-center', 'שינוי נכנס לתוקף אחרי "שמור ופרסם".'));
-          body.appendChild(ta); body.appendChild(bar); c.appendChild(body);
-          ed.onclick = () => { const open = body.classList.toggle('hidden') === false; ed.textContent = open ? '✕ סגור' : '✎ ערוך'; };
+          const body = el('div', 'pmSecBody p-3 pt-0 space-y-2 ' + (openSecs[s.key] ? '' : 'hidden'));
+          s.rules.forEach((r, i) => body.appendChild(pmRule(r, s.rules, i, true)));
+          const add = el('button', 'text-xs font-bold text-indigo-700', '＋ כלל בחלק הזה'); add.type = 'button'; add.onclick = () => { const r = newRule(s.key); s.rules.push(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); };
+          body.appendChild(add); c.appendChild(body);
+          info.onclick = () => { body.classList.toggle('hidden'); };
           wrap.appendChild(c);
         });
         box.appendChild(wrap);
       });
+    }
+
+    // ---------- the design picker (gallery inside a cube)
+    let PM_PICK = null, PM_PICKPV = null;
+    async function pmPick(cube) {
+      if (!PM_CAT) PM_CAT = await (await adminFetch(`${API_BASE}/api/admin/ui/catalog`)).json();
+      PM_PICK = { cube, kind: cube.p.kind || PM_CAT.kinds[0].kind, style: cube.p.style || '', color: cube.p.color || '' };
+      document.getElementById('pmPicker').classList.remove('hidden');
+      if (!PM_PICKPV) PM_PICKPV = pmPreview(document.getElementById('pmPickHost'));
+      pmPickRender();
+    }
+    function pmPickClose() { document.getElementById('pmPicker').classList.add('hidden'); PM_PICK = null; }
+    function pmPickDone() { const c = PM_PICK.cube; c.p = { ...c.p, kind: PM_PICK.kind, style: PM_PICK.style, color: PM_PICK.color }; c.raw = null; pmPickClose(); pmRenderAll(); pmDirty(); }
+    function pmChip(text, on, f, color) { const b = el('button', 'text-xs font-bold rounded-full px-3 py-1 border ' + (on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'), text); b.type = 'button'; if (color) { b.style.borderColor = color; if (on) b.style.background = color; } b.onclick = f; return b; }
+    async function pmPickRender() {
+      const P = PM_PICK, list = document.getElementById('pmPickList'); list.innerHTML = '';
+      PM_CAT.kinds.forEach(k => { const b = el('button', 'w-full text-right rounded-lg border px-3 py-2 text-sm ' + (k.kind === P.kind ? 'border-indigo-500 bg-indigo-50 font-bold' : 'border-slate-200 bg-white'), k.name); b.type = 'button'; b.appendChild(el('div', 'text-[11px] text-slate-500 font-normal', k.desc));
+        b.onclick = () => { P.kind = k.kind; P.style = ''; pmPickRender(); }; list.appendChild(b); });
+      const k = PM_CAT.kinds.find(x => x.kind === P.kind);
+      const st = document.getElementById('pmPickStyles'); st.innerHTML = ''; st.appendChild(el('span', 'text-xs text-slate-500 self-center', 'סגנון:'));
+      st.appendChild(pmChip('ברירת מחדל', !P.style, () => { P.style = ''; pmPickRender(); })); (k.styles || []).forEach(s => st.appendChild(pmChip(s, P.style === s, () => { P.style = s; pmPickRender(); })));
+      const co = document.getElementById('pmPickColors'); co.innerHTML = ''; co.appendChild(el('span', 'text-xs text-slate-500 self-center', 'צבע:'));
+      co.appendChild(pmChip('אוטומטי', !P.color, () => { P.color = ''; pmPickRender(); })); COLORS8.forEach(c => co.appendChild(pmChip(c, P.color === c, () => { P.color = c; pmPickRender(); }, COLOR_HEX[c])));
+      const r = await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: k.kind, ...(P.style ? { style: P.style } : {}), ...(P.color ? { color: P.color } : {}), ...k.sample }] }) })).json();
+      if (PM_PICK === P && r.marker) PM_PICKPV.show([{ name: '', marker: r.marker }]);
     }
 
     // ---------- gallery
@@ -2151,9 +2338,11 @@
 
     // ---------- save, versions
     async function pmSave() {
-      const sections = {}; PM.sections.forEach(s => { sections[s.key] = { enabled: s.enabled, text: s.edited ? s.text : null }; });
+      const sections = {}; PM.sections.forEach(x => { sections[x.key] = { enabled: x.enabled, text: null }; });
+      const rules = [].concat(...PM.sections.map(x => x.rules), PM.mine).filter(r => r.cubes.length);
+      const ruled = PM.sections.map(x => x.key).concat(['mine']);
       const res = await adminFetch(`${API_BASE}/api/admin/prompt`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sections, notes: PM.notes.filter(n => (n.text || '').trim()), designs: PM.designs, label: 'שינוי ידני' }) });
+        body: JSON.stringify({ sections, rules, ruled, designs: PM.designs, label: 'שינוי ידני' }) });
       const d = await res.json();
       if (!res.ok) { showToast(d.detail || 'שגיאה בשמירה', true); return; }
       PM = d; pmRender(); pmDirty(false); showToast('✅ ' + d.message);
