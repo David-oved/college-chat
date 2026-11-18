@@ -1785,28 +1785,33 @@ async def _mascot_cfg() -> dict:
 async def public_mascot():
     """The character's settings. No login: it is how the character looks, nothing about any user."""
     from fastapi.responses import JSONResponse
-    return JSONResponse(await _mascot_cfg(), headers={"Cache-Control": "public, max-age=60"})
+    return JSONResponse(await _mascot_cfg(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/admin/mascot", dependencies=[Depends(require_admin)])
 async def admin_get_mascot():
     import mascot
-    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS,
+    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS, "mood_labels": mascot.MOOD_LABELS, "personas": mascot.PERSONAS,
             "anims": mascot.ANIMS, "triggers": mascot.TRIGGERS, "phrase_keys": mascot.PHRASE_KEYS}
 
 
 @app.put("/api/admin/mascot", dependencies=[Depends(require_admin)])
 async def admin_save_mascot(req: MascotSaveRequest):
     import mascot
-    cfg = mascot.clean(req.config)
+    cfg = mascot.clean({k: v for k, v in req.config.items() if k != "rev"})
+    cur = await _mascot_cfg()
+    if {k: v for k, v in cur.items() if k != "rev"} == cfg:
+        return {"message": "אין שינוי לשמור: אורי כבר כך אצל כולם.", "config": cur, "changed": False}
+    cfg["rev"] = int(time.time() * 1000)                       # the apps compare this number, so they notice a change at once
     await db.set_state_kv("mascot", json.dumps(cfg, ensure_ascii=False))
-    return {"message": "אורי עודכן בכל האפליקציה (עד דקה, עד שהמכשירים מרעננים).", "config": cfg}
+    return {"message": "פורסם. מכשירים פתוחים מתעדכנים תוך כדקה, ופתיחה מחדש של האפליקציה מעדכנת מיד.", "config": cfg, "changed": True}
 
 
 @app.post("/api/admin/mascot/reset", dependencies=[Depends(require_admin)])
 async def admin_reset_mascot():
     import mascot
     cfg = mascot.clean({})
+    cfg["rev"] = int(time.time() * 1000)
     await db.set_state_kv("mascot", json.dumps(cfg, ensure_ascii=False))
     return {"message": "אורי חזר להגדרות המקוריות.", "config": cfg}
 

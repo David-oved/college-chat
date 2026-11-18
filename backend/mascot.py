@@ -21,7 +21,8 @@ ITEM_LABELS = {
 ALL_ITEMS = [i for items in SLOTS.values() for i in items]
 SHAPES = ("bubble", "blob")
 EYES = ("oval", "big", "happy")
-MOODS = ("happy", "grin", "wow", "think", "love", "sleep", "dizzy")
+MOODS = ("happy", "grin", "wow", "think", "love", "sleep", "sleepy", "wink", "dizzy")
+MOOD_LABELS = {"happy": "שמח", "grin": "צוחק", "wow": "מופתע", "think": "חושב", "love": "אוהב", "sleep": "ישן", "sleepy": "ישנוני", "wink": "קורץ", "dizzy": "מסוחרר"}
 
 # every animation the app can play, with its name in the admin (the movement itself is in the app)
 ANIMS: Dict[str, str] = {
@@ -29,6 +30,7 @@ ANIMS: Dict[str, str] = {
     "pulse": "פעימת לב", "zoom": "קפיצת התקרבות", "peekaboo": "קוקו", "tilt": "הטיית ראש", "wobble": "נדנוד", "dizzy": "סחרחורת", "blush": "מבוכה", "kiss": "נשיקה",
     "laugh": "צחוק", "sneeze": "התעטשות", "yawn": "פיהוק", "sparkle": "נצנוץ", "confetti": "קונפטי", "tada": "טה-דה", "glitch": "גליץ'", "float": "ריחוף",
     "lookaround": "מסתכל סביב", "wink": "קריצה", "rainbow": "קשת צבעים", "party": "מסיבה",
+    "wake": "מתעורר", "stretch": "מתמתח", "snore": "נוחר", "drowse": "מנמנם",
 }
 # the moments an animation (and a line) can be tied to
 TRIGGERS: Dict[str, str] = {
@@ -42,6 +44,23 @@ PHRASE_KEYS: Dict[str, str] = {
 LOOK_COLORS = ("eye", "outline", "aura", "fab1", "fab2")
 
 _ALL_ANIMS = list(ANIMS)
+# every mood is a CHARACTER with its own way of moving and talking: what it does when the chat opens, when it idles, when it is touched, and its own lines
+PERSONAS: Dict[str, Dict[str, List[str]]] = {
+    "happy": {"open": ["jump", "wiggle"], "idle": ["wiggle", "squish", "jump"], "tap": ["jump", "squish", "blush"], "lines": ["היי! שמח לראות אותך", "איזה יום יפה לשאול שאלות"]},
+    "grin": {"open": ["laugh"], "idle": ["laugh", "bounce", "wiggle"], "tap": ["laugh", "bounce"], "lines": ["חחח אני מצחיק היום", "סיפרו לי בדיחה על מבחנים... לא, עדיף שלא"]},
+    "wow": {"open": ["zoom", "peekaboo"], "idle": ["zoom", "lookaround", "jump"], "tap": ["zoom", "jump"], "lines": ["וואו, כבר פה?", "לא ציפיתי לך!"]},
+    "think": {"open": ["tilt", "lookaround"], "idle": ["lookaround", "tilt", "wobble"], "tap": ["tilt", "nod"], "lines": ["הממ, מעניין...", "אני חושב על זה"]},
+    "love": {"open": ["pulse", "kiss"], "idle": ["pulse", "blush", "kiss"], "tap": ["kiss", "blush", "pulse"], "lines": ["אני אוהב לעזור לך", "איזה כיף שבאת"]},
+    "sleep": {"open": ["wake"], "idle": ["snore", "yawn"], "tap": ["wake", "yawn"], "lines": ["רגע... חמש דקות...", "הא? מי? מה?"]},
+    "sleepy": {"open": ["yawn", "drowse"], "idle": ["drowse", "yawn", "stretch"], "tap": ["stretch", "yawn"], "lines": ["אני קצת עייף, אבל אני כאן", "אפשר קפה?"]},
+    "wink": {"open": ["wink", "tilt"], "idle": ["wink", "tilt", "float"], "tap": ["wink", "kiss", "tilt"], "lines": ["הי יפה", "יש לי סוד לבחינה... סתם", "מה קורה?"]},
+    "dizzy": {"open": ["dizzy", "wobble"], "idle": ["wobble", "dizzy"], "tap": ["dizzy", "wobble"], "lines": ["הכול מסתובב...", "אופס, קמתי מהר מדי"]},
+}
+# automations: the first enabled rule that fits the moment decides how he looks on the floating button, what he does when the chat opens, and how he looks inside the chat
+AUTO_DEFAULT: List[Dict[str, Any]] = [
+    {"id": "night", "label": "לילה: ישן ומתעורר", "enabled": True, "from": "00:00", "to": "05:00", "days": [], "dateFrom": "", "dateTo": "", "fab": "sleep", "open": ["wake"], "chat": "sleepy", "chatSec": 90, "line": ""},
+    {"id": "late", "label": "ערב מאוחר: מפהק", "enabled": True, "from": "22:00", "to": "24:00", "days": [], "dateFrom": "", "dateTo": "", "fab": "sleepy", "open": ["yawn"], "chat": "", "chatSec": 0, "line": ""},
+]
 DEFAULT: Dict[str, Any] = {
     "shape": "bubble", "body": "#ffffff", "cheek": "#ff8fb1", "eyes": "big", "cheeks": True, "spark": True,
     "outfit": {"hat": "", "face": "", "neck": ""},
@@ -57,6 +76,9 @@ DEFAULT: Dict[str, Any] = {
         "done": ["jump", "sparkle", "nod", "laugh", "pulse"], "error": ["shake", "dizzy", "no"],
         "idle": ["jump", "wiggle", "squish", "lookaround", "yawn", "float", "wink", "glitch", "sneeze", "rainbow"], "party": ["party"],
     },
+    "baseMood": "happy",
+    "personas": PERSONAS,
+    "auto": AUTO_DEFAULT,
     "talk": {"tap": 100, "open": 80, "send": 10, "think": 55, "done": 25, "error": 100, "idle": 60, "party": 100},
     "idle": {"min": 18, "max": 40},
     "phrases": {
@@ -139,6 +161,28 @@ def clean(cfg: Any) -> Dict[str, Any]:
         ph = {"tap": ph}
     ph = ph if isinstance(ph, dict) else {}
     out["phrases"] = {k: _lines(ph.get(k), d["phrases"][k] if k in d["phrases"] else []) if k in ph or k in d["phrases"] else [] for k in PHRASE_KEYS}
+    out["baseMood"] = c.get("baseMood") if c.get("baseMood") in MOODS else d["baseMood"]
+    pr = c.get("personas") if isinstance(c.get("personas"), dict) else {}
+    out["personas"] = {}
+    for m in MOODS:
+        x = pr.get(m) if isinstance(pr.get(m), dict) else {}
+        base = PERSONAS[m]
+        out["personas"][m] = {k: ([a for a in x[k] if a in ANIMS][:12] if k != "lines" and isinstance(x.get(k), list) else (_lines(x.get(k), []) if k == "lines" and isinstance(x.get(k), list) else list(base[k]))) for k in ("open", "idle", "tap", "lines")}
+    rules = []
+    for r in (c.get("auto") if isinstance(c.get("auto"), list) else AUTO_DEFAULT)[:12]:
+        if not isinstance(r, dict):
+            continue
+        hhmm = lambda v, dflt: v if isinstance(v, str) and re.match(r"^([01]\d|2[0-4]):[0-5]\d$", v) else dflt
+        rules.append({
+            "id": re.sub(r"[^a-z0-9_]", "", str(r.get("id") or "")[:12].lower()) or f"r{len(rules) + 1}", "label": str(r.get("label") or "אוטומציה")[:40], "enabled": r.get("enabled") is not False,
+            "from": hhmm(r.get("from"), "00:00"), "to": hhmm(r.get("to"), "24:00"), "days": sorted({int(x) for x in (r.get("days") or []) if str(x).isdigit() and 0 <= int(x) <= 6}),
+            "dateFrom": r["dateFrom"] if _MD.match(str(r.get("dateFrom") or "")) else "", "dateTo": r["dateTo"] if _MD.match(str(r.get("dateTo") or "")) else "",
+            "fab": r.get("fab") if r.get("fab") in MOODS else "", "open": [a for a in (r.get("open") or []) if a in ANIMS][:6] if isinstance(r.get("open"), list) else [],
+            "chat": r.get("chat") if r.get("chat") in MOODS else "", "chatSec": int(_num(r.get("chatSec"), 0, 900, 0)), "line": str(r.get("line") or "").strip()[:70],
+        })
+    out["auto"] = rules
+    if isinstance(c.get("rev"), int):
+        out["rev"] = c["rev"]
     # extra look settings (empty colour = the app's own)
     lk = c.get("look") if isinstance(c.get("look"), dict) else {}
     look: Dict[str, Any] = {k: (lk[k] if isinstance(lk.get(k), str) and _HEX.match(lk[k]) else "") for k in LOOK_COLORS}
