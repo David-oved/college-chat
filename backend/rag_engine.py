@@ -733,6 +733,8 @@ async def _stream_chat_inner(
         db.bump_api_usage("prefetch")
         prefetch_text = "\n\n=== נתוני Moodle שכבר נשלפו עבורך עכשיו (אל תקרא שוב לאותם כלים; הצג מהם ישר ב-show_ui, והמזהים d/g/c בסוגריים) ===\n" + "\n\n".join(str(x) for x in pre_results)
 
+    PS.set_ctx({"first": not conversation_summary and not recent_messages, "new_student": not memories, "moodle": bool(moodle_token and moodle_user_id),
+                "lang": lang or "he", "has_user": bool(user_id)})             # the facts that the admin's rule conditions are checked against
     extra = PS.text("rich") + ui_text() + prefetch_text
     if moodle_names:
         extra += PS.text("moodle")

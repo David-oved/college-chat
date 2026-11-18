@@ -32,6 +32,7 @@ from auth import admin_auth, require_admin, hash_password, student_auth, require
 from gemini_diagnostics import run_full_diagnostics, test_connectivity, list_chat_models
 import ai_providers
 import prompt_store
+import prompt_rules
 import custom_designs
 import memory  # registers the memory section of the prompt
 import ui_catalog
@@ -1574,8 +1575,15 @@ async def serve_student_app():
 class PromptSaveRequest(BaseModel):
     sections: Dict[str, dict] = {}
     notes: List[dict] = []
+    rules: List[dict] = []
+    ruled: List[str] = []
     designs: Dict[str, dict] = {}
     label: str = ""
+
+
+class RulePreviewRequest(BaseModel):
+    rules: List[dict] = []
+    ctx: Dict[str, object] = {}
 
 
 class PromptRestoreRequest(BaseModel):
@@ -1601,10 +1609,9 @@ def _prompt_payload() -> dict:
     secs = []
     for key, group, title, desc in prompt_store.SECTIONS:
         over = (st.get("sections") or {}).get(key) or {}
-        cur = prompt_store.default(key) if not over.get("text") else over["text"]
-        secs.append({"key": key, "group": group, "title": title, "desc": desc, "enabled": over.get("enabled") is not False,
-                     "edited": bool(over.get("text")), "text": cur, "default": prompt_store.default(key)})
-    return {"sections": secs, "notes": st.get("notes", []), "designs": st.get("designs", {}), "custom": st.get("custom", [])}
+        secs.append({"key": key, "group": group, "title": title, "desc": desc, "enabled": over.get("enabled") is not False, "rules": prompt_store.rules_for(key)})
+    mine = [r for r in st.get("rules", []) if r.get("section") == "mine"]
+    return {"sections": secs, "mine": mine, "designs": st.get("designs", {}), "custom": st.get("custom", [])}
 
 
 @app.get("/api/admin/prompt", dependencies=[Depends(require_admin)])
@@ -1617,8 +1624,37 @@ async def admin_get_prompt():
 async def admin_save_prompt(req: PromptSaveRequest):
     await prompt_store.refresh(True)
     cur = prompt_store.state()
-    await prompt_store.save({"sections": req.sections, "notes": req.notes, "designs": req.designs, "custom": cur.get("custom", [])}, req.label or "שינוי בפרומט")
+    await prompt_store.save({"sections": req.sections, "notes": req.notes, "rules": req.rules, "ruled": req.ruled, "designs": req.designs, "custom": cur.get("custom", [])}, req.label or "שינוי בפרומט")
     return {"message": "נשמר ופעיל מיד אצל כל המשתמשים.", **_prompt_payload(), "versions": await db.list_prompt_versions()}
+
+
+@app.get("/api/admin/prompt/meta", dependencies=[Depends(require_admin)])
+async def admin_prompt_meta():
+    from moodle_tools import FUNCTION_REGISTRY
+    tools = [{"name": "search_college_info", "label": "חיפוש במידע המכללה"}, {"name": "show_ui", "label": "הצגת כרטיסים"},
+             {"name": "remember_about_student", "label": "שמירה בזיכרון"}, {"name": "forget_about_student", "label": "מחיקה מהזיכרון"}]
+    tools += [{"name": f["name"], "label": f["label"]} for f in FUNCTION_REGISTRY]
+    return {"templates": prompt_rules.templates(), "tools": tools, "lengths": prompt_rules.LENGTHS}
+
+
+@app.get("/api/admin/prompt/default-rules", dependencies=[Depends(require_admin)])
+async def admin_prompt_default_rules(key: str):
+    if key not in prompt_store.SECTION_KEYS:
+        raise HTTPException(status_code=404, detail="חלק לא קיים.")
+    return {"rules": prompt_rules.convert_section(key, prompt_store.default(key))}
+
+
+@app.post("/api/admin/prompt/preview", dependencies=[Depends(require_admin)])
+async def admin_prompt_preview(req: RulePreviewRequest):
+    """What the bot would receive from each rule, for a given situation (first message, new student, Moodle connected, language)."""
+    ctx = {"first": bool(req.ctx.get("first")), "new_student": bool(req.ctx.get("new_student")), "moodle": bool(req.ctx.get("moodle")),
+           "lang": str(req.ctx.get("lang") or "he")[:2], "has_user": True}
+    out = {}
+    for r in req.rules[:400]:
+        c = prompt_rules.clean_rule(r)
+        if c:
+            out[c["id"]] = {"active": prompt_rules.rule_active(c, ctx), "text": prompt_rules.compile_rule({**c, "pre": "", "post": ""}, ctx).strip()}
+    return {"rules": out}
 
 
 @app.post("/api/admin/prompt/restore", dependencies=[Depends(require_admin)])

@@ -5,12 +5,14 @@ The bot's prompt, split into named sections the admin can see and edit from the 
 - Design controls: switch a block kind off, give it a priority and a note ("use it when ...").
 - Every save keeps the previous state as a version, so a bad edit can be rolled back.
 """
+import contextvars
 import json
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 from db import db
+import prompt_rules as PR
 
 # key -> (group, title, what it is). The order is the order the sections are put in the prompt and shown in the admin.
 SECTIONS = [
@@ -31,7 +33,9 @@ SECTIONS = [
 SECTION_KEYS = [s[0] for s in SECTIONS]
 
 _DEFAULTS: Dict[str, str] = {}
-_EMPTY = {"sections": {}, "notes": [], "designs": {}, "custom": []}
+_EMPTY = {"sections": {}, "notes": [], "designs": {}, "custom": [], "rules": [], "ruled": []}
+_CTX: contextvars.ContextVar = contextvars.ContextVar("prompt_ctx", default=None)
+_CONV: Dict[str, Any] = {}
 _STATE: Dict[str, Any] = json.loads(json.dumps(_EMPTY))
 _LOADED_AT = 0.0
 _TTL = 15.0
@@ -46,13 +50,37 @@ def default(key: str) -> str:
     return _DEFAULTS.get(key, "")
 
 
+def set_ctx(ctx: Dict[str, Any]):
+    """The facts about the current request (first message, new student, Moodle connected, language, has account) that rule conditions are checked against."""
+    _CTX.set(ctx)
+
+
+def _legacy_text(key: str) -> str:
+    sec = (_STATE.get("sections") or {}).get(key) or {}
+    over = sec.get("text")
+    return over if isinstance(over, str) and over.strip() else _DEFAULTS.get(key, "")
+
+
 def text(key: str) -> str:
-    """The text the bot gets for this section: the admin's version if there is one, the built-in one otherwise; empty if the admin switched it off."""
+    """The text the bot gets for this section: compiled from the admin's rules when the section was moved to the rule builder, otherwise the admin's
+    text or the built-in one; empty if the admin switched the section off."""
     sec = (_STATE.get("sections") or {}).get(key) or {}
     if sec.get("enabled") is False:
         return ""
-    over = sec.get("text")
-    return over if isinstance(over, str) and over.strip() else _DEFAULTS.get(key, "")
+    if key in (_STATE.get("ruled") or []):
+        return PR.compile_rules([r for r in _STATE.get("rules", []) if r.get("section") == key], _CTX.get())
+    return _legacy_text(key)
+
+
+def rules_for(key: str) -> list:
+    """The rules of a section as the builder shows them: the saved ones, or the existing text converted (losslessly) into rules."""
+    if key in (_STATE.get("ruled") or []):
+        return [r for r in _STATE.get("rules", []) if r.get("section") == key]
+    src = _legacy_text(key)
+    hit = _CONV.get(key)
+    if not hit or hit[0] != src:
+        _CONV[key] = (src, PR.convert_section(key, src))
+    return json.loads(json.dumps(_CONV[key][1]))
 
 
 def state() -> Dict[str, Any]:
@@ -90,6 +118,12 @@ def _clean(st: Any) -> Dict[str, Any]:
                 "priority": v.get("priority") if v.get("priority") in ("low", "normal", "high") else "normal",
                 "note": str(v.get("note") or "")[:500],
             }
+    out["rules"] = [r for r in (PR.clean_rule(x) for x in (st.get("rules") or [])[:400]) if r]
+    out["ruled"] = [k for k in (st.get("ruled") or []) if k in SECTION_KEYS or k == "mine"]
+    if out["notes"] and "mine" not in out["ruled"]:
+        out["rules"] += [PR.note_to_rule(n) for n in out["notes"]]          # notes written in the earlier editor become rules (same behaviour)
+        out["ruled"].append("mine")
+        out["notes"] = []
     out["custom"] = [c for c in (st.get("custom") or [])[:30] if isinstance(c, dict) and c.get("id") and c.get("template") is not None]
     return out
 
@@ -131,32 +165,11 @@ async def restore(version_id: int) -> Optional[Dict[str, Any]]:
 
 # ------------------------------------------------------------------ notes (extra instructions with conditions)
 def notes_text(ctx: Dict[str, Any]) -> str:
-    lines: List[str] = []
-    for n in _STATE.get("notes", []):
-        if not n.get("enabled"):
-            continue
-        w = n.get("when") or {}
-        if w.get("scope") == "first_message" and not ctx.get("first"):
-            continue
-        if w.get("scope") == "new_student" and not ctx.get("new_student"):
-            continue
-        if w.get("moodle") == "yes" and not ctx.get("moodle"):
-            continue
-        if w.get("moodle") == "no" and ctx.get("moodle"):
-            continue
-        if w.get("lang") and w.get("lang") != str(ctx.get("lang") or "he")[:2]:
-            continue
-        if w.get("once") and not ctx.get("has_user"):
-            continue
-        body = n["text"].strip()
-        if w.get("once"):
-            tag = (n.get("title") or n["id"]).strip()
-            body += (f" (בצע זאת פעם אחת בלבד לכל סטודנט: אם בזיכרון שלך כבר יש עובדה שמתחילה ב-\"בוצע: {tag}\" - אל תבצע שוב. "
-                     f"אחרי שביצעת, שמור עם remember_about_student, kind=fact, את הנוסח \"בוצע: {tag}\".)")
-        lines.append(f"- {n['title'].strip() + ': ' if n.get('title') else ''}{body}")
-    if not lines:
+    """The admin's own rules (section "mine"), those whose server-checkable conditions hold for this request."""
+    body = PR.compile_rules([r for r in _STATE.get("rules", []) if r.get("section") == "mine"], ctx)
+    if not body.strip():
         return ""
-    return ("\n\n=== הוראות נוספות מהמנהל (מעודכנות, יש לפעול לפיהן; הן לא מבטלות את חוקי הברזל) ===\n" + "\n".join(lines) + "\n")
+    return "\n\n=== הוראות נוספות מהמנהל (מעודכנות, יש לפעול לפיהן; הן לא מבטלות את חוקי הברזל) ===" + body + "\n"
 
 
 # ------------------------------------------------------------------ design controls
