@@ -3,726 +3,648 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>פאנל ניהול מערכת AI - מכללה</title>
+  <title>ניהול אורי</title>
 
-  <!-- PWA - מתקינים את פאנל הניהול כאפליקציה עצמאית למחשב (חלון נפרד, בלי סרגל דפדפן) -->
+  <!-- PWA: אפשר להתקין את מסך הניהול כאפליקציה במחשב -->
   <link rel="manifest" href="/admin-manifest.json" />
-  <meta name="theme-color" content="#1e293b" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    /* the palette and radii every utility class in the console resolves to, so even generated markup shares one visual language */
+    tailwind.config = { theme: { extend: {
+      fontFamily: { sans: ['Heebo', 'system-ui', 'sans-serif'] },
+      borderRadius: { lg: '8px', xl: '10px', '2xl': '14px' },
+      colors: {
+        slate: { 50: '#f8f9fb', 100: '#f1f3f6', 200: '#e4e7ec', 300: '#d0d5dd', 400: '#98a2b3', 500: '#667085', 600: '#475467', 700: '#344054', 800: '#1d2939', 900: '#101828' },
+        indigo: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c3d0ff', 300: '#9db1fa', 400: '#7b92f3', 500: '#5a77e8', 600: '#3b5bdb', 700: '#2f49b8', 800: '#263b94', 900: '#1d2d70' },
+        violet: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c3d0ff', 600: '#3b5bdb', 700: '#2f49b8' },
+        blue: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c3d0ff', 600: '#3b5bdb', 700: '#2f49b8' },
+        emerald: { 50: '#ecfdf3', 100: '#d1fadf', 200: '#a6f4c5', 300: '#6ce9a6', 500: '#12b76a', 600: '#079455', 700: '#067647', 800: '#085d3a' },
+        rose: { 50: '#fef3f2', 100: '#fee4e2', 200: '#fecdca', 500: '#f04438', 600: '#d92d20', 700: '#b42318' },
+        amber: { 50: '#fffaeb', 100: '#fef0c7', 200: '#fedf89', 300: '#fec84b', 500: '#f79009', 600: '#dc6803', 700: '#b54708', 800: '#93370d' },
+      } } } };
+  </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap');
 
     :root {
-      --brand-50: #eef2ff;
-      --brand-100: #e0e7ff;
-      --brand-500: #6366f1;
-      --brand-600: #4f46e5;
-      --brand-700: #4338ca;
-      --ink-900: #0f172a;
-      --surface: #f4f6fb;
-      --card-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 10px 28px -10px rgba(15, 23, 42, .10);
-      --card-shadow-hover: 0 1px 2px rgba(15, 23, 42, .05), 0 18px 36px -12px rgba(79, 70, 229, .18);
+      --bg: #f5f6f8; --surface: #ffffff; --line: #e4e7ec; --line-strong: #d0d5dd;
+      --text: #101828; --text-2: #344054; --muted: #667085;
+      --accent: #3b5bdb; --accent-d: #2f49b8; --accent-soft: #eef2ff; --accent-line: #c3d0ff;
+      --ok: #067647; --ok-soft: #ecfdf3; --warn: #b54708; --warn-soft: #fffaeb; --err: #b42318; --err-soft: #fef3f2;
+      --r: 10px; --r-lg: 14px;
+      --shadow: 0 1px 2px rgba(16,24,40,.04);
+      --shadow-pop: 0 12px 32px -8px rgba(16,24,40,.18), 0 2px 6px rgba(16,24,40,.06);
     }
+    * { box-sizing: border-box; }
+    body { font-family: 'Heebo', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
+    button { font-family: inherit; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    body { font-family: 'Heebo', sans-serif; background: var(--surface); }
-    #appContent { background: var(--surface); }
+    /* icons: one custom stroke set (see the sprite), sized by the text around them */
+    .ic { width: 1.2em; height: 1.2em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.22em; }
+    .ic-lg { width: 22px; height: 22px; }
 
-    /* מיקוד נגיש בלוח המקשים, בלי טבעת מכוערת בלחיצת עכבר */
-    button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
-      outline: 2px solid var(--brand-500);
-      outline-offset: 2px;
-    }
+    /* ---------- shell ---------- */
+    .side { width: 244px; background: var(--surface); border-inline-start: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; display: grid; place-items: center; flex: none; }
+    .brand b { display: block; font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+    .brand small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    .nav-group { padding: 14px 18px 6px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+    .nav-item { display: flex; align-items: center; gap: 10px; width: calc(100% - 16px); margin: 1px 8px; padding: 8px 10px; border-radius: 8px; border: 0; background: none;
+      color: var(--text-2); font-size: 13.5px; font-weight: 600; text-align: right; cursor: pointer; text-decoration: none; transition: background .12s, color .12s; }
+    .nav-item:hover { background: var(--bg); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent-d); }
+    .nav-item .ic { color: var(--muted); }
+    .nav-item.active .ic { color: var(--accent); }
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .tabs-m { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .tab-m { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 7px 12px; border-radius: 8px; border: 0; background: none; color: var(--text-2); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .tab-m.active { background: var(--accent-soft); color: var(--accent-d); }
+    .wrap { max-width: 1120px; margin: 0 auto; }
 
-    .typing-cursor::after {
-      content: '▋';
-      display: inline-block;
-      animation: blink 0.8s infinite;
-      color: var(--brand-600);
-      margin-right: 2px;
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
+    /* ---------- surfaces ---------- */
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+    .card-pro { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+    .card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 20px 0; }
+    .card-head h2 { font-size: 15px; font-weight: 700; letter-spacing: -.005em; display: flex; align-items: center; gap: 8px; }
+    .card-head p, .card-desc { font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.55; }
+    .card-body { padding: 16px 20px 20px; }
+    .section-label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 8px; }
+    .hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 
-    .pmSub { font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; color: #334155; }
-    .pmSub.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
-    .pmJoin { flex: none; align-self: center; font-size: 11px; font-weight: 800; color: #475569; background: #f1f5f9; border: 1px dashed #94a3b8; border-radius: 999px; padding: 3px 9px; }
-    .pmCube { width: 230px; max-width: 100%; border: 2px solid; border-radius: 12px; padding: 6px 8px 8px; }
-    .pmType { font-size: 12px; font-weight: 800; border: 0; border-radius: 999px; padding: 2px 8px; }
-    .pmSw { flex: none; width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; border: 0; padding: 0; }
-    .pmSw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px #0003; }
-    .pmSw.on { background: #059669; }
-    .pmSw.on::after { transform: translateX(-18px); }
-    .btn-press { transition: transform .12s ease, box-shadow .15s ease, background-color .15s ease; }
-    .btn-press:active { transform: scale(.97); }
+    /* ---------- controls ---------- */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-strong);
+      background: var(--surface); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, box-shadow .12s; }
+    .btn:hover { background: var(--bg); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-d); border-color: var(--accent-d); }
+    .btn-soft { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-d); }
+    .btn-soft:hover { background: #e0e7ff; }
+    .btn-danger { color: var(--err); border-color: #fecdca; background: var(--surface); }
+    .btn-danger:hover { background: var(--err-soft); }
+    .btn-ghost { border-color: transparent; background: none; color: var(--muted); }
+    .btn-ghost:hover { background: var(--bg); color: var(--text); }
+    .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+    .btn-block { width: 100%; }
+    .input, .select, .textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 11px; transition: border-color .12s, box-shadow .12s; }
+    .input, .select { height: 38px; }
+    .textarea { line-height: 1.55; resize: vertical; }
+    .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,91,219,.14); }
+    .field { display: block; }
+    .field > span, .label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg); color: var(--text-2); }
+    .badge-ok { background: var(--ok-soft); color: var(--ok); }
+    .badge-warn { background: var(--warn-soft); color: var(--warn); }
+    .badge-err { background: var(--err-soft); color: var(--err); }
+    .badge-accent { background: var(--accent-soft); color: var(--accent-d); }
+    .seg { display: inline-flex; gap: 2px; padding: 3px; background: #eceff3; border-radius: 10px; flex-wrap: wrap; }
+    .seg button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+    .seg button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+    .pmSub { }
+    .callout { display: flex; gap: 10px; padding: 11px 14px; border-radius: 10px; font-size: 12.5px; line-height: 1.55; background: var(--accent-soft); color: #243b9b; border: 1px solid var(--accent-line); }
+    .callout .ic { margin-top: 2px; }
+    .pmSw { flex: none; width: 38px; height: 22px; border-radius: 999px; background: #d0d5dd; position: relative; transition: background .15s; border: 0; padding: 0; cursor: pointer; }
+    .pmSw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(16,24,40,.3); }
+    .pmSw.on { background: var(--accent); }
+    .pmSw.on::after { transform: translateX(-16px); }
+    .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .tbl th { text-align: right; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 10px 14px; background: #f9fafb; border-bottom: 1px solid var(--line); }
+    .tbl td { padding: 11px 14px; border-bottom: 1px solid var(--line); }
+    .tbl tr:last-child td { border-bottom: 0; }
+    .tbl tbody tr:hover { background: #fafbfc; }
+    .tbl-wrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; overflow-x: auto; }
+    .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+    .kpi > b { display: block; font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+    .kpi > span { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .empty { text-align: center; padding: 30px 12px; color: var(--muted); font-size: 13px; }
+    .bar { height: 6px; border-radius: 99px; background: #eceff3; overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
 
-    /* כרטיסים מרכזיים - גרסה "מקצועית" של bg-white rounded-2xl shadow-sm: הצללה עדינה
-       ורב-שכבתית במקום shadow-sm שטוחה, עם הרמה קלה ב-hover לתחושת עומק */
-    .card-pro {
-      background: #ffffff;
-      border-radius: 1.1rem;
-      border: 1px solid #e7eaf3;
-      box-shadow: var(--card-shadow);
-      transition: box-shadow .25s ease, transform .25s ease;
-    }
-    .card-pro:hover { box-shadow: var(--card-shadow-hover); }
+    /* ---------- overlays ---------- */
+    #statusToast { position: fixed; z-index: 70; top: 16px; inset-inline: 0; margin-inline: auto; width: max-content; max-width: min(92vw, 520px); box-shadow: var(--shadow-pop); }
+    #statusToast.toast { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+    #statusToast.toast.ok { background: #101828; color: #fff; }
+    #statusToast.toast.err { background: var(--err); color: #fff; }
+    .savebar { position: fixed; z-index: 60; bottom: 18px; inset-inline: 0; margin-inline: auto; width: max-content; max-width: 94vw; display: flex; align-items: center; gap: 12px;
+      padding: 9px 12px 9px 16px; background: #101828; color: #fff; border-radius: 12px; box-shadow: var(--shadow-pop); font-size: 13px; font-weight: 600; }
+    .savebar .btn { height: 32px; }
+    .modal-bg { position: fixed; inset: 0; z-index: 50; background: rgba(16,24,40,.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-pop); width: 100%; max-width: 680px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); font-weight: 700; }
 
-    /* כפתורי Tailwind קיימים (bg-indigo-600) מקבלים מעבר/הרמה עדינה בלי לגעת בכל תג בנפרד */
-    button[class*="bg-indigo-600"], a[class*="bg-indigo-600"] {
-      transition: background-color .15s ease, box-shadow .2s ease, transform .12s ease;
-    }
-    button[class*="bg-indigo-600"]:hover, a[class*="bg-indigo-600"]:hover {
-      box-shadow: 0 8px 20px -6px rgba(79, 70, 229, .45);
-    }
-
-    /* ===== ניווט (סיידבר + פס עליון למובייל) ===== */
-    aside.bg-slate-900 {
-      background: linear-gradient(180deg, #0f172a 0%, #151e36 100%);
-    }
-
-    .navbtn {
-      display: flex;
-      align-items: center;
-      gap: .625rem;
-      padding: .7rem 1rem;
-      border-radius: .75rem;
-      font-size: .8125rem;
-      font-weight: 700;
-      color: #94a3b8;
-      transition: background .15s ease, color .15s ease, transform .12s ease;
-      cursor: pointer;
-      white-space: nowrap;
-      border: none;
-      background: transparent;
-      width: 100%;
-      text-align: right;
-      position: relative;
-    }
-    .navbtn:hover { background: rgba(255,255,255,.07); color: #ffffff; }
-    .navbtn.active {
-      background: linear-gradient(90deg, var(--brand-600), var(--brand-500));
-      color: #ffffff;
-      box-shadow: 0 4px 14px -4px rgba(79, 70, 229, .55);
-    }
-    .navbtn.active::before {
-      content: '';
-      position: absolute;
-      right: -.75rem;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 3px;
-      height: 60%;
-      background: #ffffff;
-      border-radius: 3px;
-    }
-    .navbtn .navbtn-icon { font-size: 1rem; line-height: 1; }
-
-    .navbtn-mobile {
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-      padding: .6rem .9rem;
-      border-radius: .65rem;
-      font-size: .78rem;
-      font-weight: 700;
-      color: #94a3b8;
-      white-space: nowrap;
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      transition: background .15s ease, color .15s ease;
-    }
-    .navbtn-mobile.active { background: linear-gradient(90deg, var(--brand-600), var(--brand-500)); color: #fff; }
-
-    /* גלילה דקה ונעימה בתוך האזורים הפנימיים */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-    ::-webkit-scrollbar-track { background: transparent; }
+    /* ---------- rule builder ---------- */
+    .pmJoin { flex: none; align-self: center; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+    .pmJoin:hover { color: var(--accent-d); border-color: var(--accent); }
+    .pmCube { width: 236px; max-width: 100%; border: 1px solid var(--line); border-top: 3px solid; border-radius: 10px; padding: 7px 9px 9px; background: var(--surface); }
+    .pmType { font-size: 12px; font-weight: 700; border: 0; border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+    .cube-tools button { color: var(--muted); padding: 2px 4px; border: 0; background: none; cursor: pointer; border-radius: 5px; }
+    .cube-tools button:hover { color: var(--text); background: var(--bg); }
+    .typing-cursor::after { content: ''; display: inline-block; width: 7px; height: 1em; background: var(--accent); margin-inline-start: 2px; vertical-align: text-bottom; animation: blink .8s infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #d0d5dd; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #98a2b3; background-clip: content-box; border: 2px solid transparent; }
+    .input.input-sm { height: 32px; font-size: 13px; padding: 4px 9px; }
+    .select.select-sm { height: 30px; width: auto; font-size: 12px; padding: 3px 8px; }
+    .page { display: grid; gap: 16px; }
+    @media (max-width: 640px) { .card-head { padding: 14px 14px 0; } .card-body { padding: 12px 14px 16px; } }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800">
+<body>
 
-  <!-- מסך התחברות -->
-  <div id="loginGate" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950" style="background-image: radial-gradient(circle at 20% 15%, rgba(99,102,241,.25), transparent 40%), radial-gradient(circle at 85% 85%, rgba(79,70,229,.2), transparent 45%);">
-    <div class="max-w-sm w-full bg-white rounded-2xl p-7 border border-slate-200" style="box-shadow: 0 30px 60px -15px rgba(0,0,0,.45);">
-      <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mb-4" style="background: linear-gradient(135deg, var(--brand-100), var(--brand-50));">🔐</div>
-      <h1 class="text-xl font-extrabold mb-1">התחברות לפאנל הניהול</h1>
-      <p class="text-xs text-slate-500 mb-5">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה שלו.</p>
-      <form onsubmit="doLogin(event)" class="space-y-3">
-        <input
-          id="loginPasswordInput"
-          type="password"
-          required
-          placeholder="סיסמת מנהל"
-          class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-        />
-        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
-          התחבר
-        </button>
-        <div id="loginError" class="hidden text-rose-600 text-xs font-bold text-center"></div>
-      </form>
+  <!-- custom icon set: stroke icons, drawn for this console -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.5" cy="15" r="3.5"/><path d="M11 12.5L19 4.5M16 7.5l2.5 2.5M13.5 10l2 2"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M11 20V4M17 20v-6M3 20h18"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.5" cy="9" r="2.4"/><path d="M17 14.2c2.5.2 4.5 2.2 4.5 4.8"/></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3l1.9 5.6L18.5 10.5l-5.6 1.9L11 18l-1.9-5.6L3.5 10.5l5.6-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+      <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M9.5 9.5V20"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0zM12 17v4"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H9M15 8l4 4-4 4M19 12H9"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4A1.5 1.5 0 0 1 4 14.5v-9A1.5 1.5 0 0 1 5.5 4z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5h6V7"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-3.5L4 9M4 4v5h5M4 13a8 8 0 0 0 14.5 3.5L20 15M20 20v-5h-5"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.5 3.5h7L19 9v11a1 1 0 0 1-1 1H6.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1zM13.5 3.5V9H19"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4.5 16v3.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V16"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 15.5H3z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9.5 3.5h5M10.5 3.5v6L5 19a1.5 1.5 0 0 0 1.3 2.2h11.4A1.5 1.5 0 0 0 19 19l-5.5-9.5v-6"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5M3.5 4v4.5H8M12 7.5V12l3 2"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 1 2.5 5.8M4 12V7M4 12h5"/></symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5h3.5M3 14.5h3.5M17.5 9.5H21M17.5 14.5H21"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4l9 4.5-9 4.5-9-4.5zM3 12.5l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- כניסה -->
+  <div id="loginGate" class="min-h-screen flex items-center justify-center p-4" style="background: var(--bg);">
+    <div class="w-full max-w-[380px]">
+      <div class="flex items-center gap-3 mb-6 justify-center">
+        <span class="brand-mark" style="width:42px;height:42px;border-radius:12px;"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg></span>
+        <div><b class="block text-lg font-extrabold leading-tight">ניהול אורי</b><small class="text-xs" style="color:var(--muted)">המרכז האקדמי לב</small></div>
+      </div>
+      <div class="card" style="padding:26px;">
+        <h1 class="text-xl font-extrabold mb-1">כניסה למנהלים</h1>
+        <p class="hint" style="margin-top:0;margin-bottom:18px;">הסיסמה הודפסה לקונסול השרת בהפעלה הראשונה.</p>
+        <form onsubmit="doLogin(event)" class="space-y-3">
+          <label class="field"><span>סיסמה</span>
+            <input id="loginPasswordInput" type="password" required autocomplete="current-password" class="input" /></label>
+          <button type="submit" class="btn btn-primary btn-block" style="height:40px;">כניסה</button>
+          <div id="loginError" class="hidden text-xs font-bold text-center" style="color:var(--err)"></div>
+        </form>
+      </div>
     </div>
   </div>
 
-  <!-- ============== לוח הניהול (אחרי התחברות) ============== -->
-  <div id="appContent" class="hidden h-screen flex overflow-hidden bg-slate-100">
+  <!-- ============== הקונסולה ============== -->
+  <div id="appContent" class="hidden h-screen flex overflow-hidden" style="background: var(--bg);">
 
-    <!-- סיידבר (דסקטופ) -->
-    <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 h-screen overflow-y-auto bg-slate-900">
-      <div class="px-5 py-5 border-b border-white/10">
-        <div class="text-white font-extrabold text-base flex items-center gap-2.5">
-          <span class="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style="background: linear-gradient(135deg, var(--brand-600), var(--brand-500)); box-shadow: 0 4px 14px -2px rgba(79,70,229,.6);">⚙️</span>
-          <span>פאנל ניהול</span>
-        </div>
-        <div class="text-[11px] text-slate-400 mt-1.5 mr-0.5">אורי, צ'אטבוט המרכז האקדמי לב</div>
+    <aside class="side hidden lg:flex lg:flex-col shrink-0 h-screen overflow-y-auto">
+      <div class="brand">
+        <span class="brand-mark"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg></span>
+        <div><b>ניהול אורי</b><small>המרכז האקדמי לב</small></div>
       </div>
-
-      <nav class="flex-1 px-3 py-4 space-y-1">
-        <button type="button" class="navbtn active" data-tab="overview" onclick="switchTab('overview')">
-          <span class="navbtn-icon">🔑</span><span>הגדרות ומכסות</span>
-        </button>
-        <button type="button" class="navbtn" data-tab="knowledge" onclick="switchTab('knowledge')">
-          <span class="navbtn-icon">📚</span><span>מאגר ידע (RAG)</span>
-        </button>
-        <button type="button" class="navbtn" data-tab="users" onclick="switchTab('users')">
-          <span class="navbtn-icon">👥</span><span>משתמשים</span>
-        </button>
-        <button type="button" class="navbtn" data-tab="usage" onclick="switchTab('usage')">
-          <span class="navbtn-icon">📊</span><span>מדדי שימוש</span>
-        </button>
-        <button type="button" class="navbtn" data-tab="ai-context" onclick="switchTab('ai-context')">
-          <span class="navbtn-icon">🧠</span><span>הקשר ל-AI</span>
-        </button>
-        <button type="button" class="navbtn" data-tab="prompt" onclick="switchTab('prompt')">
-          <span class="navbtn-icon">🎛️</span><span>פרומט ועיצוב</span>
-        </button>
+      <nav class="flex-1 pb-3">
+        <div class="nav-group">מעקב</div>
+        <button type="button" class="nav-item active" data-tab="usage" onclick="switchTab('usage')"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg><span>סקירה ושימוש</span></button>
+        <button type="button" class="nav-item" data-tab="users" onclick="switchTab('users')"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span>משתמשים</span></button>
+        <div class="nav-group">תוכן</div>
+        <button type="button" class="nav-item" data-tab="knowledge" onclick="switchTab('knowledge')"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg><span>מאגר ידע</span></button>
+        <div class="nav-group">הבוט</div>
+        <button type="button" class="nav-item" data-tab="models" onclick="switchTab('models')"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span>ספקים ומודלים</span></button>
+        <button type="button" class="nav-item" data-tab="identity" onclick="switchTab('identity')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg><span>זהות והוראות</span></button>
+        <button type="button" class="nav-item" data-tab="designs" onclick="switchTab('designs')"><svg class="ic" aria-hidden="true"><use href="#i-layout"/></svg><span>עיצובים</span></button>
+        <button type="button" class="nav-item" data-tab="moodle" onclick="switchTab('moodle')"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg><span>חיבור Moodle</span></button>
+        <div class="nav-group">מערכת</div>
+        <button type="button" class="nav-item" data-tab="system" onclick="switchTab('system')"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>הגדרות</span></button>
       </nav>
-
-      <div class="px-3 py-4 border-t border-white/10 space-y-1">
-        <a href="/" class="navbtn">
-          <span class="navbtn-icon">📱</span><span>צ'אט הסטודנטים</span>
-        </a>
-        <button type="button" onclick="showLoginGate()" class="navbtn">
-          <span class="navbtn-icon">🚪</span><span>התנתקות</span>
-        </button>
+      <div class="py-3" style="border-top:1px solid var(--line)">
+        <a href="/" class="nav-item"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span>צ'אט הסטודנטים</span></a>
+        <button type="button" onclick="showLoginGate()" class="nav-item"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span>התנתקות</span></button>
       </div>
     </aside>
 
-    <!-- עמודת תוכן -->
     <div class="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-
-      <!-- פס ניווט למובייל/טאבלט -->
-      <div class="lg:hidden bg-slate-900 overflow-x-auto shrink-0">
-        <div class="flex gap-1 px-3 py-2 min-w-max">
-          <button type="button" class="navbtn-mobile active" data-tab="overview" onclick="switchTab('overview')">🔑 הגדרות</button>
-          <button type="button" class="navbtn-mobile" data-tab="knowledge" onclick="switchTab('knowledge')">📚 מאגר ידע</button>
-          <button type="button" class="navbtn-mobile" data-tab="users" onclick="switchTab('users')">👥 משתמשים</button>
-          <button type="button" class="navbtn-mobile" data-tab="usage" onclick="switchTab('usage')">📊 שימוש</button>
-          <button type="button" class="navbtn-mobile" data-tab="ai-context" onclick="switchTab('ai-context')">🧠 הקשר ל-AI</button>
-          <button type="button" class="navbtn-mobile" data-tab="prompt" onclick="switchTab('prompt')">🎛️ פרומט ועיצוב</button>
-          <a href="/" class="navbtn-mobile">📱 לצ'אט</a>
-        </div>
+      <div class="lg:hidden tabs-m shrink-0">
+        <button type="button" class="tab-m active" data-tab="usage" onclick="switchTab('usage')"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>סקירה</button>
+        <button type="button" class="tab-m" data-tab="users" onclick="switchTab('users')"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>משתמשים</button>
+        <button type="button" class="tab-m" data-tab="knowledge" onclick="switchTab('knowledge')"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg>מאגר ידע</button>
+        <button type="button" class="tab-m" data-tab="models" onclick="switchTab('models')"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>מודלים</button>
+        <button type="button" class="tab-m" data-tab="identity" onclick="switchTab('identity')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>זהות והוראות</button>
+        <button type="button" class="tab-m" data-tab="designs" onclick="switchTab('designs')"><svg class="ic" aria-hidden="true"><use href="#i-layout"/></svg>עיצובים</button>
+        <button type="button" class="tab-m" data-tab="moodle" onclick="switchTab('moodle')"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Moodle</button>
+        <button type="button" class="tab-m" data-tab="system" onclick="switchTab('system')"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>הגדרות</button>
+        <a href="/" class="tab-m"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg>צ'אט</a>
       </div>
 
-      <!-- כותרת עליונה -->
-      <header class="bg-white px-5 sm:px-7 py-4 shrink-0" style="box-shadow: 0 1px 0 rgba(15,23,42,.06), 0 4px 16px -8px rgba(15,23,42,.08);">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 id="pageTitle" class="text-xl font-extrabold text-slate-900 tracking-tight">🔑 הגדרות ומכסות</h1>
-            <p class="text-xs text-slate-500 mt-0.5">ניהול מפתח Gemini API, מכסות יומיות, מאגר הידע, משתמשים, מדדי שימוש והקשר ל-AI</p>
+      <header class="topbar shrink-0 px-5 sm:px-8 py-4">
+        <div class="wrap flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <h1 id="pageTitle" class="text-xl font-extrabold tracking-tight">סקירה ושימוש</h1>
+            <p id="pageDesc" class="text-[12.5px] mt-0.5" style="color:var(--muted)"></p>
           </div>
-          <span id="keyStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shrink-0">טוען...</span>
+          <span id="keyStatusBadge" class="badge shrink-0">טוען...</span>
         </div>
       </header>
 
-      <!-- תוכן גלילה -->
-      <main class="flex-1 overflow-y-auto p-4 sm:p-7 space-y-6">
+      <main class="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+        <div class="wrap">
+        <div id="statusToast" class="hidden"></div>
 
-        <!-- הודעת חיווי -->
-        <div id="statusToast" class="hidden rounded-xl p-4 text-sm font-medium"></div>
-
-    <!-- סרגל התקדמות להעלאת מידע / השלמת וקטורים -->
-    <div id="progressBox" class="hidden bg-white border border-indigo-200 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-center justify-between mb-2">
-        <span id="progressLabel" class="text-sm font-bold text-indigo-900"></span>
-        <span id="progressCount" class="text-xs font-bold text-slate-500"></span>
-      </div>
-      <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-        <div id="progressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
-      </div>
-      <div id="progressDetails" class="text-[11px] text-slate-500 mt-2"></div>
-    </div>
-
-        <!-- ===================== טאב 1: הגדרות ומכסות ===================== -->
-        <section id="tabPanel-overview" class="tab-panel space-y-6">
-
-          <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
-              <span>🔑 הגדרות מפתח AI ומכסת שאלות יומית</span>
-            </h2>
-
-            <form onsubmit="saveConfig(event)" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div class="md:col-span-2">
-                <label class="block text-xs font-bold text-slate-600 mb-1">
-                  מפתח Google Gemini API (נשמר מוסתר בשרת בלבד):
-                </label>
-                <input
-                  id="apiKeyInput"
-                  type="password"
-                  placeholder="הדבק כאן מפתח AIzaSy... (השאר ריק אם אינך רוצה לשנות)"
-                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                />
-                <p class="text-[11px] text-slate-400 mt-1">
-                  אפשר להוציא מפתח חינמי ב-<a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a>. גם בלי מפתח המערכת תעבוד במצב הדגמה!
-                </p>
-                <button
-                  type="button"
-                  onclick="testApiKey()"
-                  class="mt-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition"
-                >
-                  🧪 בדוק את המפתח (מודלים זמינים, מכסות ובדיקת חיבור)
-                </button>
-                <div id="keyTestResults" class="hidden mt-3"></div>
-              </div>
-
-              <div class="md:col-span-3">
-                <label class="block text-xs font-bold text-slate-600 mb-1">
-                  זהות הבוט, מצב רוח / טון דיבור, והוראות מיוחדות (מי הוא, איך הוא מדבר, מה מותר/אסור לו) - תמיד זמין לבוט, גם בלי RAG:
-                </label>
-                <textarea
-                  id="botIdentityInput"
-                  rows="3"
-                  placeholder="למשל: אני העוזר החכם הרשמי של המכללה האקדמית X. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות. דבר בטון ידידותי וקליל, עם קצת הומור עדין. אם סטודנט שואל על מטלה שעבר מועד ההגשה שלה - הדגש זאת בעדינות ותציע לפנות למרצה."
-                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                ></textarea>
-                <p class="text-[11px] text-slate-400 mt-1">כאן שולטים על "האישיות" של הבוט - טון, מצב רוח, הדגשים מיוחדים - רק מגזרת המנהל, הסטודנטים לא יכולים לשנות את זה.</p>
-              </div>
-
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">
-                  מכסת שאלות לסטודנט ביום (לא פעיל כרגע - שאלות ללא הגבלה):
-                </label>
-                <input
-                  id="quotaLimitInput"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value="5"
-                  class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                />
-              </div>
-
-              <div class="md:col-span-3 flex items-end gap-2">
-                <div class="flex-1">
-                  <label class="block text-xs font-bold text-slate-600 mb-1">איפוס מכסה למשתמש (לבדיקות):</label>
-                  <input
-                    id="resetUserIdInput"
-                    type="text"
-                    placeholder="למשל: student_101"
-                    class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                  />
-                </div>
-                <button type="button" onclick="resetUserQuota()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
-                  ♻️ אפס מכסה
-                </button>
-              </div>
-
-              <div class="md:col-span-3 flex items-end gap-2">
-                <div class="flex-1">
-                  <label class="block text-xs font-bold text-slate-600 mb-1">שינוי סיסמת כניסה לפאנל הניהול:</label>
-                  <input
-                    id="newAdminPasswordInput"
-                    type="text"
-                    placeholder="סיסמה חדשה"
-                    class="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-500 transition"
-                  />
-                </div>
-                <button type="button" onclick="changeAdminPassword()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shadow-sm shrink-0">
-                  🔑 עדכן סיסמה
-                </button>
-              </div>
-
-              <div class="md:col-span-3 flex justify-end">
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-sm">
-                  💾 שמור הגדרות בשרת
-                </button>
-              </div>
-            </form>
+        <div id="progressBox" class="hidden card mb-4" style="padding:14px 16px;">
+          <div class="flex items-center justify-between mb-2">
+            <span id="progressLabel" class="text-sm font-bold"></span>
+            <span id="progressCount" class="text-xs font-bold" style="color:var(--muted)"></span>
           </div>
-          <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-1 flex items-center gap-2"><span>🤖 ספק ומודל ה-AI של הצ'אט</span></h2>
-            <div class="text-xs text-slate-500 mb-3">אפשר לשמור כמה מפתחות במקביל (Google, OpenAI, xAI Grok, Groq) ולבחור איזה מהם עונה לסטודנטים. לכל ספק יש בדיקה משלו. חיפוש המידע של המכללה (embeddings) נשאר תמיד על מפתח Google, ולכן הוא חייב להישאר שמור. אם הספק שנבחר לא מגיב, Google משמש כגיבוי אוטומטי.</div>
-            <div id="provRows" class="space-y-2 mb-4"></div>
-            <div class="mb-3 flex items-center gap-2">
-              <label class="text-xs font-bold text-slate-600 shrink-0">בחירת מודלים עבור:</label>
-              <select id="modelProvider" onchange="loadModelPanel()" class="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500">
-                <option value="google">Google Gemini</option><option value="openai">OpenAI</option><option value="xai">xAI Grok</option><option value="groq">Groq</option>
-              </select>
+          <div class="bar" style="height:8px"><i id="progressBar" style="width:0%;transition:width .3s"></i></div>
+          <div id="progressDetails" class="hint"></div>
+        </div>
+
+        <!-- ================= סקירה ושימוש ================= -->
+        <section id="tabPanel-usage" class="tab-panel page">
+          <div class="card">
+            <div class="card-head">
+              <div><h2>מצב המערכת בזמן אמת</h2><p>מתעדכן אוטומטית כל 15 שניות.</p></div>
+              <button type="button" onclick="loadUsage()" class="btn btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>רענן</button>
             </div>
-            <p class="text-xs text-slate-500 mb-3">בוחרים מהמודלים שהמפתח השמור כבר מסוגל להריץ (אין צורך להקליד את המפתח שוב). המודל הראשי נשאל קודם; אם הוא איטי או נכשל, הגיבויים נשאלים בסדר שנבחר, ובסוף המודלים המובנים כרשת ביטחון. השינוי נכנס לפעולה תוך כדקה.</p>
-            <div id="modelStatus" class="text-sm mb-3 text-slate-600">טוען...</div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">מודל ראשי</label>
-                <div class="flex gap-1">
-                  <select id="modelPrimary" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
-                  <button type="button" onclick="testModelSlot('modelPrimary')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">גיבוי 1</label>
-                <div class="flex gap-1">
-                  <select id="modelFb1" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
-                  <button type="button" onclick="testModelSlot('modelFb1')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">גיבוי 2</label>
-                <div class="flex gap-1">
-                  <select id="modelFb2" class="flex-1 min-w-0 border border-slate-300 rounded-xl px-2 py-2 text-xs outline-none focus:border-indigo-500"></select>
-                  <button type="button" onclick="testModelSlot('modelFb2')" class="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 transition">בדוק</button>
-                </div>
-              </div>
-            </div>
-            <div id="modelTestOut" class="mt-3 space-y-1 text-xs"></div>
-            <div class="flex flex-wrap justify-end gap-2 mt-4">
-              <button type="button" onclick="resetModelChoice()" class="bg-slate-500 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-sm">↩️ חזרה לסדר המובנה</button>
-              <button type="button" onclick="saveModelChoice()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition shadow-sm">💾 שמור בחירת מודל</button>
-            </div>
+            <div class="card-body"><div id="usagePanel" class="text-sm" style="color:var(--muted)">טוען...</div></div>
           </div>
         </section>
 
-        <!-- ===================== טאב 2: מאגר ידע ===================== -->
-        <section id="tabPanel-knowledge" class="tab-panel space-y-6 hidden">
+        <!-- ================= משתמשים ================= -->
+        <section id="tabPanel-users" class="tab-panel page hidden">
+          <div class="card">
+            <div class="card-head">
+              <div><h2>משתמשים רשומים <span id="usersCount" class="badge badge-accent">0</span></h2><p>תוכן השיחות פרטי ואינו מוצג כאן, רק שימוש.</p></div>
+              <button type="button" onclick="loadUsers()" class="btn btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>רענן</button>
+            </div>
+            <div class="card-body"><div id="usersPanel" class="text-sm" style="color:var(--muted)">טוען...</div></div>
+          </div>
+        </section>
 
-          <!-- ניסוח מידע עם AI -->
-          <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-1">✨ ניסוח מידע עם AI (שפה חופשית)</h2>
-            <p class="text-xs text-slate-500 mb-3">
-              כתוב בשפה חופשית מה לעדכן, ה-AI ינסח מזה טיוטת "נוהל" מסודרת (כותרת + תוכן) ויזרים אותה למטה.
-              <b>זו טיוטה בלבד</b> - היא מועתקת לטופס "הוספת נוהל" כדי שתבדוק, תערוך אם צריך, ותלחץ בעצמך על השמירה.
-            </p>
-            <div class="space-y-3">
-              <textarea
-                id="aiInstructionInput"
-                rows="3"
-                placeholder="למשל: מחר המזכירות האקדמית תהיה סגורה בגלל יום כיפור, תפתח שוב ביום ראשון בשעה הרגילה"
-                class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-500 transition"
-              ></textarea>
-              <button id="aiDraftBtn" type="button" onclick="draftKnowledgeWithAI()" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
-                ✨ נסח עם AI
-              </button>
-              <div id="aiDraftPreview" class="hidden whitespace-pre-wrap text-sm bg-violet-50 border border-violet-200 rounded-xl p-3 text-slate-700 min-h-[2.5rem]"></div>
+        <!-- ================= מאגר ידע ================= -->
+        <section id="tabPanel-knowledge" class="tab-panel page hidden">
+          <div class="card">
+            <div class="card-head"><div><h2><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>ניסוח מידע עם AI</h2><p>כתוב בשפה חופשית מה לעדכן. ה-AI מנסח טיוטת נוהל (כותרת ותוכן) שמועתקת לטופס למטה. זו טיוטה בלבד: אתה בודק, עורך, ושומר בעצמך.</p></div></div>
+            <div class="card-body space-y-3">
+              <textarea id="aiInstructionInput" rows="3" class="textarea" placeholder="למשל: מחר המזכירות האקדמית סגורה בגלל יום כיפור, ופותחת שוב ביום ראשון בשעה הרגילה"></textarea>
+              <button id="aiDraftBtn" type="button" onclick="draftKnowledgeWithAI()" class="btn btn-soft"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>נסח עם AI</button>
+              <div id="aiDraftPreview" class="hidden whitespace-pre-wrap text-sm rounded-xl p-3" style="background:var(--accent-soft);border:1px solid var(--accent-line);min-height:2.5rem"></div>
             </div>
           </div>
 
-          <!-- הוספת מידע -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- הוספת טקסט ישיר -->
-            <div class="card-pro p-6">
-              <h2 class="text-lg font-bold mb-3">📝 הוספת נוהל / מידע בטקסט</h2>
-              <form onsubmit="addTextKnowledge(event)" class="space-y-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">כותרת הנוהל / הנושא:</label>
-                  <input
-                    id="docTitleInput"
-                    type="text"
-                    required
-                    placeholder="למשל: שעות פעילות ספרייה / מלגות דיקן"
-                    class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                  />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">תוכן הנוהל (ייחתך אוטומטית ל-Chunks ויהפוך לוקטורים):</label>
-                  <textarea
-                    id="docTextInput"
-                    rows="4"
-                    required
-                    placeholder="כתוב כאן את כל הפרטים: למי פונים, מספרי טלפון, שעות קבלה, חדרים ונהלים..."
-                    class="w-full border border-slate-300 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"
-                  ></textarea>
-                </div>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
-                  ➕ הוסף למאגר הידע (RAG)
-                </button>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="card">
+              <div class="card-head"><h2><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>הוספת נוהל בטקסט</h2></div>
+              <form onsubmit="addTextKnowledge(event)" class="card-body space-y-3">
+                <label class="field"><span>כותרת הנוהל או הנושא</span><input id="docTitleInput" type="text" required placeholder="למשל: שעות פעילות הספרייה" class="input" /></label>
+                <label class="field"><span>תוכן</span><textarea id="docTextInput" rows="5" required placeholder="למי פונים, טלפונים, שעות קבלה, חדרים ונהלים..." class="textarea"></textarea>
+                  <div class="hint">הטקסט נחתך אוטומטית למקטעים והופך לוקטורים לחיפוש.</div></label>
+                <button type="submit" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>הוסף למאגר</button>
               </form>
             </div>
-
-            <!-- העלאת קובץ PDF / TXT -->
-            <div class="card-pro p-6 flex flex-col justify-between">
-              <div>
-                <h2 class="text-lg font-bold mb-3">📄 העלאת קובץ PDF / TXT (שנתון / תקנון)</h2>
-                <form onsubmit="uploadFileKnowledge(event)" class="space-y-3">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">שם המסמך:</label>
-                    <input
-                      id="fileTitleInput"
-                      type="text"
-                      required
-                      placeholder="למשל: תקנון לימודים תשפ״ז"
-                      class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">בחר קובץ (PDF או TXT):</label>
-                    <input
-                      id="fileInput"
-                      type="file"
-                      accept=".pdf,.txt"
-                      required
-                      class="w-full text-sm text-slate-600 file:ml-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                  </div>
-                  <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-sm">
-                    📤 העלה ועבד קובץ לוקטורים
-                  </button>
-                </form>
-              </div>
-              <div class="mt-4 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-500">
-                💡 השרת מחלץ את הטקסט מהקובץ, חותך אותו למקטעים חכמים עם חפיפה (Overlap), ומייצר עבורם Embeddings לחיפוש מהיר.
-              </div>
+            <div class="card">
+              <div class="card-head"><h2><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>העלאת קובץ PDF או TXT</h2></div>
+              <form onsubmit="uploadFileKnowledge(event)" class="card-body space-y-3">
+                <label class="field"><span>שם המסמך</span><input id="fileTitleInput" type="text" required placeholder="למשל: תקנון לימודים" class="input" /></label>
+                <label class="field"><span>קובץ</span><input id="fileInput" type="file" accept=".pdf,.txt" required class="input" style="height:auto;padding:7px 10px" />
+                  <div class="hint">השרת מחלץ את הטקסט, חותך אותו למקטעים עם חפיפה, ויוצר להם וקטורים לחיפוש מהיר.</div></label>
+                <button type="submit" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>העלה ועבד</button>
+              </form>
             </div>
           </div>
 
-          <!-- רשימת מקטעי הידע -->
-          <div class="card-pro p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-bold">📚 מאגר הידע הפעיל של המכללה (<span id="chunksCount">0</span> מקטעים)</h2>
-              <button id="reindexBtn" onclick="reindexMissing()" class="hidden text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-3 py-1.5 transition"></button>
-              <button onclick="loadKnowledge()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן רשימה</button>
+          <div class="card">
+            <div class="card-head">
+              <div><h2>המאגר הפעיל <span class="badge badge-accent"><span id="chunksCount">0</span> מקטעים</span></h2></div>
+              <div class="flex gap-2 flex-wrap">
+                <button id="reindexBtn" onclick="reindexMissing()" class="hidden btn btn-sm" style="color:var(--warn);border-color:#fedf89;background:var(--warn-soft)"></button>
+                <button type="button" onclick="loadKnowledge()" class="btn btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>רענן</button>
+              </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 mb-4">
-              <input id="knowledgeSearch" type="search" oninput="renderKnowledge()" placeholder="🔍 חיפוש בכל המאגר (כותרת, תוכן או נושא)..."
-                class="flex-1 min-w-[200px] border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-              <button type="button" onclick="setAllFolders(true)" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2">📂 פתח הכל</button>
-              <button type="button" onclick="setAllFolders(false)" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2">📁 סגור הכל</button>
+            <div class="card-body">
+              <div class="flex flex-wrap items-center gap-2 mb-3">
+                <input id="knowledgeSearch" type="search" oninput="renderKnowledge()" placeholder="חיפוש בכל המאגר: כותרת, תוכן או נושא" class="input flex-1" style="min-width:220px" />
+                <select id="knowledgeFilter" onchange="renderKnowledge()" class="select" style="width:auto">
+                  <option value="">הכל</option><option value="verify">מסומנים "יש לוודא"</option><option value="old">מזכירים שנה ישנה</option><option value="novec">ללא וקטור</option>
+                </select>
+                <button type="button" onclick="setAllFolders(true)" class="btn btn-sm">פתח הכל</button>
+                <button type="button" onclick="setAllFolders(false)" class="btn btn-sm">סגור הכל</button>
+              </div>
+              <div class="callout mb-3" style="background:var(--bg);border-color:var(--line);color:var(--text-2)"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+                <div class="flex-1"><b>בדיקת חיפוש:</b> מה הבוט ימצא לשאלה כזו?
+                  <div class="flex gap-2 mt-2"><input id="testQ" type="text" onkeydown="if(event.key==='Enter')testSearch()" placeholder="למשל: כמה עולים המעונות" class="input" /><button type="button" onclick="testSearch()" class="btn btn-primary">בדוק</button></div></div></div>
+              <div id="testResult" class="hidden mb-3 rounded-xl p-3 text-xs" style="background:var(--accent-soft);border:1px solid var(--accent-line)"></div>
+              <div id="chunksList" class="space-y-2"></div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 mb-3">
-              <select id="knowledgeFilter" onchange="renderKnowledge()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white">
-                <option value="">הכל</option>
-                <option value="verify">⚠️ מסומנים "יש לוודא"</option>
-                <option value="old">🕰️ מזכירים שנה ישנה (תשפ"ד ומטה)</option>
-                <option value="novec">🧮 ללא וקטור</option>
-              </select>
-              <input id="testQ" type="text" onkeydown="if(event.key==='Enter')testSearch()" placeholder="🔎 בדיקה: מה הבוט ימצא לשאלה כזו?"
-                class="flex-1 min-w-[200px] border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-              <button type="button" onclick="testSearch()" class="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-2">בדוק</button>
-            </div>
-            <div id="testResult" class="hidden mb-4 border border-indigo-200 bg-indigo-50 rounded-xl p-3 text-xs"></div>
-            <div id="chunksList" class="space-y-3"></div>
           </div>
         </section>
 
-        <!-- ===================== טאב 3: משתמשים ===================== -->
-        <section id="tabPanel-users" class="tab-panel space-y-6 hidden">
-          <div class="card-pro p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-bold">👥 משתמשים (<span id="usersCount">0</span>)</h2>
-              <button onclick="loadUsers()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
-            </div>
-            <div id="usersPanel" class="text-sm text-slate-500">טוען...</div>
-          </div>
-        </section>
-
-        <!-- ===================== טאב 4: מדדי שימוש ===================== -->
-        <section id="tabPanel-usage" class="tab-panel space-y-6 hidden">
-          <div class="card-pro p-6">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-lg font-bold">📊 מדדי שימוש</h2>
-              <button onclick="loadUsage()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
-            </div>
-            <div id="usagePanel" class="text-sm text-slate-500">טוען...</div>
-          </div>
-        </section>
-
-        <!-- ===================== טאב 5: הקשר ל-AI (שקיפות + שליטה) ===================== -->
-        <section id="tabPanel-ai-context" class="tab-panel space-y-6 hidden">
-
-          <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-1">🔑 בדיקת טוקן Moodle אמיתי</h2>
-            <p class="text-xs text-slate-500 mb-4">הדביקו כאן טוקן Moodle אמיתי (שלכם או של סטודנט לבדיקה) כדי לבדוק כל פונקציה בנפרד למטה מול הנתונים האמיתיים. הטוקן משמש רק לבדיקות האלה ולא נשמר בשום מקום - לא ב-DB ולא בין בקשות.</p>
-            <div class="flex flex-col sm:flex-row gap-2">
-              <input id="moodleTestTokenInput" type="text" placeholder="הדביקו כאן טוקן Moodle (או את הקישור המלא moodlemobile://token=...)"
-                class="flex-1 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition" dir="ltr" />
-              <button type="button" id="moodleTestConnectBtn" onclick="connectMoodleTest()" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shrink-0">
-                התחבר לבדיקה
-              </button>
-            </div>
-            <div id="moodleTestConnectResult" class="mt-3 text-xs"></div>
-          </div>
-
-          <div class="card-pro p-6">
-            <div class="flex items-center justify-between mb-1">
-              <h2 class="text-lg font-bold">🧩 פונקציות Moodle (קורסים/מטלות/ציונים/יומן ועוד)</h2>
-              <button onclick="loadMoodleFunctions()" class="text-xs text-indigo-600 hover:underline font-medium">🔄 רענן</button>
-            </div>
-            <p class="text-xs text-slate-500 mb-4">כל פונקציה שדולקת כאן זמינה ל-AI להשתמש בה כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע מה-AI לקרוא לה בכלל - שימושי אם פונקציה מסוימת לא עובדת טוב מול המערכת של המכללה. כפתור "בדוק" בכל פונקציה פעיל אחרי שמתחברים עם טוקן למעלה.</p>
-            <div id="moodleFunctionsPanel" class="space-y-2 text-sm text-slate-500">טוען...</div>
-            <button onclick="saveMoodleFunctions()" id="saveMoodleFunctionsBtn" class="btn-press mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">
-              💾 שמור שינויים
-            </button>
-          </div>
-
-          <div class="card-pro p-6">
-            <h2 class="text-lg font-bold mb-1">🔍 תצוגה מקדימה - בדיוק מה שנשלח ל-AI</h2>
-            <p class="text-xs text-slate-500 mb-4">כתבו שאלת דוגמה, ותראו את כל הפרומפט המלא (זהות הבוט, קטלוג הנושאים, מידע בזמן אמת, מקטעי הידע הרלוונטיים) כפי שהוא נשלח בפועל ל-Gemini לשאלה הזו - בלי לשלוח אותה בפועל לסטודנט.</p>
-            <form onsubmit="previewPrompt(event)" class="flex flex-col sm:flex-row gap-2 mb-4">
-              <input id="promptPreviewQuestion" type="text" placeholder="לדוגמה: מתי הבחינה במבוא לתכנות?"
-                class="flex-1 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition" />
-              <button type="submit" id="promptPreviewBtn" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition shrink-0">
-                הצג תצוגה מקדימה
-              </button>
-            </form>
-            <div id="promptPreviewStats" class="hidden text-xs text-slate-500 mb-2"></div>
-            <pre id="promptPreviewBox" class="hidden bg-slate-900 text-slate-100 rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[500px] overflow-y-auto" dir="rtl"></pre>
-          </div>
-
-        </section>
-
-        <!-- ===================== טאב 6: פרומט ועיצוב ===================== -->
-        <section id="tabPanel-prompt" class="tab-panel space-y-4 hidden">
-          <div class="card-pro p-3 flex flex-wrap gap-2 items-center">
-            <button type="button" class="pmSub active" data-sub="notes" onclick="pmSub('notes')">✍️ הוראות הבוט</button>
-            <button type="button" class="pmSub" data-sub="gallery" onclick="pmSub('gallery')">🎨 גלריית עיצובים</button>
-            <button type="button" class="pmSub" data-sub="create" onclick="pmSub('create')">✨ עיצוב חדש עם AI</button>
-            <button type="button" class="pmSub" data-sub="history" onclick="pmSub('history')">🕘 גרסאות</button>
-            <span id="pmDirty" class="hidden text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 mr-auto">יש שינויים שלא נשמרו</span>
-            <button type="button" id="pmSaveTop" onclick="pmSave()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-sm mr-auto">💾 שמור ופרסם</button>
-          </div>
-          <div class="text-xs text-slate-500 px-1">כל שמירה נכנסת לתוקף מיד אצל כל המשתמשים, בלי עדכון תוכנה. הגרסה הקודמת נשמרת תמיד, אפשר לחזור אליה בלשונית "גרסאות".</div>
-
-          <!-- הוראות -->
-          <div id="pmView-notes" class="space-y-4">
-            <div class="card-pro p-4 space-y-2">
-              <div class="flex flex-wrap items-center gap-3">
-                <h2 class="text-base font-bold">🧪 תרחיש לבדיקה</h2>
-                <span class="text-xs text-slate-500">סמן מצב של סטודנט, וכל כלל יראה אם הוא חל עליו.</span>
+        <!-- ================= ספקים ומודלים ================= -->
+        <section id="tabPanel-models" class="tab-panel page hidden">
+          <div class="card">
+            <div class="card-head"><div><h2>מפתח Google Gemini</h2><p>המפתח נשמר מוצפן בשרת בלבד. חיפוש המידע של המכללה (embeddings) תמיד רץ על מפתח Google, ולכן הוא חייב להישאר שמור. אפשר להוציא מפתח חינמי ב-<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);text-decoration:underline">Google AI Studio</a>.</p></div></div>
+            <div class="card-body space-y-3">
+              <div class="flex gap-2 flex-wrap">
+                <input id="apiKeyInput" type="password" autocomplete="off" placeholder="הדבק מפתח AIzaSy... (השאר ריק כדי לא לשנות)" class="input flex-1" style="min-width:240px" dir="ltr" />
+                <button type="button" onclick="testApiKey()" class="btn btn-soft"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg>בדוק מפתח</button>
+                <button type="button" onclick="saveConfig(event)" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור</button>
               </div>
-              <div class="flex flex-wrap gap-4 text-sm">
-                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simFirst" onchange="pmSimChange()"> הודעה ראשונה בשיחה</label>
-                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simNew" onchange="pmSimChange()"> סטודנט חדש (בלי זיכרון)</label>
-                <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="simMoodle" onchange="pmSimChange()" checked> מחובר ל-Moodle</label>
-                <label class="flex items-center gap-1.5">שפה
-                  <select id="simLang" onchange="pmSimChange()" class="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"><option value="he">עברית</option><option value="en">אנגלית</option><option value="fr">צרפתית</option></select></label>
+              <div id="keyTestResults" class="hidden"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><div><h2>ספק ה-AI של הצ'אט</h2><p>אפשר לשמור כמה מפתחות במקביל ולבחור איזה ספק עונה לסטודנטים. אם הספק שנבחר לא מגיב, Google משמש כגיבוי אוטומטי.</p></div></div>
+            <div class="card-body"><div id="provRows" class="space-y-2"></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><div><h2>בחירת מודלים</h2><p>המודל הראשי נשאל קודם. אם הוא איטי או נכשל, הגיבויים נשאלים בסדר שנבחר, ובסוף המודלים המובנים כרשת ביטחון. השינוי נכנס לפעולה תוך כדקה.</p></div>
+              <label class="flex items-center gap-2 text-[12.5px] font-semibold" style="color:var(--text-2)">ספק
+                <select id="modelProvider" onchange="loadModelPanel()" class="select" style="width:auto;height:34px"><option value="google">Google Gemini</option><option value="openai">OpenAI</option><option value="xai">xAI Grok</option><option value="groq">Groq</option></select></label>
+            </div>
+            <div class="card-body">
+              <div id="modelStatus" class="text-[13px] mb-4" style="color:var(--muted)">טוען...</div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><span class="label">מודל ראשי</span><div class="flex gap-1.5"><select id="modelPrimary" class="select flex-1 min-w-0"></select><button type="button" onclick="testModelSlot('modelPrimary')" class="btn btn-soft">בדוק</button></div></div>
+                <div><span class="label">גיבוי 1</span><div class="flex gap-1.5"><select id="modelFb1" class="select flex-1 min-w-0"></select><button type="button" onclick="testModelSlot('modelFb1')" class="btn btn-soft">בדוק</button></div></div>
+                <div><span class="label">גיבוי 2</span><div class="flex gap-1.5"><select id="modelFb2" class="select flex-1 min-w-0"></select><button type="button" onclick="testModelSlot('modelFb2')" class="btn btn-soft">בדוק</button></div></div>
+              </div>
+              <div id="modelTestOut" class="mt-3 space-y-1.5 text-xs"></div>
+              <div class="flex flex-wrap justify-end gap-2 mt-4">
+                <button type="button" onclick="resetModelChoice()" class="btn"><svg class="ic" aria-hidden="true"><use href="#i-rotate"/></svg>חזרה לסדר המובנה</button>
+                <button type="button" onclick="saveModelChoice()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור בחירת מודל</button>
               </div>
             </div>
+          </div>
+        </section>
 
-            <div class="card-pro p-5">
-              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
-                <h2 class="text-lg font-bold">📝 הכללים שלי</h2>
+        <!-- ================= זהות והוראות ================= -->
+        <section id="tabPanel-identity" class="tab-panel page hidden">
+          <div class="seg" id="segIdentity">
+            <button type="button" class="pmSub active" data-sub="notes" onclick="pmSub('notes')"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>כללים</button>
+            <button type="button" class="pmSub" data-sub="ident" onclick="pmSub('ident')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>זהות הבוט</button>
+            <button type="button" class="pmSub" data-sub="preview" onclick="pmSub('preview')"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>מה הבוט מקבל</button>
+            <button type="button" class="pmSub" data-sub="history" onclick="pmSub('history')"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg>גרסאות</button>
+          </div>
+
+          <div id="pmView-notes" class="page">
+            <div class="card">
+              <div class="card-head"><div><h2>תרחיש לבדיקה</h2><p>סמן מצב של סטודנט, וכל כלל יראה אם הוא חל עליו.</p></div></div>
+              <div class="card-body"><div class="flex flex-wrap gap-5 text-[13px]">
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="simFirst" onchange="pmSimChange()"> הודעה ראשונה בשיחה</label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="simNew" onchange="pmSimChange()"> סטודנט חדש (בלי זיכרון)</label>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="simMoodle" onchange="pmSimChange()" checked> מחובר ל-Moodle</label>
+                <label class="flex items-center gap-2">שפה <select id="simLang" onchange="pmSimChange()" class="select" style="width:auto;height:32px"><option value="he">עברית</option><option value="en">אנגלית</option><option value="fr">צרפתית</option></select></label>
+              </div></div>
+            </div>
+            <div class="card">
+              <div class="card-head">
+                <div><h2>הכללים שלי</h2><p>כלל בנוי מקוביות: מתחילים ב"כאשר", מוסיפים "ואז", "וגם" או "או", ובוחרים פעולה, למשל להציג עיצוב מהגלריה, לשאול סקר או לקרוא לכלי. תנאים כמו "הודעה ראשונה" או "מחובר ל-Moodle" השרת בודק בעצמו; תנאי על תוכן השאלה הבוט מבין לבד.</p></div>
                 <div class="flex gap-2 flex-wrap">
-                  <select id="pmTplSel" class="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">📋 תבנית מוכנה...</option></select>
-                  <button type="button" onclick="pmAddRule()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">＋ כלל חדש</button>
+                  <select id="pmTplSel" class="select" style="width:auto;height:34px"><option value="">תבנית מוכנה...</option></select>
+                  <button type="button" onclick="pmAddRule()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>כלל חדש</button>
                 </div>
               </div>
-              <p class="text-xs text-slate-500 mb-3">כלל בנוי מקוביות: מתחילים ב"כאשר...", מוסיפים "ואז", "וגם" או "או", ובוחרים פעולה: להציג עיצוב מהגלריה, לשאול סקר, לקרוא לכלי ועוד. תנאים כמו "הודעה ראשונה" או "מחובר ל-Moodle" השרת בודק בעצמו; תנאי על תוכן השאלה הבוט מבין לבד.</p>
-              <div id="pmMine" class="space-y-3"></div>
+              <div class="card-body"><div id="pmMine" class="space-y-3"></div></div>
             </div>
-
-            <div class="card-pro p-5">
-              <h2 class="text-lg font-bold mb-1">🧩 הפרומט הקיים, בצורת כללים</h2>
-              <p class="text-xs text-slate-500 mb-3">כל מה שהבוט מקבל היום הומר לכללים וקוביות, בלי לשנות אף מילה. אפשר לערוך כל קובייה, להזיז, לכבות כלל או חלק שלם, ולהוסיף קוביות. "אפס" מחזיר את החלק לנוסח המקורי.</p>
-              <div id="pmSections" class="space-y-3"></div>
+            <div class="card">
+              <div class="card-head"><div><h2>הפרומט הקיים בצורת כללים</h2><p>כל מה שהבוט מקבל הומר לכללים וקוביות בלי לשנות אף מילה. אפשר לערוך כל קובייה, להזיז, לכבות כלל או חלק שלם ולהוסיף קוביות. "אפס" מחזיר חלק לנוסח המקורי.</p></div></div>
+              <div class="card-body"><div id="pmSections" class="space-y-4"></div></div>
             </div>
           </div>
 
-          <!-- בוחר עיצוב מהגלריה -->
-          <div id="pmPicker" class="hidden fixed inset-0 z-50 bg-slate-900/60 p-3 sm:p-6 overflow-auto">
-            <div class="bg-white rounded-2xl max-w-5xl mx-auto p-4 sm:p-5">
-              <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-lg">🎨 בחר עיצוב</h3><button type="button" onclick="pmPickClose()" class="text-slate-500 text-xl px-2">✕</button></div>
-              <div class="grid md:grid-cols-5 gap-4">
-                <div class="md:col-span-2 space-y-2 max-h-[60vh] overflow-auto" id="pmPickList"></div>
-                <div class="md:col-span-3 space-y-2">
-                  <div class="flex flex-wrap gap-1.5" id="pmPickStyles"></div>
-                  <div class="flex flex-wrap gap-1.5" id="pmPickColors"></div>
-                  <div id="pmPickHost" class="min-h-[100px]"></div>
-                  <button type="button" onclick="pmPickDone()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-sm">✔ בחר את העיצוב הזה</button>
-                </div>
+          <div id="pmView-ident" class="page hidden">
+            <div class="card">
+              <div class="card-head"><div><h2>זהות הבוט</h2><p>מי הבוט, איך הוא מדבר, מה מותר ומה אסור לו. הטקסט הזה תמיד זמין לבוט, גם בלי חיפוש במאגר, והסטודנטים לא יכולים לשנות אותו.</p></div></div>
+              <div class="card-body space-y-3">
+                <textarea id="botIdentityInput" rows="7" class="textarea" placeholder="למשל: אני העוזר הרשמי של המכללה. אני עונה על שאלות לפי נהלי המכללה בלבד, ואינני תחליף למזכירות לבקשות רשמיות. בטון ידידותי וקליל."></textarea>
+                <div class="flex justify-end"><button type="button" onclick="saveConfig(event)" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור זהות</button></div>
               </div>
             </div>
           </div>
 
-          <!-- גלריה -->
-          <div id="pmView-gallery" class="hidden">
-            <div class="grid lg:grid-cols-5 gap-4">
-              <div class="lg:col-span-3 card-pro p-4">
-                <h2 class="text-lg font-bold mb-1">🎨 סוגי העיצוב שהבוט מכיר</h2>
-                <p class="text-xs text-slate-500 mb-3">לחץ על עיצוב כדי לראות אותו בדיוק כפי שהסטודנט רואה (בכל הסגנונות). אפשר לכבות עיצוב, לתת לו עדיפות, ולכתוב לבוט הערה ספציפית עליו.</p>
-                <div id="pmKinds" class="space-y-2"></div>
-              </div>
-              <div class="lg:col-span-2">
-                <div class="card-pro p-3 lg:sticky lg:top-4">
-                  <div id="pmGalTitle" class="font-bold text-sm mb-2">בחר עיצוב</div>
-                  <div id="pmGalHost"></div>
-                </div>
+          <div id="pmView-preview" class="page hidden">
+            <div class="card">
+              <div class="card-head"><div><h2>מה הבוט מקבל</h2><p>כתוב שאלת דוגמה וראה את הפרומט המלא כפי שהוא נשלח למודל: זהות, קטלוג הנושאים, מידע בזמן אמת ומקטעי הידע הרלוונטיים. בלי לשלוח כלום לסטודנט.</p></div></div>
+              <div class="card-body">
+                <form onsubmit="previewPrompt(event)" class="flex flex-col sm:flex-row gap-2 mb-3">
+                  <input id="promptPreviewQuestion" type="text" placeholder="לדוגמה: מתי הבחינה במבוא לתכנות?" class="input flex-1" />
+                  <button type="submit" id="promptPreviewBtn" class="btn btn-primary">הצג</button>
+                </form>
+                <div id="promptPreviewStats" class="hidden hint mb-2"></div>
+                <pre id="promptPreviewBox" class="hidden rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto" style="background:#101828;color:#e4e7ec;max-height:520px;overflow-y:auto" dir="rtl"></pre>
               </div>
             </div>
           </div>
 
-          <!-- יצירה עם AI -->
-          <div id="pmView-create" class="hidden space-y-4">
-            <div class="grid lg:grid-cols-5 gap-4">
-              <div class="lg:col-span-3 card-pro p-5 space-y-3">
-                <h2 class="text-lg font-bold">✨ עיצוב חדש עם AI</h2>
-                <p class="text-xs text-slate-500">תאר בשפה חופשית איך הכרטיס צריך להיראות ומה הוא מציג. ה-AI בונה אותו, ואתה רואה תצוגה מקדימה. העיצוב נבנה מרכיבים שהאפליקציה כבר יודעת לצייר, ולכן הוא עובד אצל כולם מיד בלי עדכון תוכנה.</p>
-                <textarea id="pmGenDesc" rows="4" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="למשל: כרטיס מבצע עם כותרת גדולה, מחיר מודגש בצבע, ורשימת תנאים עם וי ליד כל שורה"></textarea>
-                <div class="flex gap-2 items-center flex-wrap">
-                  <button type="button" id="pmGenBtn" onclick="pmGenerate()" class="btn-press bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm">✨ צור עיצוב</button>
-                  <span id="pmGenMsg" class="text-xs text-slate-500"></span>
-                </div>
-                <div id="pmGenForm" class="hidden space-y-2 border-t border-slate-200 pt-3">
-                  <div class="grid sm:grid-cols-2 gap-2">
-                    <label class="text-xs font-bold text-slate-600">שם העיצוב<input id="pmGenName" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal"></label>
-                    <label class="text-xs font-bold text-slate-600">מזהה (לא ניתן לשינוי)<input id="pmGenId" disabled class="mt-1 w-full border border-slate-200 bg-slate-50 rounded-lg px-2 py-1.5 text-sm font-normal" dir="ltr"></label>
-                  </div>
-                  <label class="block text-xs font-bold text-slate-600">מתי הבוט משתמש בו<input id="pmGenWhen" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal"></label>
-                  <label class="block text-xs font-bold text-slate-600">רוצה לשנות משהו? תאר את התיקון ולחץ "תקן"<input id="pmGenFix" class="mt-1 w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-normal" placeholder="למשל: הצבע ירוק, המחיר יותר גדול, בלי המסגרת"></label>
-                  <div class="flex gap-2 flex-wrap">
-                    <button type="button" onclick="pmRefine()" class="btn-press bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-1.5 rounded-xl text-sm">🔧 תקן</button>
-                    <button type="button" onclick="pmSaveDesign()" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-sm">💾 שמור עיצוב והפעל</button>
-                  </div>
-                </div>
-              </div>
-              <div class="lg:col-span-2 card-pro p-3"><div class="font-bold text-sm mb-2">תצוגה מקדימה</div><div id="pmGenHost" class="text-xs text-slate-400">עדיין לא נוצר עיצוב.</div></div>
-            </div>
-            <div class="card-pro p-5">
-              <h2 class="text-lg font-bold mb-3">🗂️ העיצובים שיצרתי</h2>
-              <div id="pmCustom" class="space-y-3"></div>
-            </div>
-          </div>
-
-          <!-- גרסאות -->
-          <div id="pmView-history" class="hidden">
-            <div class="card-pro p-5">
-              <h2 class="text-lg font-bold mb-1">🕘 גרסאות קודמות</h2>
-              <p class="text-xs text-slate-500 mb-3">כל שמירה שומרת את המצב שהיה לפניה. חזרה לגרסה מחליפה את המצב הנוכחי (והמצב הנוכחי נשמר כגרסה).</p>
-              <div id="pmVersions" class="space-y-2 text-sm"></div>
+          <div id="pmView-history" class="page hidden">
+            <div class="card">
+              <div class="card-head"><div><h2>גרסאות קודמות</h2><p>כל שמירה שומרת את המצב שהיה לפניה. חזרה לגרסה מחליפה את המצב הנוכחי, והמצב הנוכחי נשמר כגרסה.</p></div></div>
+              <div class="card-body"><div id="pmVersions" class="space-y-2 text-sm"></div></div>
             </div>
           </div>
         </section>
 
+        <!-- ================= עיצובים ================= -->
+        <section id="tabPanel-designs" class="tab-panel page hidden">
+          <div class="seg">
+            <button type="button" class="pmSub active" data-sub="gallery" onclick="pmSub('gallery')"><svg class="ic" aria-hidden="true"><use href="#i-layout"/></svg>גלריה</button>
+            <button type="button" class="pmSub" data-sub="create" onclick="pmSub('create')"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>יצירה עם AI</button>
+          </div>
+
+          <div id="pmView-gallery" class="page">
+            <div class="grid lg:grid-cols-5 gap-4 items-start">
+              <div class="lg:col-span-3 card">
+                <div class="card-head"><div><h2>סוגי העיצוב שהבוט מכיר</h2><p>לחץ על עיצוב כדי לראות אותו בדיוק כפי שהסטודנט רואה, בכל הסגנונות. אפשר לכבות עיצוב, לתת לו עדיפות ולכתוב לבוט הערה עליו.</p></div></div>
+                <div class="card-body"><div id="pmKinds" class="space-y-2"></div></div>
+              </div>
+              <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px">
+                <div id="pmGalTitle" class="text-sm font-bold mb-3">בחר עיצוב</div>
+                <div id="pmGalHost"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="pmView-create" class="page hidden">
+            <div class="grid lg:grid-cols-5 gap-4 items-start">
+              <div class="lg:col-span-3 card">
+                <div class="card-head"><div><h2>עיצוב חדש עם AI</h2><p>תאר בשפה חופשית איך הכרטיס נראה ומה הוא מציג. ה-AI בונה אותו ואתה רואה תצוגה מקדימה. העיצוב נבנה ממרכיבים שהאפליקציה כבר מכירה, ולכן הוא עובד אצל כולם מיד, בלי עדכון תוכנה.</p></div></div>
+                <div class="card-body space-y-3">
+                  <textarea id="pmGenDesc" rows="4" class="textarea" placeholder="למשל: כרטיס מבצע עם כותרת גדולה, מחיר מודגש בצבע, ורשימת תנאים עם וי ליד כל שורה"></textarea>
+                  <div class="flex gap-2 items-center flex-wrap"><button type="button" id="pmGenBtn" onclick="pmGenerate()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>צור עיצוב</button><span id="pmGenMsg" class="hint" style="margin:0"></span></div>
+                  <div id="pmGenForm" class="hidden space-y-3" style="border-top:1px solid var(--line);padding-top:14px">
+                    <div class="grid sm:grid-cols-2 gap-3">
+                      <label class="field"><span>שם העיצוב</span><input id="pmGenName" class="input"></label>
+                      <label class="field"><span>מזהה (קבוע)</span><input id="pmGenId" disabled class="input" style="background:var(--bg)" dir="ltr"></label>
+                    </div>
+                    <label class="field"><span>מתי הבוט משתמש בו</span><input id="pmGenWhen" class="input"></label>
+                    <label class="field"><span>רוצה לשנות משהו? תאר את התיקון</span><input id="pmGenFix" class="input" placeholder="למשל: הצבע ירוק, המחיר יותר גדול, בלי המסגרת"></label>
+                    <div class="flex gap-2 flex-wrap"><button type="button" onclick="pmRefine()" class="btn"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>תקן</button><button type="button" onclick="pmSaveDesign()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור והפעל</button></div>
+                  </div>
+                </div>
+              </div>
+              <div class="lg:col-span-2 card" style="padding:14px"><div class="text-sm font-bold mb-3">תצוגה מקדימה</div><div id="pmGenHost" class="hint" style="margin:0">עדיין לא נוצר עיצוב.</div></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>העיצובים שיצרתי</h2></div>
+              <div class="card-body"><div id="pmCustom" class="space-y-3"></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= חיבור Moodle ================= -->
+        <section id="tabPanel-moodle" class="tab-panel page hidden">
+          <div class="card">
+            <div class="card-head"><div><h2>טוקן לבדיקות</h2><p>הדבק טוקן Moodle אמיתי (שלך או של סטודנט לבדיקה) כדי לבדוק כל פונקציה מול נתונים אמיתיים. הטוקן חי רק בדפדפן שלך ולא נשמר בשום מקום.</p></div></div>
+            <div class="card-body">
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input id="moodleTestTokenInput" type="text" placeholder="טוקן Moodle או הקישור המלא moodlemobile://token=..." class="input flex-1" dir="ltr" />
+                <button type="button" id="moodleTestConnectBtn" onclick="connectMoodleTest()" class="btn btn-primary">התחבר לבדיקה</button>
+              </div>
+              <div id="moodleTestConnectResult" class="mt-3 text-xs"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>פונקציות Moodle</h2><p>כל פונקציה דולקת זמינה לבוט כשסטודנט מחובר ל-Moodle ושואל שאלה אישית. כיבוי פונקציה מונע ממנו לקרוא לה, למשל כשהיא לא עובדת טוב מול המערכת של המכללה. כפתור "בדוק" פעיל אחרי חיבור עם טוקן.</p></div>
+              <button type="button" onclick="loadMoodleFunctions()" class="btn btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>רענן</button></div>
+            <div class="card-body">
+              <div id="moodleFunctionsPanel" class="space-y-2 text-sm" style="color:var(--muted)">טוען...</div>
+              <div class="flex justify-end mt-4"><button onclick="saveMoodleFunctions()" id="saveMoodleFunctionsBtn" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור שינויים</button></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= הגדרות ================= -->
+        <section id="tabPanel-system" class="tab-panel page hidden">
+          <div class="card">
+            <div class="card-head"><div><h2>מכסה יומית</h2><p>מכסת שאלות לסטודנט ביום. כרגע לא פעילה: השאלות ללא הגבלה.</p></div></div>
+            <div class="card-body"><div class="flex gap-2 items-end flex-wrap">
+              <label class="field"><span>שאלות ליום</span><input id="quotaLimitInput" type="number" min="1" max="100" value="5" class="input" style="width:120px" /></label>
+              <button type="button" onclick="saveConfig(event)" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור</button></div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>איפוס מכסה למשתמש</h2><p>לבדיקות: מאפס את מונה השאלות של משתמש מסוים.</p></div></div>
+            <div class="card-body"><div class="flex gap-2 flex-wrap">
+              <input id="resetUserIdInput" type="text" placeholder="למשל: student_101" class="input flex-1" style="min-width:200px" />
+              <button type="button" onclick="resetUserQuota()" class="btn"><svg class="ic" aria-hidden="true"><use href="#i-rotate"/></svg>אפס מכסה</button></div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>סיסמת כניסה</h2><p>הסיסמה החדשה נכנסת לתוקף בכניסה הבאה.</p></div></div>
+            <div class="card-body"><div class="flex gap-2 flex-wrap">
+              <input id="newAdminPasswordInput" type="password" autocomplete="new-password" placeholder="סיסמה חדשה" class="input flex-1" style="min-width:200px" />
+              <button type="button" onclick="changeAdminPassword()" class="btn"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>עדכן סיסמה</button></div></div>
+          </div>
+        </section>
+
+        </div>
       </main>
     </div>
   </div>
 
-  <!-- ===================== מודל: מה המשתמש עשה בפועל ===================== -->
-  <div id="userActivityOverlay" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if (event.target === this) closeUserActivity()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
-      <div class="bg-gradient-to-l from-indigo-600 to-blue-600 text-white p-4 flex items-center justify-between shrink-0">
-        <h3 id="userActivityTitle" class="font-bold text-sm">פעילות משתמש</h3>
-        <button onclick="closeUserActivity()" class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center transition">✕</button>
+  <!-- שורת שמירה: מופיעה בכל מסך כשיש שינויים בכללים או בעיצובים שלא נשמרו -->
+  <div id="pmDirty" class="hidden savebar">
+    <span>יש שינויים שלא נשמרו</span>
+    <button type="button" class="btn btn-ghost" style="color:#d0d5dd" onclick="pmDiscard()">בטל</button>
+    <button type="button" id="pmSaveTop" onclick="pmSave()" class="btn btn-primary">שמור ופרסם</button>
+  </div>
+
+  <!-- בוחר עיצוב מהגלריה -->
+  <div id="pmPicker" class="hidden modal-bg" style="overflow:auto">
+    <div class="modal" style="max-width:980px">
+      <div class="modal-head"><span>בחירת עיצוב</span><button type="button" onclick="pmPickClose()" class="btn btn-ghost btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+      <div class="grid md:grid-cols-5 gap-4 p-4 overflow-auto">
+        <div class="md:col-span-2 space-y-2 overflow-auto" style="max-height:60vh" id="pmPickList"></div>
+        <div class="md:col-span-3 space-y-3">
+          <div class="flex flex-wrap gap-1.5" id="pmPickStyles"></div>
+          <div class="flex flex-wrap gap-1.5" id="pmPickColors"></div>
+          <div id="pmPickHost" style="min-height:100px"></div>
+          <button type="button" onclick="pmPickDone()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>בחר את העיצוב הזה</button>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <!-- פעילות משתמש -->
+  <div id="userActivityOverlay" class="hidden modal-bg" onclick="if (event.target === this) closeUserActivity()">
+    <div class="modal">
+      <div class="modal-head"><h3 id="userActivityTitle">פעילות משתמש</h3><button onclick="closeUserActivity()" class="btn btn-ghost btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
       <div id="userActivityBody" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm">טוען...</div>
     </div>
   </div>
 
   <script>
+    // ===================== אייקונים =====================
+    // The console uses one custom icon set (the sprite at the top of the page). Text may carry a token like ⟦check⟧ and it is drawn as the icon;
+    // any emoji that arrives from elsewhere (server text, old data) is mapped to an icon or dropped, so no emoji is ever shown.
+    const ICON_MAP = {"🔑": "key", "📚": "database", "👥": "users", "📊": "chart", "🧠": "sparkle", "🎛": "sliders", "✨": "sparkle", "🤖": "sparkle", "🧪": "flask", "🔄": "refresh", "♻": "refresh", "💾": "save", "✅": "check", "✔": "check", "✓": "check", "❌": "x", "⛔": "x", "✕": "x", "⚠": "alert", "🗑": "trash", "✏": "edit", "✎": "edit", "👁": "eye", "📁": "folder", "📂": "folder", "📄": "file", "📤": "upload", "➕": "plus", "📝": "edit", "💬": "chat", "🗂": "layers", "🧮": "cpu", "💡": "info", "🔍": "search", "🔎": "search", "🕘": "history", "🎨": "layout", "🧩": "plug", "📋": "file", "📱": "chat", "🚪": "logout", "⚙": "settings", "🔐": "lock", "⏳": "clock", "🕰": "clock", "↩": "rotate", "↺": "rotate", "▲": "up", "▼": "down", "🔧": "edit"};
+    const ICON_RE = /⟦(\w+)⟧|[\u{1F300}-\u{1FAFF}\u{2300}-\u{23FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u21A9\u21BA\u25B2\u25BC]\uFE0F?/gu;
+    const ICON_TEST = new RegExp(ICON_RE.source, 'u');
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    function iconNode(name) {
+      const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('class', 'ic'); s.setAttribute('aria-hidden', 'true');
+      const u = document.createElementNS(SVGNS, 'use'); u.setAttribute('href', '#i-' + name); s.appendChild(u); return s;
+    }
+    function iconize(root) {
+      if (!root || root.nodeType !== 1 && root.nodeType !== 11) return;
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = []; while (w.nextNode()) { if (ICON_TEST.test(w.currentNode.nodeValue)) nodes.push(w.currentNode); }
+      nodes.forEach(n => {
+        const p = n.parentNode; if (!p) return; const tag = p.nodeName;
+        if (tag === 'SCRIPT' || tag === 'STYLE') return;
+        const txt = n.nodeValue;
+        if (tag === 'OPTION' || tag === 'TEXTAREA' || tag === 'TITLE') { n.nodeValue = txt.replace(ICON_RE, ''); return; }
+        const frag = document.createDocumentFragment(); let last = 0;
+        txt.replace(ICON_RE, (m, t, off) => {
+          frag.appendChild(document.createTextNode(txt.slice(last, off)));
+          const name = t || ICON_MAP[[...m][0]];
+          if (name && document.getElementById('i-' + name)) frag.appendChild(iconNode(name));
+          last = off + m.length; return m;
+        });
+        frag.appendChild(document.createTextNode(txt.slice(last)));
+        p.replaceChild(frag, n);
+      });
+    }
+    const iconObserver = new MutationObserver(muts => {
+      iconObserver.disconnect();
+      try {
+        muts.forEach(m => {
+          if (m.type === 'characterData') iconize(m.target.parentNode);
+          else m.addedNodes.forEach(n => iconize(n.nodeType === 1 ? n : n.nodeType === 3 ? n.parentNode : null));
+        });
+      } finally { iconObserver.observe(document.body, { childList: true, subtree: true, characterData: true }); }
+    });
+    iconize(document.body);
+    iconObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+
     const API_BASE = window.location.origin;
     const TOKEN_KEY = 'admin_token';
 
@@ -731,12 +653,14 @@
     }
 
     const TAB_TITLES = {
-      overview: { icon: '🔑', title: 'הגדרות ומכסות' },
-      knowledge: { icon: '📚', title: 'מאגר ידע (RAG)' },
-      users: { icon: '👥', title: 'משתמשים' },
-      usage: { icon: '📊', title: 'מדדי שימוש' },
-      'ai-context': { icon: '🧠', title: 'הקשר ל-AI' },
-      prompt: { icon: '🎛️', title: 'פרומט ועיצוב' }
+      usage: ['סקירה ושימוש', 'מצב המערכת, קריאות AI, שאלות סטודנטים ושימוש בכלים.'],
+      users: ['משתמשים', 'כל מי שנרשם, וכמה השתמש.'],
+      knowledge: ['מאגר ידע', 'המידע הרשמי של המכללה שהבוט מחפש בו: הוספה, עריכה ובדיקת חיפוש.'],
+      models: ['ספקים ומודלים', 'מפתחות, איזה ספק עונה לסטודנטים ואילו מודלים משמשים אותו.'],
+      identity: ['זהות והוראות', 'מי הבוט ואיך הוא מתנהג: כללים בנויים מקוביות, זהות, ותצוגת מה שהוא מקבל.'],
+      designs: ['עיצובים', 'כל סוגי הכרטיסים שהבוט מציג, ויצירת עיצובים חדשים עם AI.'],
+      moodle: ['חיבור Moodle', 'בדיקת טוקן והפעלה או כיבוי של הפונקציות שהבוט יכול להפעיל.'],
+      system: ['הגדרות', 'מכסה, איפוס משתמש וסיסמת כניסה.'],
     };
 
     function switchTab(name) {
@@ -747,18 +671,26 @@
         b.classList.toggle('active', b.dataset.tab === name);
       });
       const meta = TAB_TITLES[name];
-      const titleEl = document.getElementById('pageTitle');
-      if (meta && titleEl) titleEl.textContent = `${meta.icon} ${meta.title}`;
+      if (meta) { document.getElementById('pageTitle').textContent = meta[0]; document.getElementById('pageDesc').textContent = meta[1]; }
+      document.querySelector('main').scrollTop = 0;
       if (name === 'users') loadUsers();
-      if (name === 'ai-context') loadMoodleFunctions();
-      if (name === 'prompt' && !PM) pmLoad().catch(e => showToast('שגיאה בטעינה: ' + e.message, true));
+      if (name === 'usage') loadUsage();
+      if (name === 'moodle') loadMoodleFunctions();
+      if (name === 'identity' || name === 'designs') {
+        const go = () => { if (name === 'designs') pmSub(document.getElementById('pmView-create').classList.contains('hidden') ? 'gallery' : 'create'); };
+        if (PM) go(); else pmLoad().then(go).catch(e => showToast('שגיאה בטעינה: ' + e.message, true));
+      }
     }
 
+    let toastTimer = null;
     function showToast(msg, isError = false) {
       const el = document.getElementById('statusToast');
-      el.textContent = msg;
-      el.className = `rounded-xl p-4 text-sm font-bold ${isError ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`;
-      setTimeout(() => { el.className = 'hidden'; }, (isError || msg.includes('⚠️')) ? 12000 : 4000);
+      const clean = String(msg ?? '').replace(/^(⟦\w+⟧|[\u2600-\u27BF\u{1F300}-\u{1FAFF}]\uFE0F?)\s*/u, '');
+      const warn = /\u26A0/.test(String(msg));
+      el.className = 'toast ' + (isError ? 'err' : 'ok');
+      el.textContent = (isError ? '⟦alert⟧ ' : warn ? '⟦alert⟧ ' : '⟦check⟧ ') + clean;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.className = 'hidden'; }, (isError || warn) ? 12000 : 4000);
     }
 
     // ===================== התחברות (Auth) =====================
@@ -769,7 +701,7 @@
     function showApp() {
       document.getElementById('loginGate').classList.add('hidden');
       document.getElementById('appContent').classList.remove('hidden');
-      switchTab('overview');
+      switchTab('usage');
       loadConfig();
       loadKnowledge();
       loadUsage();
@@ -832,7 +764,7 @@
         return;
       }
       resultsEl.classList.remove('hidden');
-      resultsEl.innerHTML = '<div class="text-sm text-slate-500 p-3">⏳ בודק את המפתח מול שרתי Google (רשימת מודלים + קריאת בדיקה אמיתית)...</div>';
+      resultsEl.innerHTML = '<div class="text-sm text-slate-500 p-3">⟦clock⟧ בודק את המפתח מול שרתי Google (רשימת מודלים + קריאת בדיקה אמיתית)...</div>';
       try {
         const res = await adminFetch(`${API_BASE}/api/admin/test-key`, {
           method: 'POST',
@@ -848,7 +780,7 @@
 
     function renderConnectivityBox(conn) {
       return `<div id="connectivityBox" class="p-3 rounded-xl border ${conn.success ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'} mb-2">
-        <div class="font-bold text-sm">${conn.success ? '✅ המפתח מגיב בפועל' : '❌ המפתח לא הצליח להגיב'}</div>
+        <div class="font-bold text-sm">${conn.success ? '⟦check⟧ המפתח מגיב בפועל' : '⟦x⟧ המפתח לא הצליח להגיב'}</div>
         ${conn.success
           ? `<div class="text-xs text-slate-600 mt-1">מודל שנבדק: ${conn.model_used} · זמן תגובה: ${conn.latency_ms}ms · תשובת בדיקה: "${conn.sample_reply || ''}"</div>`
           : `<div class="text-xs text-rose-700 mt-1">מודל שנבדק: ${conn.model_used || '—'} · שגיאת Google (קוד ${conn.status_code ?? '—'}): ${conn.error}</div>`}
@@ -861,7 +793,7 @@
       const model = modelSelect ? modelSelect.value : '';
       const box = document.getElementById('connectivityBox');
       if (box) {
-        box.outerHTML = `<div id="connectivityBox" class="p-3 rounded-xl border border-slate-200 bg-slate-50 mb-2 text-sm text-slate-500">⏳ בודק חיבור מול ${model}...</div>`;
+        box.outerHTML = `<div id="connectivityBox" class="p-3 rounded-xl border border-slate-200 bg-slate-50 mb-2 text-sm text-slate-500">⟦clock⟧ בודק חיבור מול ${model}...</div>`;
       }
       try {
         const res = await adminFetch(`${API_BASE}/api/admin/test-key/connectivity`, {
@@ -916,7 +848,7 @@
               ${optionsHtml}
             </select>
             <button type="button" onclick="retestConnectivity()" class="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 transition shrink-0">
-              🔄 בדוק
+              ⟦refresh⟧ בדוק
             </button>
           </div>`;
         }
@@ -925,7 +857,7 @@
       html += renderConnectivityBox(conn);
 
       if (models.success) {
-        html += `<div class="mb-1.5 font-bold text-sm">📋 מודלים זמינים למפתח זה (${models.count}):</div>`;
+        html += `<div class="mb-1.5 font-bold text-sm">⟦file⟧ מודלים זמינים למפתח זה (${models.count}):</div>`;
         html += '<div class="space-y-2 max-h-64 overflow-y-auto mb-2">';
         models.models.forEach(m => {
           const ref = m.free_tier_reference;
@@ -953,26 +885,30 @@
       const d = await res.json();
       box.innerHTML = '';
       Object.entries(d.providers).forEach(([p, info]) => {
-        const row = document.createElement('div');
-        row.className = 'p-3 rounded-xl border ' + (d.active === p ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-slate-50') + ' flex flex-wrap items-center gap-2 text-xs';
-        const name = document.createElement('b'); name.className = 'w-28 shrink-0 text-sm'; name.textContent = info.label; row.appendChild(name);
-        const st = document.createElement('span'); st.className = 'shrink-0 ' + (info.has_key ? 'text-emerald-700 font-bold' : 'text-slate-400');
-        st.textContent = info.has_key ? ('מפתח שמור ' + info.masked) : 'אין מפתח'; row.appendChild(st);
-        if (p !== 'google') {
-          const inp = document.createElement('input'); inp.type = 'password'; inp.id = 'provKey_' + p; inp.placeholder = 'הדבק מפתח ' + info.label;
-          inp.className = 'flex-1 min-w-[140px] border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500'; row.appendChild(inp);
-          const sv = document.createElement('button'); sv.type = 'button'; sv.textContent = 'שמור מפתח'; sv.className = 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5'; sv.onclick = () => saveProvKey(p, false); row.appendChild(sv);
-          if (info.has_key) { const del = document.createElement('button'); del.type = 'button'; del.textContent = 'מחק'; del.className = 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5'; del.onclick = () => saveProvKey(p, true); row.appendChild(del); }
-        } else { const sp = document.createElement('span'); sp.className = 'flex-1 text-slate-400'; sp.textContent = '(המפתח נשמר בשדה למעלה)'; row.appendChild(sp); }
+        const isActive = d.active === p;
+        const row = el('div', 'rounded-xl border p-3.5 ' + (isActive ? 'border-indigo-300 bg-indigo-50/50' : 'border-slate-200 bg-white'));
+        const head = el('div', 'flex flex-wrap items-center gap-2');
+        head.appendChild(el('b', 'text-sm', info.label));
+        head.appendChild(el('span', 'badge ' + (info.has_key ? 'badge-ok' : ''), info.has_key ? ('מפתח שמור ' + info.masked) : 'אין מפתח'));
+        if (isActive) head.appendChild(el('span', 'badge badge-accent', 'פעיל בבוט'));
+        head.appendChild(el('span', 'flex-1'));
         if (info.has_key) {
-          const t = document.createElement('button'); t.type = 'button'; t.textContent = 'בדוק'; t.className = 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5'; t.onclick = () => testProvider(p, row); row.appendChild(t);
-          const pick = document.createElement('button'); pick.type = 'button'; pick.textContent = 'בחר מודלים'; pick.className = 'font-bold text-slate-700 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5';
-          pick.onclick = () => { document.getElementById('modelProvider').value = p; loadModelPanel().then(() => document.getElementById('modelStatus').scrollIntoView({ behavior: 'smooth', block: 'center' })); }; row.appendChild(pick);
-          const on = document.createElement('button'); on.type = 'button';
-          on.textContent = d.active === p ? '✅ פעיל לבוט' : 'הפעל לבוט'; on.disabled = d.active === p;
-          on.className = 'font-bold rounded-lg px-2.5 py-1.5 ' + (d.active === p ? 'text-emerald-800 bg-emerald-100' : 'text-white bg-emerald-600'); on.onclick = () => setActiveProv(p); row.appendChild(on);
+          const t = el('button', 'btn btn-sm btn-soft', '⟦flask⟧בדוק'); t.type = 'button'; t.onclick = () => testProvider(p, row); head.appendChild(t);
+          const pick = el('button', 'btn btn-sm', '⟦sliders⟧בחר מודלים'); pick.type = 'button';
+          pick.onclick = () => { document.getElementById('modelProvider').value = p; loadModelPanel().then(() => document.getElementById('modelStatus').scrollIntoView({ behavior: 'smooth', block: 'center' })); }; head.appendChild(pick);
+          if (!isActive) { const on = el('button', 'btn btn-sm btn-primary', 'הפעל בבוט'); on.type = 'button'; on.onclick = () => setActiveProv(p); head.appendChild(on); }
         }
-        const out = document.createElement('div'); out.className = 'w-full text-xs'; out.id = 'provOut_' + p; row.appendChild(out);
+        row.appendChild(head);
+        if (p !== 'google') {
+          const line = el('div', 'flex gap-2 mt-3');
+          const inp = el('input', 'input flex-1'); inp.type = 'password'; inp.id = 'provKey_' + p; inp.placeholder = 'הדבק מפתח ' + info.label; inp.autocomplete = 'off'; inp.dir = 'ltr'; line.appendChild(inp);
+          const sv = el('button', 'btn btn-sm', 'שמור מפתח'); sv.style.height = '38px'; sv.type = 'button'; sv.onclick = () => saveProvKey(p, false); line.appendChild(sv);
+          if (info.has_key) { const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.style.height = '38px'; del.type = 'button'; del.onclick = () => saveProvKey(p, true); line.appendChild(del); }
+          row.appendChild(line);
+        } else {
+          row.appendChild(el('div', 'hint', 'המפתח של Google נשמר בכרטיס "מפתח Google Gemini" שלמעלה.'));
+        }
+        const out = el('div', 'text-xs mt-2'); out.id = 'provOut_' + p; row.appendChild(out);
         box.appendChild(row);
       });
     }
@@ -990,15 +926,15 @@
       await loadProviders();
     }
     async function testProvider(p, row) {
-      const out = document.getElementById('provOut_' + p); out.className = 'w-full text-xs text-slate-500'; out.textContent = '⏳ בודק את המפתח (בקשה אמיתית קטנה)...';
+      const out = document.getElementById('provOut_' + p); out.className = 'w-full text-xs text-slate-500'; out.textContent = '⟦clock⟧ בודק את המפתח (בקשה אמיתית קטנה)...';
       try {
         const m = await (await adminFetch(`${API_BASE}/api/admin/models?provider=${p}`)).json();
         const model = (m.chosen && m.chosen[0]) || (m.models && m.models[0] && m.models[0].name) || (m.defaults && m.defaults[0]);
-        if (m.error && !(m.models || []).length) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '❌ ' + m.error; return; }
+        if (m.error && !(m.models || []).length) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '⟦x⟧ ' + m.error; return; }
         const r = await (await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: p, model }) })).json();
         out.className = 'w-full text-xs ' + (r.success ? 'text-emerald-800' : 'text-rose-700');
-        out.textContent = r.success ? `✅ המפתח עובד · ${model} · ${(r.latency_ms / 1000).toFixed(1)} שניות · ${(m.models || []).length} מודלים זמינים` : `❌ ${model}: ${r.detail || ('שגיאה ' + (r.status_code ?? '') + ' ' + String(r.error || '').slice(0, 160))}`;
-      } catch (e) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '❌ ' + e.message; }
+        out.textContent = r.success ? `⟦check⟧ המפתח עובד · ${model} · ${(r.latency_ms / 1000).toFixed(1)} שניות · ${(m.models || []).length} מודלים זמינים` : `⟦x⟧ ${model}: ${r.detail || ('שגיאה ' + (r.status_code ?? '') + ' ' + String(r.error || '').slice(0, 160))}`;
+      } catch (e) { out.className = 'w-full text-xs text-rose-700'; out.textContent = '⟦x⟧ ' + e.message; }
     }
 
     // ===================== מודל ה-AI של הצ'אט =====================
@@ -1043,21 +979,21 @@
       if (!model) { showToast('בחר מודל לבדיקה', true); return; }
       const line = document.createElement('div');
       line.className = 'p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600';
-      line.textContent = '⏳ בודק את ' + model + ' עם המפתח השמור...';
+      line.textContent = '⟦clock⟧ בודק את ' + model + ' עם המפתח השמור...';
       out.prepend(line);
       try {
         const res = await adminFetch(`${API_BASE}/api/admin/models/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: curProv(), model }) });
         const d = await res.json();
         if (d.success) {
           line.className = 'p-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800';
-          line.textContent = `✅ ${model}: ענה תוך ${(d.latency_ms / 1000).toFixed(1)} שניות`;
+          line.textContent = `⟦check⟧ ${model}: ענה תוך ${(d.latency_ms / 1000).toFixed(1)} שניות`;
         } else {
           line.className = 'p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700';
-          line.textContent = `❌ ${model}: ${d.detail || ('שגיאה ' + (d.status_code ?? '') + ' ' + String(d.error || '').slice(0, 140))}`;
+          line.textContent = `⟦x⟧ ${model}: ${d.detail || ('שגיאה ' + (d.status_code ?? '') + ' ' + String(d.error || '').slice(0, 140))}`;
         }
       } catch (err) {
         line.className = 'p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700';
-        line.textContent = `❌ ${model}: ${err.message}`;
+        line.textContent = `⟦x⟧ ${model}: ${err.message}`;
       }
     }
     async function saveModelChoice() {
@@ -1089,17 +1025,17 @@
       const badge = document.getElementById('keyStatusBadge');
       if (data.has_api_key) {
         badge.textContent = `מפתח מוגדר (${data.masked_api_key})`;
-        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold shrink-0';
+        badge.className = 'badge badge-ok shrink-0';
       } else {
         badge.textContent = 'טרם הוזן מפתח API (מצב הדגמה פעיל)';
-        badge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold shrink-0';
+        badge.className = 'badge badge-warn shrink-0';
       }
       loadProviders().catch(() => {});
       loadModelPanel().catch(() => {});
     }
 
     async function saveConfig(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       const apiKey = document.getElementById('apiKeyInput').value;
       const limit = parseInt(document.getElementById('quotaLimitInput').value, 10);
       const botIdentity = document.getElementById('botIdentityInput').value;
@@ -1155,10 +1091,10 @@
     }
 
     const USAGE_LABELS = {
-      chat_answer: '💬 תשובות צ\'אט לסטודנטים',
-      ai_draft: '✨ ניסוחי AI למנהל',
-      categorize: '🗂️ סיווגי קטגוריה אוטומטיים',
-      embedding: '🧮 יצירת embeddings'
+      chat_answer: '⟦chat⟧ תשובות צ\'אט לסטודנטים',
+      ai_draft: '⟦sparkle⟧ ניסוחי AI למנהל',
+      categorize: '⟦layers⟧ סיווגי קטגוריה אוטומטיים',
+      embedding: '⟦cpu⟧ יצירת embeddings'
     };
 
     // ===================== הקשר ל-AI: בדיקת טוקן + פונקציות Moodle + תצוגה מקדימה =====================
@@ -1184,7 +1120,7 @@
         const data = await res.json();
         btn.disabled = false;
         if (!res.ok) {
-          resultEl.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.detail || 'שגיאה בחיבור')}</div>`;
+          resultEl.innerHTML = `<div class="text-rose-600">⟦x⟧ ${escapeHtmlAdmin(data.detail || 'שגיאה בחיבור')}</div>`;
           moodleTestToken = null;
           moodleTestUserId = null;
           document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = true);
@@ -1192,11 +1128,11 @@
         }
         moodleTestToken = token;
         moodleTestUserId = data.userid;
-        resultEl.innerHTML = `<div class="text-emerald-700 font-bold">✅ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>`;
+        resultEl.innerHTML = `<div class="text-emerald-700 font-bold">⟦check⟧ מחובר כ-${escapeHtmlAdmin(data.fullname || data.username || '')} (userid ${escapeHtmlAdmin(data.userid)})</div>`;
         document.querySelectorAll('.moodle-test-btn').forEach(b => b.disabled = false);
       } catch (err) {
         btn.disabled = false;
-        resultEl.innerHTML = '<div class="text-rose-600">⚠️ שגיאת תקשורת</div>';
+        resultEl.innerHTML = '<div class="text-rose-600">⟦alert⟧ שגיאת תקשורת</div>';
       }
     }
 
@@ -1219,12 +1155,12 @@
           const paramsInputs = (fn.params || []).map(p => `
             <input type="text" data-fn-arg="${escapeHtmlAdmin(fn.name)}" data-arg-name="${escapeHtmlAdmin(p.name)}"
               placeholder="${escapeHtmlAdmin(p.description)}${p.required ? ' *' : ''}"
-              class="text-xs border border-slate-300 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500" />
+              class="input input-sm" style="width:auto;min-width:160px" />
           `).join('');
           return `<div class="p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition">
             <label class="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" data-fn="${escapeHtmlAdmin(fn.name)}" ${checked} class="w-4 h-4 accent-indigo-600 shrink-0" />
-              <span class="text-lg shrink-0">${fn.icon}</span>
+              <span class="shrink-0" style="color:var(--muted)">⟦plug⟧</span>
               <div class="min-w-0">
                 <div class="font-bold text-sm text-slate-800">${escapeHtmlAdmin(fn.label)}</div>
                 <div class="text-[11px] text-slate-400 font-mono">${escapeHtmlAdmin(fn.name)} (${escapeHtmlAdmin(fn.moodle_function)})</div>
@@ -1234,9 +1170,9 @@
             <div class="mt-2 flex flex-wrap gap-2 items-center mr-7">
               ${paramsInputs}
               <button type="button" onclick="testMoodleFunction('${fn.name}')"
-                class="moodle-test-btn btn-press text-xs bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white font-bold rounded-lg px-3 py-1.5 transition"
+                class="moodle-test-btn btn btn-sm btn-soft"
                 ${hasActiveTestToken ? '' : 'disabled'}>
-                🧪 בדוק
+                ⟦flask⟧ בדוק
               </button>
             </div>
             <div id="moodleTestResult-${escapeHtmlAdmin(fn.name)}" class="hidden mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 mr-7"></div>
@@ -1266,15 +1202,15 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          box.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.detail || 'שגיאה')}</div>`;
+          box.innerHTML = `<div class="text-rose-600">⟦x⟧ ${escapeHtmlAdmin(data.detail || 'שגיאה')}</div>`;
           return;
         }
         if (!data.ok) {
-          box.innerHTML = `<div class="text-rose-600">⛔ ${escapeHtmlAdmin(data.error || 'שגיאה')}</div>`;
+          box.innerHTML = `<div class="text-rose-600">⟦x⟧ ${escapeHtmlAdmin(data.error || 'שגיאה')}</div>`;
           return;
         }
         box.innerHTML = `
-          <div class="text-emerald-700 font-bold mb-1">✅ תוצאה (הניסוח שהסטודנט היה מקבל):</div>
+          <div class="text-emerald-700 font-bold mb-1">⟦check⟧ תוצאה (הניסוח שהסטודנט היה מקבל):</div>
           <div class="whitespace-pre-wrap mb-2 text-slate-700">${escapeHtmlAdmin(data.formatted)}</div>
           <details>
             <summary class="cursor-pointer text-slate-400 hover:text-slate-600">JSON גולמי מ-Moodle (לבדיקה טכנית)</summary>
@@ -1282,7 +1218,7 @@
           </details>
         `;
       } catch (err) {
-        box.innerHTML = '<div class="text-rose-600">⚠️ שגיאת תקשורת</div>';
+        box.innerHTML = '<div class="text-rose-600">⟦alert⟧ שגיאת תקשורת</div>';
       }
     }
 
@@ -1347,74 +1283,54 @@
         const live = quota ? quota.live : null;
         const usedToday = quota && quota.today ? (quota.today.total || 0) : 0;
         const pct = Math.min(100, Math.round(usedToday / dailyLimit * 100));
-        const healthMap = { ok: ['תקין', 'text-emerald-700'], limited: ['מוגבל - גוגל דוחה בקשות (429)', 'text-rose-700'], degraded: ['תקלות', 'text-amber-700'] };
-        const hm = live ? (healthMap[live.health] || healthMap.ok) : ['לא זמין', 'text-slate-500'];
+        const healthMap = { ok: ['תקין', 'badge-ok'], limited: ['מוגבל: גוגל דוחה בקשות (429)', 'badge-err'], degraded: ['תקלות', 'badge-warn'] };
+        const hm = live ? (healthMap[live.health] || healthMap.ok) : ['לא זמין', ''];
         const modelRows = live ? Object.keys(live.per_model || {}).map(m => {
           const x = live.per_model[m];
-          return `<div class="flex justify-between text-[11px] py-0.5"><span class="text-slate-600" dir="ltr">${escapeHtmlAdmin(m)}</span><span>${x.ok} תקין / <b class="${x.rate_limited ? 'text-rose-600' : ''}">${x.rate_limited}</b> נדחו / ${x.errors} שגיאות</span></div>`;
+          return `<tr><td dir="ltr" style="text-align:right">${escapeHtmlAdmin(m)}</td><td>${x.ok}</td><td style="${x.rate_limited ? 'color:var(--err);font-weight:700' : ''}">${x.rate_limited}</td><td>${x.errors}</td></tr>`;
         }).join('') : '';
+        const barColor = pct > 85 ? 'var(--err)' : pct > 60 ? 'var(--warn)' : 'var(--accent)';
         const liveCard = `
-          <div class="bg-white rounded-xl p-4 border border-indigo-200 mb-4">
-            <div class="flex justify-between items-center mb-2">
-              <span class="font-bold text-sm">מצב AI בזמן אמת <span class="text-[10px] text-slate-400">(מתעדכן כל 15 שניות)</span></span>
-              <span class="font-bold text-xs ${hm[1]}">${hm[0]}</span>
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-center mb-3">
-              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold text-indigo-700 text-lg">${live ? live.requests_last_minute : '-'}</div><div class="text-[10px] text-slate-500">קריאות בדקה האחרונה</div></div>
-              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold text-indigo-700 text-lg">${live ? live.requests_last_hour : '-'}</div><div class="text-[10px] text-slate-500">קריאות בשעה האחרונה</div></div>
-              <div class="bg-slate-50 rounded-lg p-2"><div class="font-bold ${live && live.rate_limited_last_hour ? 'text-rose-600' : 'text-indigo-700'} text-lg">${live ? live.rate_limited_last_hour : '-'}</div><div class="text-[10px] text-slate-500">נדחו (429) בשעה</div></div>
-            </div>
-            <div class="flex justify-between text-xs mb-1"><span>קריאות היום: <b>${usedToday}</b> מתוך תקרה יומית
-              <input id="aiDailyLimitInput" type="number" min="1" value="${dailyLimit}" class="w-20 border border-slate-300 rounded px-1 text-xs mx-1" onchange="try{localStorage.setItem('aiDailyLimit', this.value)}catch(e){};loadUsage()"></span><span class="font-bold">${pct}%</span></div>
-            <div class="bg-slate-100 rounded h-2 mb-3"><div class="${pct > 85 ? 'bg-rose-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500'} h-2 rounded" style="width:${pct}%"></div></div>
-            ${modelRows}
-            <div class="text-[10px] text-slate-400 mt-2">גוגל לא מספקת מספר "מכסה שנותרה". התקרה היומית היא ערך שאתה קובע (לפי התוכנית שלך), והנתונים החיים הם מה ששרת הצ'אט מדד בפועל מאז ההפעלה האחרונה שלו.</div>
-          </div>`;
+          <div class="flex items-center justify-between gap-2 mb-3"><span class="section-label" style="margin:0">מצב AI</span><span class="badge ${hm[1]}">${hm[0]}</span></div>
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="kpi"><b>${live ? live.requests_last_minute : '-'}</b><span>קריאות בדקה האחרונה</span></div>
+            <div class="kpi"><b>${live ? live.requests_last_hour : '-'}</b><span>קריאות בשעה האחרונה</span></div>
+            <div class="kpi"><b style="${live && live.rate_limited_last_hour ? 'color:var(--err)' : ''}">${live ? live.rate_limited_last_hour : '-'}</b><span>נדחו (429) בשעה</span></div>
+          </div>
+          <div class="flex justify-between items-center text-[13px] mb-1.5"><span>קריאות היום: <b>${usedToday}</b> מתוך תקרה
+            <input id="aiDailyLimitInput" type="number" min="1" value="${dailyLimit}" class="input input-sm" style="width:84px;display:inline-block;margin:0 4px" onchange="try{localStorage.setItem('aiDailyLimit', this.value)}catch(e){};loadUsage()"></span><b>${pct}%</b></div>
+          <div class="bar mb-4"><i style="width:${pct}%;background:${barColor}"></i></div>
+          ${modelRows ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>מודל</th><th>תקין</th><th>נדחו</th><th>שגיאות</th></tr></thead><tbody>${modelRows}</tbody></table></div>` : ''}
+          <div class="hint">גוגל לא מספקת מספר "מכסה שנותרה". התקרה היומית היא ערך שאתה קובע לפי התוכנית שלך, והנתונים החיים נמדדים בשרת הצ'אט מאז ההפעלה האחרונה שלו.</div>`;
 
         const api = data.api_usage_today || {};
         const total = api.total || 0;
         const rows = Object.keys(USAGE_LABELS)
-          .map(key => `<div class="flex justify-between py-1"><span class="text-slate-600">${USAGE_LABELS[key]}</span><span class="font-bold">${api[key] || 0}</span></div>`)
+          .map(key => `<div class="flex justify-between py-2 text-[13px]" style="border-top:1px solid var(--line)"><span style="color:var(--text-2)">${USAGE_LABELS[key]}</span><b>${api[key] || 0}</b></div>`)
           .join('');
 
         const su = data.student_usage || {};
         const students = (su.students || []).filter(s => s.questions_today > 0);
         const studentRows = students.length
-          ? students.map(s => `<div class="flex justify-between items-center py-1.5 text-xs border-b border-slate-100 last:border-0">
-              <span class="text-slate-700 font-bold">${escapeHtmlAdmin(s.username)}</span>
-              <span class="flex items-center gap-2">
-                <span class="font-bold text-indigo-700">${s.questions_today} שאלות</span>
-                <span class="text-slate-400">${s.last_message_at ? new Date(s.last_message_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-              </span>
+          ? students.map(s => `<div class="flex justify-between items-center py-2 text-[13px]" style="border-top:1px solid var(--line)">
+              <span class="font-semibold">${escapeHtmlAdmin(s.username)}</span>
+              <span class="flex items-center gap-3"><b style="color:var(--accent-d)">${s.questions_today} שאלות</b>
+                <span style="color:var(--muted)">${s.last_message_at ? new Date(s.last_message_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : ''}</span></span>
             </div>`).join('')
-          : '<div class="text-xs text-slate-400">אף סטודנט עוד לא שאל שאלה היום</div>';
+          : '<div class="empty" style="padding:14px">אף סטודנט עוד לא שאל שאלה היום</div>';
 
         panel.innerHTML = liveCard + `
+          <hr class="hr">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <div class="flex justify-between items-center mb-2">
-                <span class="font-bold text-sm">קריאות ל-Gemini היום</span>
-                <span class="font-bold text-indigo-700 text-lg">${total}</span>
-              </div>
-              ${rows}
-            </div>
-            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <div class="flex justify-between items-center mb-2">
-                <span class="font-bold text-sm">שאלות סטודנטים היום (אמיתי, מה-DB)</span>
-                <span class="font-bold text-indigo-700 text-lg">${su.total_questions_today || 0}</span>
-              </div>
-              <div class="text-xs text-slate-500 mb-2">סטודנטים פעילים היום: ${su.active_students_today || 0} מתוך ${(su.students || []).length} רשומים</div>
-              ${studentRows}
-            </div>
+            <div class="kpi" style="padding:16px"><div class="flex justify-between items-baseline mb-2"><span class="section-label" style="margin:0">קריאות AI היום</span><b>${total}</b></div>${rows}</div>
+            <div class="kpi" style="padding:16px"><div class="flex justify-between items-baseline mb-1"><span class="section-label" style="margin:0">שאלות סטודנטים היום</span><b>${su.total_questions_today || 0}</b></div>
+              <div class="hint" style="margin:0 0 6px">פעילים היום: ${su.active_students_today || 0} מתוך ${(su.students || []).length} רשומים</div>${studentRows}</div>
           </div>
           <div id="usageBreakdown" class="mt-4"></div>
-          <div class="text-[11px] text-slate-400 mt-3">
-            כל המספרים כאן נספרים ישירות מההודעות האמיתיות ב-DB - אין כאן מכסה או הגבלה (השאלות ללא הגבלה). תוכן השיחות פרטי ואינו מוצג למנהל - רק כמה ובמה השתמשו.
-          </div>
-        `;
+          <div class="hint">כל המספרים נספרים ישירות מההודעות האמיתיות. אין מכסה או הגבלה, ותוכן השיחות פרטי ואינו מוצג.</div>`;
         loadBreakdown();
       } catch (err) {
-        panel.innerHTML = '<div class="text-rose-600 text-xs">שגיאה בטעינת מדדי השימוש</div>';
+        panel.innerHTML = '<div class="empty" style="color:var(--err)">שגיאה בטעינת הנתונים</div>';
       }
     }
 
@@ -1427,7 +1343,7 @@
         const res = await adminFetch(`${API_BASE}/api/admin/users`);
 
         if (res.status === 404) {
-          panel.innerHTML = '<div class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">⏳ הנתונים עדיין לא זמינים</div>';
+          panel.innerHTML = '<div class="empty">הנתונים עדיין לא זמינים</div>';
           return;
         }
         if (!res.ok) {
@@ -1439,7 +1355,7 @@
         if (countEl) countEl.textContent = users.length;
 
         if (!users.length) {
-          panel.innerHTML = '<div class="text-sm text-slate-400 text-center py-6">אין משתמשים רשומים עדיין</div>';
+          panel.innerHTML = '<div class="empty">אין משתמשים רשומים עדיין</div>';
           return;
         }
 
@@ -1447,35 +1363,22 @@
           let created = u.created_at || '—';
           if (u.created_at) {
             const d = new Date(u.created_at);
-            if (!isNaN(d.getTime())) created = d.toLocaleString('he-IL');
+            if (!isNaN(d.getTime())) created = d.toLocaleDateString('he-IL');
           }
-          return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
-            <td class="px-4 py-2.5 text-sm font-bold text-slate-800">${escapeHtmlAdmin(u.username ?? '—')}</td>
-            <td class="px-4 py-2.5 text-xs text-slate-500">${created}</td>
-            <td class="px-4 py-2.5 text-sm text-center">${u.conversation_count ?? 0}</td>
-            <td class="px-4 py-2.5 text-sm text-center">${u.message_count ?? 0}</td>
-            <td class="px-4 py-2.5 text-center">
-              <button onclick="openUserActivity('${u.id}')" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold px-2.5 py-1 rounded-lg transition">👁 מה הוא עשה</button>
-            </td>
+          return `<tr>
+            <td class="font-semibold">${escapeHtmlAdmin(u.username ?? '—')}</td>
+            <td style="color:var(--muted)">${created}</td>
+            <td style="text-align:center">${u.conversation_count ?? 0}</td>
+            <td style="text-align:center">${u.message_count ?? 0}</td>
+            <td style="text-align:center"><button onclick="openUserActivity('${u.id}')" class="btn btn-sm btn-soft">⟦eye⟧פעילות</button></td>
           </tr>`;
         }).join('');
 
-        panel.innerHTML = `<div class="overflow-x-auto">
-          <table class="w-full text-right">
-            <thead>
-              <tr class="border-b-2 border-slate-200 text-xs text-slate-500 font-bold">
-                <th class="px-4 py-2">שם משתמש</th>
-                <th class="px-4 py-2">נוצר בתאריך</th>
-                <th class="px-4 py-2 text-center">מספר שיחות</th>
-                <th class="px-4 py-2 text-center">מספר הודעות</th>
-                <th class="px-4 py-2 text-center">פעילות</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`;
+        panel.innerHTML = `<div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>שם משתמש</th><th>נוצר</th><th style="text-align:center">שיחות</th><th style="text-align:center">הודעות</th><th style="text-align:center"></th></tr></thead>
+            <tbody>${rows}</tbody></table></div>`;
       } catch (err) {
-        panel.innerHTML = '<div class="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">⏳ הנתונים עדיין לא זמינים</div>';
+        panel.innerHTML = '<div class="empty">הנתונים עדיין לא זמינים</div>';
       }
     }
 
@@ -1504,9 +1407,9 @@
           : '<div class="text-slate-400 text-center py-3 text-xs">אין פעילות ב-30 הימים האחרונים</div>';
         body.innerHTML = `
           <div class="grid grid-cols-3 gap-2 mb-3 text-center">
-            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-lg">${data.questions_total || 0}</div><div class="text-[10px] text-slate-500">שאלות סה"כ</div></div>
-            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-lg">${data.conversations || 0}</div><div class="text-[10px] text-slate-500">שיחות</div></div>
-            <div class="bg-slate-50 rounded-xl p-2 border border-slate-200"><div class="font-bold text-indigo-700 text-xs pt-2">${data.last_active ? new Date(data.last_active).toLocaleString('he-IL') : '-'}</div><div class="text-[10px] text-slate-500">פעילות אחרונה</div></div>
+            <div class="kpi" style="padding:10px"><div class="font-bold text-indigo-700 text-lg">${data.questions_total || 0}</div><div class="text-[10px] text-slate-500">שאלות סה"כ</div></div>
+            <div class="kpi" style="padding:10px"><div class="font-bold text-indigo-700 text-lg">${data.conversations || 0}</div><div class="text-[10px] text-slate-500">שיחות</div></div>
+            <div class="kpi" style="padding:10px"><div class="font-bold text-indigo-700 text-xs pt-2">${data.last_active ? new Date(data.last_active).toLocaleString('he-IL') : '-'}</div><div class="text-[10px] text-slate-500">פעילות אחרונה</div></div>
           </div>
           <div class="text-xs font-bold text-slate-600 mb-1">שאלות לפי יום (30 ימים)</div>
           ${bars}
@@ -1541,7 +1444,7 @@
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          previewEl.textContent = `⛔ ${err.detail || 'שגיאה בניסוח'}`;
+          previewEl.textContent = `⟦x⟧ ${err.detail || 'שגיאה בניסוח'}`;
           previewEl.classList.remove('typing-cursor');
           btn.disabled = false;
           return;
@@ -1556,7 +1459,7 @@
           previewEl.textContent = fullText;
         }
       } catch (err) {
-        previewEl.textContent = `⚠️ שגיאת תקשורת: ${err.message}`;
+        previewEl.textContent = `⟦alert⟧ שגיאת תקשורת: ${err.message}`;
       } finally {
         previewEl.classList.remove('typing-cursor');
         btn.disabled = false;
@@ -1596,7 +1499,7 @@
       const reindexBtn = document.getElementById('reindexBtn');
       if (reindexBtn) {
         reindexBtn.classList.toggle('hidden', missingCount === 0);
-        reindexBtn.textContent = `🧮 השלם וקטורים חסרים (${missingCount})`;
+        reindexBtn.textContent = `⟦cpu⟧ השלם וקטורים חסרים (${missingCount})`;
       }
       renderKnowledge();
     }
@@ -1646,23 +1549,23 @@
             <div class="flex items-start justify-between gap-3 py-2 border-t border-slate-100 first:border-t-0">
               <div class="min-w-0">
                 <div class="text-[11px] font-bold text-slate-500 mb-0.5">${esc(c.title)}
-                  ${c.has_embedding ? '' : '<span class="text-amber-700">⚠️ ללא וקטור</span>'}</div>
+                  ${c.has_embedding ? '' : '<span class="text-amber-700">⟦alert⟧ ללא וקטור</span>'}</div>
                 <div class="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">${esc(c.text)}</div>
               </div>
               <div class="flex gap-1 shrink-0">
-                <button onclick="openEditChunk('${esc(c.id)}')" class="text-[11px] text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200">✏️</button>
-                <button onclick="deleteChunk('${esc(c.id)}')" class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200">🗑️</button>
+                <button onclick="openEditChunk('${esc(c.id)}')" class="text-[11px] text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200">⟦edit⟧</button>
+                <button onclick="deleteChunk('${esc(c.id)}')" class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200">⟦trash⟧</button>
               </div>
             </div>`).join('');
           return `
             <details data-kind="doc" data-key="${esc(docKey)}" ${(q || openDocs.has(docKey)) ? 'open' : ''} ontoggle="onFolderToggle(this)"
                      class="bg-white border border-slate-200 rounded-xl">
               <summary class="cursor-pointer select-none px-3 py-2 flex items-center justify-between gap-2 text-sm">
-                <span class="font-bold text-slate-800 min-w-0 truncate">📄 ${esc(doc)}
+                <span class="font-bold text-slate-800 min-w-0 truncate">⟦file⟧ ${esc(doc)}
                   <span class="text-xs font-normal text-slate-400">· ${items.length} מקטעים</span>
-                  ${docMissing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ ${docMissing} ללא וקטור</span>` : ''}</span>
+                  ${docMissing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⟦alert⟧ ${docMissing} ללא וקטור</span>` : ''}</span>
                 <button onclick="event.preventDefault(); event.stopPropagation(); deleteChunks(this)" data-ids="${items.map(c => esc(c.id)).join(',')}" data-label="המסמך '${esc(doc)}'"
-                  class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">🗑️ מחק מסמך</button>
+                  class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">⟦trash⟧ מחק מסמך</button>
               </summary>
               <div class="px-3 pb-2">${itemsHtml}</div>
             </details>`;
@@ -1673,13 +1576,13 @@
                    class="bg-slate-50 border border-slate-200 rounded-2xl">
             <summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3">
               <div class="min-w-0">
-                <div class="font-bold text-indigo-900 text-sm">📁 ${esc(cat)}
+                <div class="font-bold text-indigo-900 text-sm">⟦folder⟧ ${esc(cat)}
                   <span class="text-xs font-normal text-slate-500">· ${docs.size} מסמכים · ${allChunks.length} מקטעים</span>
-                  ${missing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ ${missing} ללא וקטור</span>` : ''}</div>
+                  ${missing ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">⟦alert⟧ ${missing} ללא וקטור</span>` : ''}</div>
                 ${summaries[cat] ? `<div class="text-[11px] text-slate-500 mt-0.5 truncate">${esc(summaries[cat])}</div>` : ''}
               </div>
               <button onclick="event.preventDefault(); event.stopPropagation(); deleteChunks(this)" data-ids="${allChunks.map(c => esc(c.id)).join(',')}" data-label="כל התיקייה '${esc(cat)}'"
-                class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">🗑️ מחק תיקייה</button>
+                class="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 shrink-0">⟦trash⟧ מחק תיקייה</button>
             </summary>
             <div class="px-3 pb-3 space-y-2">${docsHtml}</div>
           </details>`;
@@ -1756,7 +1659,7 @@
             const bits = [];
             if (ev.saved !== undefined) bits.push(`נשמרו ${ev.saved}`);
             if (ev.skipped) bits.push(`דולגו ככפילות ${ev.skipped}`);
-            if (ev.without_vector) bits.push(`⚠️ ללא וקטור ${ev.without_vector}`);
+            if (ev.without_vector) bits.push(`⟦alert⟧ ללא וקטור ${ev.without_vector}`);
             if (ev.fixed !== undefined) bits.push(`הושלמו ${ev.fixed}`);
             detailsEl.textContent = bits.join(' · ');
           } else if (ev.type === 'done') {
@@ -1789,12 +1692,12 @@
 
     // כפתור שליחה: מושבת בזמן העיבוד כדי למנוע שליחה כפולה
     async function withButtonLoading(btn, loadingText, fn) {
-      const original = btn ? btn.textContent : '';
+      const original = btn ? btn.innerHTML : '';
       if (btn) { btn.disabled = true; btn.textContent = loadingText; btn.classList.add('opacity-60', 'cursor-wait'); }
       try {
         return await fn();
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = original; btn.classList.remove('opacity-60', 'cursor-wait'); }
+        if (btn) { btn.disabled = false; btn.innerHTML = original; btn.classList.remove('opacity-60', 'cursor-wait'); }
       }
     }
 
@@ -1811,7 +1714,7 @@
       e.preventDefault();
       const title = document.getElementById('docTitleInput').value;
       const text = document.getElementById('docTextInput').value;
-      await withButtonLoading(e.submitter, '⏳ מעבד...', async () => {
+      await withButtonLoading(e.submitter, '⟦clock⟧ מעבד...', async () => {
         const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1835,7 +1738,7 @@
       formData.append('title', title);
       formData.append('file', fileInput.files[0]);
 
-      await withButtonLoading(e.submitter, '⏳ מעבד את הקובץ...', async () => {
+      await withButtonLoading(e.submitter, '⟦clock⟧ מעבד את הקובץ...', async () => {
         const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/pdf`, {
           method: 'POST',
           body: formData
@@ -1850,7 +1753,7 @@
 
     async function reindexMissing() {
       const btn = document.getElementById('reindexBtn');
-      await withButtonLoading(btn, '⏳ משלים וקטורים...', async () => {
+      await withButtonLoading(btn, '⟦clock⟧ משלים וקטורים...', async () => {
         const result = await streamWithProgress(`${API_BASE}/api/admin/knowledge/reindex`, { method: 'POST' }, 'משלים וקטורים חסרים');
         if (result.error) showToast(result.error, true); else showToast(result.message, result.still_missing > 0);
         await loadKnowledge();
@@ -1863,17 +1766,17 @@
       const cats = [...new Set(knowledgeData.catalog.map(x => x.category).concat(knowledgeData.chunks.map(x => x.category)))];
       const box = document.createElement('div');
       box.id = 'editChunkOverlay';
-      box.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      box.className = 'modal-bg';
       box.innerHTML = `
-        <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-3" dir="rtl">
-          <div class="flex justify-between items-center"><h3 class="font-bold">✏️ עריכת קטע</h3><button type="button" id="editX" class="text-slate-400 text-xl">×</button></div>
-          <label class="block text-xs font-bold text-slate-600">כותרת<input id="editTitle" class="mt-1 w-full border border-slate-300 rounded-xl px-3 py-2 text-sm" /></label>
-          <label class="block text-xs font-bold text-slate-600">נושא (קטגוריה)<input id="editCat" list="editCats" class="mt-1 w-full border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+        <div class="modal p-5 space-y-3 overflow-auto" dir="rtl">
+          <div class="flex justify-between items-center"><h3 class="font-bold">עריכת קטע</h3><button type="button" id="editX" class="btn btn-ghost btn-sm">⟦x⟧</button></div>
+          <label class="block text-xs font-bold text-slate-600">כותרת<input id="editTitle" class="input mt-1" /></label>
+          <label class="block text-xs font-bold text-slate-600">נושא (קטגוריה)<input id="editCat" list="editCats" class="input mt-1" />
             <datalist id="editCats">${cats.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
-          <label class="block text-xs font-bold text-slate-600">תוכן<textarea id="editText" rows="12" class="mt-1 w-full border border-slate-300 rounded-xl px-3 py-2 text-sm leading-relaxed"></textarea></label>
+          <label class="block text-xs font-bold text-slate-600">תוכן<textarea id="editText" rows="12" class="textarea mt-1"></textarea></label>
           <div class="text-[11px] text-slate-500">אחרי השמירה הבוט משתמש בנוסח החדש מיד (הווקטור לחיפוש נבנה מחדש).</div>
-          <div class="flex gap-2 justify-end"><button type="button" id="editCancel" class="text-sm px-4 py-2 rounded-xl bg-slate-100">ביטול</button>
-            <button type="button" id="editSave" class="text-sm font-bold px-4 py-2 rounded-xl bg-indigo-600 text-white">שמור</button></div>
+          <div class="flex gap-2 justify-end"><button type="button" id="editCancel" class="btn">ביטול</button>
+            <button type="button" id="editSave" class="btn btn-primary">שמור</button></div>
         </div>`;
       document.body.appendChild(box);
       box.querySelector('#editTitle').value = c.title || '';
@@ -1965,24 +1868,27 @@
     let PM_GEN = null;        // the design being made with AI (not yet saved)
 
     function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-    const PM_INPUT = 'w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-indigo-500';
+    const PM_INPUT = 'input input-sm';
 
     function pmDirty(on = true) {
       PM_DIRTY = on;
       document.getElementById('pmDirty').classList.toggle('hidden', !on);
     }
+    const PM_SUBS = { identity: ['notes', 'ident', 'preview', 'history'], designs: ['gallery', 'create'] };
     function pmSub(name) {
-      document.querySelectorAll('.pmSub').forEach(b => b.classList.toggle('active', b.dataset.sub === name));
-      ['notes', 'gallery', 'create', 'history'].forEach(v => document.getElementById('pmView-' + v).classList.toggle('hidden', v !== name));
+      const grp = Object.values(PM_SUBS).find(g => g.includes(name)); if (!grp) return;
+      grp.forEach(v => document.getElementById('pmView-' + v).classList.toggle('hidden', v !== name));
+      document.querySelectorAll('.pmSub').forEach(b => { if (grp.includes(b.dataset.sub)) b.classList.toggle('active', b.dataset.sub === name); });
+      if (!PM) return;
       if (name === 'gallery') pmLoadGallery();
       if (name === 'create') pmRenderCustom();
       if (name === 'history') pmRenderVersions();
     }
-
+    function pmDiscard() { if (confirm('לבטל את כל השינויים שלא נשמרו?')) pmLoad(); }
     // --- a preview that draws blocks with the students' own code (an iframe of the app), so what the admin sees is what the student sees
     function pmPreview(host) {
       const fr = document.createElement('iframe');
-      fr.src = PM_PREVIEW_URL; fr.className = 'w-full rounded-xl border border-slate-200 bg-white'; fr.style.height = '120px'; fr.title = 'תצוגה מקדימה';
+      fr.src = PM_PREVIEW_URL; fr.className = 'w-full rounded-xl border border-slate-200 bg-white'; fr.style.minHeight = '80px'; fr.style.height = '120px'; fr.title = 'תצוגה מקדימה';
       host.innerHTML = ''; host.appendChild(fr);
       const st = { ready: false, items: null };
       const post = (m) => { try { fr.contentWindow.postMessage(m, 'https://david-oved.github.io'); } catch (e) {} };
@@ -2042,7 +1948,7 @@
     }
     function pmSimChange() { pmRenderMine(); pmRenderSections(true); }
     function pmSelect(opts, val, onchange) {
-      const s = el('select', 'border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white max-w-full');
+      const s = el('select', 'select select-sm');
       opts.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; if (v === val) o.selected = true; s.appendChild(o); });
       s.onchange = () => { onchange(s.value); pmDirty(); };
       return s;
@@ -2064,7 +1970,7 @@
       const box = el('div', 'space-y-1'); const o = c.p.options || (c.p.options = ['', '']);
       o.forEach((v, i) => {
         const row = el('div', 'flex gap-1'); row.appendChild(pmField('input', v, 'אפשרות ' + (i + 1), val => { o[i] = val; c.raw = null; }, PM_INPUT + ' text-xs'));
-        if (o.length > min) { const x = el('button', 'text-rose-600 px-1', '✕'); x.type = 'button'; x.onclick = () => { o.splice(i, 1); pmRenderAll(); pmDirty(); }; row.appendChild(x); }
+        if (o.length > min) { const x = el('button', 'text-rose-600 px-1', '⟦x⟧'); x.type = 'button'; x.onclick = () => { o.splice(i, 1); pmRenderAll(); pmDirty(); }; row.appendChild(x); }
         box.appendChild(row);
       });
       if (o.length < max) { const add = el('button', 'text-xs font-bold text-indigo-700', '＋ אפשרות'); add.type = 'button'; add.onclick = () => { o.push(''); pmRenderAll(); pmDirty(); }; box.appendChild(add); }
@@ -2078,7 +1984,7 @@
         if (c.p.kind === 'lang') body.appendChild(pmSelect([['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']], c.p.lang || 'he', v => { c.p.lang = v; }));
         if (MACHINE.includes(c.p.kind)) body.appendChild(el('div', 'text-[11px] text-slate-400', 'השרת בודק את התנאי הזה בעצמו.'));
       } else if (t === 'design') {
-        const lab = c.p.kind ? ('עיצוב: ' + ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === c.p.kind) || {}).name) || c.p.kind) + (c.p.style ? ' · ' + c.p.style : '') + (c.p.color ? ' · ' + c.p.color : '')) : '🎨 בחר עיצוב מהגלריה';
+        const lab = c.p.kind ? ('עיצוב: ' + ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === c.p.kind) || {}).name) || c.p.kind) + (c.p.style ? ' · ' + c.p.style : '') + (c.p.color ? ' · ' + c.p.color : '')) : '⟦layout⟧ בחר עיצוב מהגלריה';
         const b = el('button', 'w-full text-right text-sm font-bold rounded-lg border border-violet-300 bg-violet-50 text-violet-800 px-3 py-2', lab); b.type = 'button';
         if (c.p.color) b.style.borderInlineStartWidth = '6px', b.style.borderInlineStartColor = COLOR_HEX[c.p.color] || '#8b5cf6';
         b.onclick = () => pmPick(c); body.appendChild(b);
@@ -2109,7 +2015,7 @@
         wrap.appendChild(j);
       }
       const card = el('div', 'pmCube'); card.style.borderColor = meta.color; card.style.background = '#fff';
-      const head = el('div', 'flex items-center gap-1');
+      const head = el('div', 'flex items-center gap-1 cube-tools');
       const sel = el('select', 'pmType'); sel.style.background = meta.bg; sel.style.color = meta.color;
       Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; if (k === c.t) o.selected = true; sel.appendChild(o); });
       sel.onchange = () => { const old = c.text; Object.assign(c, newCube(sel.value, c.join), { id: c.id, text: old, raw: null }); pmRenderAll(); pmDirty(); };
@@ -2117,7 +2023,7 @@
       if (c.raw !== null && c.raw !== undefined) { const o = el('span', 'text-[10px] text-slate-400', 'מקורי'); o.title = 'הנוסח המקורי, לא שונה'; head.appendChild(o); }
       const sp = el('span', 'flex-1'); head.appendChild(sp);
       const mv = (d) => { const k = i + d; if (k < 0 || k >= rule.cubes.length) return; const a = rule.cubes; [a[i], a[k]] = [a[k], a[i]]; if (a[0].join) { a[0].join = ''; } pmRenderAll(); pmDirty(); };
-      [['▲', () => mv(-1), 'הזז קודם'], ['▼', () => mv(1), 'הזז אחר כך'], ['✕', () => { rule.cubes.splice(i, 1); if (rule.cubes[0]) rule.cubes[0].join = ''; pmRenderAll(); pmDirty(); }, 'מחק קובייה']].forEach(([t, f, ti]) => {
+      [['⟦up⟧', () => mv(-1), 'הזז קודם'], ['⟦down⟧', () => mv(1), 'הזז אחר כך'], ['⟦x⟧', () => { rule.cubes.splice(i, 1); if (rule.cubes[0]) rule.cubes[0].join = ''; pmRenderAll(); pmDirty(); }, 'מחק קובייה']].forEach(([t, f, ti]) => {
         const b = el('button', 'text-slate-400 hover:text-slate-700 text-xs px-1', t); b.type = 'button'; b.title = ti; b.onclick = f; head.appendChild(b);
       });
       card.appendChild(head); card.appendChild(pmCubeBody(c)); wrap.appendChild(card);
@@ -2126,7 +2032,7 @@
     let PM_EYE = {};      // rule id -> compiled text shown (when its eye panel is open)
     let PM_OPEN = {};     // rule id -> expanded
     async function pmEye(rule, box) {
-      box.textContent = '⏳';
+      box.textContent = '⟦clock⟧';
       try {
         const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: [rule], ctx: pmCtx() }) })).json();
         const x = (r.rules || {})[rule.id]; box.textContent = x ? (x.active ? (x.text || '(כלל ריק)') : '(כלל לא חל בתרחיש הזה, הבוט לא מקבל אותו)') : '';
@@ -2144,7 +2050,7 @@
       if (machine) top.appendChild(el('span', 'text-[10px] font-bold rounded-full px-2 py-0.5 ' + (active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'), active ? 'חל בתרחיש' : 'לא חל'));
       top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
       const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
-      [['▲', () => mv(-1)], ['▼', () => mv(1)], ['🗑', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
+      [['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
       card.appendChild(top);
       if (!open) { if (!rule.title) { const pv = el('div', 'px-3 pb-2 text-xs text-slate-500 truncate', rule.cubes.map(c => c.text || (CUBE_META[c.t] || {}).label || '').join(' ').slice(0, 140)); card.appendChild(pv); } return card; }
       const body = el('div', 'p-2 pt-0 space-y-2');
@@ -2155,7 +2061,7 @@
       Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; add.appendChild(o); });
       add.onchange = () => { if (!add.value) return; rule.cubes.push(newCube(add.value, rule.cubes.length ? 'then' : '')); pmRenderAll(); pmDirty(); };
       row.appendChild(add); body.appendChild(row);
-      const eye = el('button', 'text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1', '👁 הטקסט שהבוט מקבל'); eye.type = 'button';
+      const eye = el('button', 'text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1', '⟦eye⟧ הטקסט שהבוט מקבל'); eye.type = 'button';
       const out = el('pre', 'hidden whitespace-pre-wrap text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 leading-relaxed'); out.dir = 'rtl';
       eye.onclick = () => { const h = out.classList.toggle('hidden'); if (!h) pmEye(rule, out); };
       body.appendChild(eye); body.appendChild(out); card.appendChild(body);
@@ -2186,7 +2092,7 @@
           const info = el('div', 'flex-1 min-w-0 cursor-pointer');
           info.appendChild(el('div', 'font-bold text-sm', s.title + '  ')); info.firstChild.appendChild(el('span', 'text-[11px] text-slate-400 font-normal', s.rules.length + ' כללים'));
           info.appendChild(el('div', 'text-xs text-slate-500', s.desc)); top.appendChild(info);
-          const rs = el('button', 'text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1', '↺ אפס'); rs.type = 'button';
+          const rs = el('button', 'text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1', '⟦rotate⟧ אפס'); rs.type = 'button';
           rs.onclick = async () => { if (!confirm('לאפס את "' + s.title + '" לנוסח המקורי? שינויים שעשית בחלק הזה יימחקו.')) return; const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/default-rules?key=${s.key}`)).json(); s.rules = r.rules; pmRenderAll(); pmDirty(); };
           top.appendChild(rs); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
           c.appendChild(top);
@@ -2277,18 +2183,18 @@
       const fix = (extra || '').trim();
       if (!base && !fix) { showToast('תאר את העיצוב שאתה רוצה', true); return; }
       const btn = document.getElementById('pmGenBtn'), msg = document.getElementById('pmGenMsg');
-      btn.disabled = true; msg.textContent = '⏳ ה-AI מעצב (עד חצי דקה)...';
+      btn.disabled = true; msg.textContent = '⟦clock⟧ ה-AI מעצב (עד חצי דקה)...';
       try {
         const res = await adminFetch(`${API_BASE}/api/admin/ui/design/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ description: fix ? (base + '\nתיקון: ' + fix) : base, design: PM_GEN && fix ? PM_GEN : null }) });
         const d = await res.json();
-        if (!res.ok) { msg.textContent = '❌ ' + (d.detail || 'שגיאה'); return; }
-        PM_GEN = d.design; msg.textContent = '✅ מוכן. בדוק את התצוגה.';
+        if (!res.ok) { msg.textContent = '⟦x⟧ ' + (d.detail || 'שגיאה'); return; }
+        PM_GEN = d.design; msg.textContent = '⟦check⟧ מוכן. בדוק את התצוגה.';
         document.getElementById('pmGenForm').classList.remove('hidden');
         document.getElementById('pmGenName').value = d.design.name; document.getElementById('pmGenId').value = d.design.id; document.getElementById('pmGenWhen').value = d.design.when;
         document.getElementById('pmGenFix').value = '';
         pmShowGen(d.marker);
-      } catch (e) { msg.textContent = '❌ ' + e.message; } finally { btn.disabled = false; }
+      } catch (e) { msg.textContent = '⟦x⟧ ' + e.message; } finally { btn.disabled = false; }
     }
     let PM_GENPV = null;
     function pmShowGen(marker) {
@@ -2320,7 +2226,7 @@
         const lab = el('span', 'font-bold', d.enabled === false ? 'כבוי' : 'פעיל');
         bar.appendChild(pmSwitch(d.enabled !== false, async v => { d.enabled = v; lab.textContent = v ? 'פעיל' : 'כבוי'; await pmPutDesign(d); }));
         bar.appendChild(lab);
-        const edit = el('button', 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '✎ שנה עם AI'); edit.type = 'button';
+        const edit = el('button', 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '⟦edit⟧ שנה עם AI'); edit.type = 'button';
         edit.onclick = () => { PM_GEN = { ...d }; document.getElementById('pmGenDesc').value = d.when || d.name; document.getElementById('pmGenForm').classList.remove('hidden');
           document.getElementById('pmGenName').value = d.name; document.getElementById('pmGenId').value = d.id; document.getElementById('pmGenWhen').value = d.when || ''; document.getElementById('pmGenFix').focus();
           adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => r.marker && pmShowGen(r.marker)); window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -2345,7 +2251,7 @@
         body: JSON.stringify({ sections, rules, ruled, designs: PM.designs, label: 'שינוי ידני' }) });
       const d = await res.json();
       if (!res.ok) { showToast(d.detail || 'שגיאה בשמירה', true); return; }
-      PM = d; pmRender(); pmDirty(false); showToast('✅ ' + d.message);
+      PM = d; pmRender(); pmDirty(false); showToast('⟦check⟧ ' + d.message);
     }
     function pmRenderVersions() {
       const box = document.getElementById('pmVersions'); if (!box || !PM) return; box.innerHTML = '';
@@ -2354,7 +2260,7 @@
         const r = el('div', 'flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2');
         const when = new Date(v.at).toLocaleString('he-IL');
         r.appendChild(el('div', 'flex-1', when + '  ·  ' + (v.label || 'גרסה')));
-        const b = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '↩ חזור לגרסה'); b.type = 'button';
+        const b = el('button', 'text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '⟦rotate⟧ חזור לגרסה'); b.type = 'button';
         b.onclick = async () => { if (!confirm('לחזור לגרסה מ-' + when + '? המצב הנוכחי יישמר כגרסה.')) return;
           const res = await adminFetch(`${API_BASE}/api/admin/prompt/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: v.id }) });
           const d = await res.json(); if (res.ok) { PM = d; PM_CAT = null; pmRender(); pmDirty(false); } showToast(d.message || d.detail, !res.ok); };
