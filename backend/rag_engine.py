@@ -601,6 +601,15 @@ FOLLOWUPS_ADDENDUM = """
 - כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורי quick במקום לנחש.
 """
 
+ITEM_CTX_ADDENDUM = """
+
+=== הסטודנט לחץ על פריט בכרטיס ===
+בסוף ההודעה יכול להופיע בלוק "[הסטודנט לחץ על ...]" עם הפריט שהסטודנט לחץ עליו בכרטיס שבתשובה קודמת (הטקסט של הפריט, ושם הכרטיס שהוא בתוכו). זו שאלה על הפריט הזה בלבד, והוא הנושא של השיחה עכשיו.
+- ענה על הפריט עצמו, בקצרה ובמדויק. אל תחזור על מה שכבר כתוב בכרטיס: הוסף מה שחסר שם (הסבר, פרטים, הקשר, מה עושים בפועל, למי פונים).
+- כשצריך מידע מהמכללה - חפש עם search_college_info לפי שם הפריט (שאילתה קצרה וממוקדת), ואל תענה מהזיכרון. אם הפריט הוא נתון אישי מ-Moodle - השתמש בכלי Moodle.
+- אל תשאל "למה התכוונת": ההקשר נתון. אם אין לך מידע נוסף מעבר למה שכתוב בפריט - אמור זאת בקצרה והצע המשך.
+"""
+
 # The question goes straight to the model; it decides if it needs the college's information (this tool), Moodle data (the Moodle tools), or nothing.
 SEARCH_DECL = {
     "name": "search_college_info",
@@ -634,7 +643,7 @@ _MOODLE_WORDS = re.compile(r"הכרז|התראה|התראות|הודעה חדש�
 def _needs_moodle(question: str) -> bool:
     """A pure college-information question ("how much is a dorm room") does not need the Moodle tools and their long instructions (~5k tokens): they are left out."""
     q = str(question or "")
-    if "\n\n[הסטודנט לחץ" in q:
+    if "\n\n[הסטודנט לחץ" in q and "פריט בכרטיס המידע" not in q:
         return True
     head = q.split("\n\n[")[0]
     if _MOODLE_WORDS.search(head):
@@ -678,7 +687,7 @@ MOODLE_SYSTEM_ADDENDUM = """
 # the built-in text of every section the admin can edit (the admin's version, if any, is read through prompt_store.text)
 for _key, _val in (("persona", PERSONA_DEFAULT), ("rules", RULES_DEFAULT), ("rich", RICH_ADDENDUM), ("moodle", MOODLE_SYSTEM_ADDENDUM),
                    ("no_moodle", NO_MOODLE_NOTE), ("kb_tool", KB_TOOL_NOTE), ("precedence", PRECEDENCE_ADDENDUM),
-                   ("parallel", PARALLEL_ADDENDUM), ("followups", FOLLOWUPS_ADDENDUM)):
+                   ("parallel", PARALLEL_ADDENDUM), ("followups", FOLLOWUPS_ADDENDUM), ("item_ctx", ITEM_CTX_ADDENDUM)):
     PS.register(_key, _val)
 
 
@@ -770,7 +779,7 @@ async def _stream_chat_inner(
     if user_id:
         extra += PS.text("memory") + build_memory_block(memories)
     extra += (PS.text("no_moodle") if moodle_off_note else "") + (PS.text("kb_tool") if (kb_search is not None and not context_chunks) else "")
-    extra += (PS.text("parallel") if (kb_search is not None or moodle_names) else "") + PS.text("followups") + PS.text("precedence")
+    extra += (PS.text("parallel") if (kb_search is not None or moodle_names) else "") + PS.text("followups") + (PS.text("item_ctx") if "[הסטודנט לחץ" in question else "") + PS.text("precedence")
     extra += PS.notes_text({"first": not conversation_summary and not recent_messages, "new_student": not memories, "moodle": bool(moodle_token and moodle_user_id),
                             "lang": lang or "he", "has_user": bool(user_id)})
 
@@ -982,7 +991,7 @@ def split_topics(head: str) -> List[str]:
 def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     """{"skip_kb": bool, "tools": [names]}: decided from the words alone (instant, no model)."""
     q = str(question or "")
-    if not connected:
+    if "פריט בכרטיס המידע" in q or not connected:                      # a pressed item of an information card: the normal flow (the model searches by the item's name)
         return {"skip_kb": False, "tools": []}
     head = q.split("\n\n[")[0].strip()
     if "\n\n[הסטודנט לחץ" in q:                              # a question about an item he pressed: the item's details come with it
