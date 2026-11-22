@@ -398,6 +398,13 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
             if not rows:
                 problems.append(f"בלוק {kind}: לא נמצאו פריטים לפי ה-ids שנשלחו (השתמש רק במזהים שהכלים החזירו).")
                 continue
+            if kind == "courses":                                        # the same course twice in a list is noise
+                seen_n, uniq = set(), []
+                for r in rows:
+                    if r.get("n") not in seen_n:
+                        seen_n.add(r.get("n"))
+                        uniq.append(r)
+                rows = uniq
             if kind == "deadlines":
                 rows.sort(key=lambda r: r.get("t", 0))
             out.append({**base, "it": rows})

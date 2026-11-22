@@ -748,7 +748,11 @@ async def _stream_chat_inner(
     prefetch_text = ""
     pre = []
     if moodle_token and moodle_user_id and not _is_smalltalk(question):
-        pre = [n for n in personal_route(question, True)["tools"] if n in moodle_names]
+        for n in personal_route(question, True)["tools"]:
+            if n == "get_courses_by_status" and n not in moodle_names:
+                n = "get_my_courses"                              # the admin switched the status tool off: the plain list
+            if n in moodle_names and n not in pre:
+                pre.append(n)
     if pre:
         from moodle_tools import execute_moodle_function as _exec_pre
         if emit_status:
@@ -851,6 +855,14 @@ async def _stream_chat_inner(
                 return await run_memory_tool(name, args, user_id, memories)
             if name == "show_ui":
                 blocks, msg = resolve_blocks(args.get("blocks"), _cd().get("items", {}), "\n".join(allowed_parts))
+                # a Moodle block whose ids were wrong is not "shown successfully": the model is told which ids exist and tries again in the same turn
+                asked = [str(b.get("type") or "").lower() for b in (args.get("blocks") or []) if isinstance(b, dict)]
+                shown = {b.get("k") for b in blocks}
+                lost = list(dict.fromkeys(k for k in asked if k in ("deadlines", "grades", "courses") and k not in shown))
+                if lost:
+                    letter = {"deadlines": "d", "grades": "g", "courses": "c"}
+                    valid = "; ".join(f"{k}: " + ", ".join(i for i, v in (_cd().get("items") or {}).items() if v.get("k") == letter[k])[:300] for k in lost)
+                    return ("לא הוצג כלום: הבלוקים " + ", ".join(lost) + " נשלחו עם מזהים שלא קיימים. המזהים התקפים (השתמש רק בהם): " + (valid or "אין, קרא קודם לכלי המתאים") + ". שלח שוב את כל הבלוקים.", None)
                 if blocks:
                     _cd()["ui"] = blocks
                 return msg, None
@@ -931,7 +943,7 @@ _INTENTS = (
     (re.compile(r"מטלה|מטלות|הגשה|הגשות|מועדי הגשה|דחוף|דחופות|באיחור|איחור|מה קרוב|מה יש לי|מה לא הגשתי"), "get_upcoming_deadlines", False),
     (re.compile(r"ציון|ציונים|ממוצע"), "get_overall_grades", False),
     (re.compile(r"התראות|התראה|הודעות חדשות|הודעה חדשה|יש לי הודעות"), "get_my_notifications", False),
-    (re.compile(r"הקורסים|קורסים שלי|איזה קורסים|מה אני לומד"), "get_my_courses", False),
+    (re.compile(r"הקורסים|קורסים שלי|איזה קורסים|מה אני לומד"), "get_courses_by_status", False),         # the courses he studies NOW (Moodle's own status), not everything he was ever enrolled in
 )
 
 
@@ -978,7 +990,7 @@ def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     if _KB_MARKERS.search(head) and len(head) <= 400:
         # a college question that ALSO asks for his own data ("... ומה המטלות שלי"): the college search still runs, and his data is fetched in parallel
         if _PERSONAL.search(head):
-            mixed = [t for pat, t, _np in _INTENTS if pat.search(head) and t != "get_my_courses"]
+            mixed = [t for pat, t, _np in _INTENTS if pat.search(head) and t not in ("get_my_courses", "get_courses_by_status")]
             return {"skip_kb": False, "tools": mixed[:2]}
         return {"skip_kb": False, "tools": []}
     if _KB_MARKERS.search(head) or len(head) > 160:
@@ -989,7 +1001,7 @@ def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     for pat, tool, need_personal in _INTENTS:
         if pat.search(head) and (personal or not need_personal):
             hit = True
-            if tool == "get_my_courses" or not mentions_course:     # about one named course: the model picks the course tool itself
+            if tool in ("get_my_courses", "get_courses_by_status") or not mentions_course:     # about one named course: the model picks the course tool itself
                 tools.append(tool)
     return {"skip_kb": hit, "tools": tools[:2]}
 
@@ -1095,6 +1107,27 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
 _FOLLOW_SKIP = re.compile(r"\[\[(?:poll|quick)")
 
 
+def _courses_poll(blocks: List[Dict[str, Any]], question: str, memories: List[Dict[str, Any]], recent: Optional[List[Dict[str, Any]]]) -> str:
+    """The list of courses Moodle gives is not always the list he studies. After the courses cards, once, he is asked which ones are really his (the poll's answer
+    makes the bot hide the others). Not asked again when it was answered before (memory) or already asked in this conversation."""
+    if str(question or "").lstrip().startswith(("בחרתי", "I chose")):
+        return ""
+    names: List[str] = []
+    for b in blocks:
+        if b.get("k") == "courses":
+            for it in b.get("it") or []:
+                n = re.sub(r"[|\[\]\n]", " ", str(it.get("n") or "")).strip()[:60]
+                if n and n not in names:
+                    names.append(n)
+    if len(names) < 2:
+        return ""
+    if any("אימת אילו קורסים" in str(m.get("content") or "") for m in (memories or [])):
+        return ""
+    if any("אילו מהקורסים האלה אתה לומד" in str(m.get("content") or "") for m in (recent or [])):
+        return ""
+    return "\n\nסמן את הקורסים שאתה באמת לומד עכשיו, ואסתיר את השאר.\n[[poll:multi|אילו מהקורסים האלה אתה לומד עכשיו?|" + "|".join(names[:12]) + "]]"
+
+
 async def _followups(question: str, digest: str, api_key: str) -> List[str]:
     """3-4 short follow-up questions that fit what was just asked and answered (one quick call, never blocks the answer: it runs after it)."""
     try:
@@ -1144,6 +1177,12 @@ async def stream_chat_with_tools(*args, **kwargs) -> AsyncGenerator[str, None]:
     api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
     plain = _MARKERS.sub("", text).strip()
     blocks = _decode_ui_blocks(text)
+    if kwargs.get("user_id") and not _FOLLOW_SKIP.search(text):
+        poll = _courses_poll(blocks, question, kwargs.get("memories") or [], args[6] if len(args) > 6 else kwargs.get("recent_messages"))
+        if poll:
+            db.bump_api_usage("ui:coursepoll")
+            yield poll
+            return
     if _FOLLOW_SKIP.search(text) or any(b.get("k") == "buttons" for b in blocks):
         return                                                   # the answer already carries its own buttons or poll
     digest = (plain[:700] + " " + _blocks_digest(blocks)).strip()
