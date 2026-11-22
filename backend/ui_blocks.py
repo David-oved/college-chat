@@ -8,7 +8,7 @@
 import base64
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import custom_designs
 import prompt_store
@@ -53,7 +53,7 @@ ICONS = ("phone", "mail", "clock", "pin", "book", "money", "warning", "info", "u
          "star", "school", "tool", "chat", "check", "bolt", "globe", "id", "food", "home", "bus", "wifi", "print", "lock", "bell", "gift", "flag")
 ACTION_KINDS = ("email", "phone", "whatsapp", "link", "address", "text")
 
-_MAX_ITEMS = {"contact": 6, "hours": 10, "steps": 10, "facts": 10, "highlight": 4, "list": 12, "links": 8, "timeline": 10, "price": 8,
+_MAX_ITEMS = {"contact": 6, "hours": 16, "steps": 10, "facts": 10, "highlight": 4, "list": 12, "links": 8, "timeline": 10, "price": 8,
               "summary": 8, "tags": 14, "checklist": 12, "accordion": 8, "tabs": 5, "compare": 8, "table": 12, "quote": 1,
               "stats": 4, "progress": 8, "buttons": 4, "hero": 3, "routes": 10}
 
@@ -89,7 +89,7 @@ UI_ADDENDUM = """
 
 מידע מהמאגר ומהכלים (אתה כותב את התוכן, קצר): כל מייל, טלפון וקישור חייבים להיות בדיוק כפי שהופיעו בחומר שקיבלת, אחרת השרת ימחק אותם. אל תמציא פרטים.
 - contact: איש קשר או מדור. title=שם, subtitle=תפקיד, text=שורה נוספת. items=פעולות {kind: email|phone|whatsapp|link|address, value, label?} - הסטודנט לוחץ ומתקשר/שולח מייל/פותח וואטסאפ או מעתיק. style card/row/big.
-- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style agenda (ברירת המחדל: רשימה מסודרת, שורה לכל קבוצת ימים והטווחים מתחתיה, נקודה צבעונית לסוג השירות, ומסנן לפי סוג שירות כשיש כמה; בטלפון ובמחשב) / table (שורות עם תגיות) / week (שבעה ריבועי ימים, רק כשהשעות פשוטות מאוד) / bars (פס זמן). השתמש ב-agenda כמעט תמיד. סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
+- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style agenda (ברירת המחדל: רשימה מסודרת, שורה לכל קבוצת ימים והטווחים מתחתיה, נקודה צבעונית לסוג השירות, ומסנן לפי סוג שירות כשיש כמה; בטלפון ובמחשב) / table (שורות עם תגיות) / week (שבעה ריבועי ימים, רק כשהשעות פשוטות מאוד) / bars (פס זמן). השתמש ב-agenda כמעט תמיד. סוג השירות (טלפוני, קהל, זום) או שם המדור/המשרד נכתב ב-label של כל טווח ולא בתוך time; כמה מדורים עם שעות שונות (מזכירות, חשבונות, דיקן) = בלוק hours אחד עם label=שם המדור בכל פריט (האפליקציה מציגה כל מדור בכרטיס משלו, עם "פתוח עכשיו" משלו). שעות לעולם לא נכתבות ב-table או compare או בטקסט; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
 - steps: תהליך צעד אחר צעד. items {title, detail?}. style numbered / timeline / cards.
 - facts: זוגות שם-ערך. items {label, value, icon?}. style list / grid / chips.
 - highlight: מספר או סכום גדול. items {value, label, detail?} (עד 4). style big / pill / row. מתאים ל"6 ש"ח ליום איחור".
@@ -341,6 +341,27 @@ def _fit_title(title: str, sub: str, limit: int = 38):
     return short, sub or _s(title, 90)
 
 
+_TIME_RANGE = re.compile(r"\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}")
+_DAYS_CELL = re.compile(r"(?:^|[\s,\-–])[אבגדהוש]['׳\"](?=$|[\s,\-–])|\bימים?\b|\bיום\b")
+
+
+def _table_as_hours(rows: List[Dict[str, Any]]) -> Optional[List[Dict[str, str]]]:
+    """Opening hours written as a table (department, days, hours) break in the middle of the times on a phone. When a table is nothing but that, it becomes an hours
+    block (the app lays it out by department, with the times never broken). A table that has other columns as well (a phone number...) is left alone."""
+    out: List[Dict[str, str]] = []
+    for x in rows:
+        parts = [p for p in ([_s(x.get("label"), 60)] + [_s(c, 90) for c in (x.get("cells") or [])]) if p]
+        time = next((p for p in parts if _TIME_RANGE.search(p)), "")
+        if not time:
+            continue
+        days = next((p for p in parts if p is not time and len(p) <= 40 and _DAYS_CELL.search(p)), "")
+        rest = [p for p in parts if p is not time and p is not days]
+        if len(rest) > 1:
+            return None
+        out.append({"days": days, "time": time, "label": rest[0] if rest else ""})
+    return out if rows and len(out) == len(rows) and any(o["days"] for o in out) else None
+
+
 def _icon(x: Any) -> str:
     i = _s(x, 12).lower()
     return i if i in ICONS else ""
@@ -364,6 +385,10 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         text = _s(b.get("text"), 360)
         raw_items = [x for x in (b.get("items") or []) if isinstance(x, dict)]
         raw_items = raw_items[: _MAX_ITEMS.get(kind, 8)]
+        if kind in ("table", "compare"):
+            as_hours = _table_as_hours(raw_items)
+            if as_hours:
+                kind, raw_items = "hours", as_hours
         style = _s(b.get("style"), 12).lower()
         if kind in STYLES and style not in STYLES[kind]:
             style = STYLES[kind][0]
