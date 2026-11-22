@@ -246,6 +246,12 @@ def disabled_kinds() -> set:
     return {k for k, v in (_STATE.get("designs") or {}).items() if v.get("enabled") is False}
 
 
+def is_fixed(kind: str) -> bool:
+    """True when the admin fixed this kind to one style (then the bot's choice is not replaced by the default design)."""
+    cfg = (_STATE.get("designs") or {}).get(kind) or {}
+    return cfg.get("mode") == "fixed" and bool(cfg.get("style"))
+
+
 def apply_style(kind: str, style: str, allowed) -> str:
     """The style a block really gets: the admin's fixed style, else the bot's choice unless the admin took that style off its menu."""
     cfg = (_STATE.get("designs") or {}).get(kind) or {}

@@ -19,7 +19,7 @@ STYLES = {
     "grades": ("gauges", "list"),
     "courses": ("chips", "list"),
     "contact": ("card", "row", "big"),
-    "hours": ("table", "week", "bars"),
+    "hours": ("agenda", "table", "week", "bars"),
     "steps": ("numbered", "timeline", "cards"),
     "facts": ("list", "grid", "chips"),
     "highlight": ("big", "pill", "row"),
@@ -66,7 +66,7 @@ UI_ADDENDUM = """
 איך מרכיבים תשובה טובה (מתכונים - הצע שילוב, לא בלוק בודד):
 1. התשובה עצמה קודם: בלוק ראשון נותן את התשובה במבט אחד (highlight או price או banner או callout), ורק אחריו הפרטים. הסטודנט צריך להבין מה התשובה לפני שקרא משהו.
 2. שאלה על איש קשר / מי אחראי / איך פונים: contact (עם פעולות חיוג, מייל, וואטסאפ) + hours אם יש שעות קבלה + callout קצר עם טיפ (למשל "עדיף לפנות במייל").
-3. שעות פעילות: hours (style week) + callout אם יש חריג (חגים, ימי שישי).
+3. שעות פעילות: hours (style agenda, ברירת המחדל) + callout אם יש חריג (חגים, ימי שישי).
 4. תהליך, "איך עושים X" / רישום / ערעור / בקשה: banner או callout קצר (מה זה ובשביל מה) + steps (style timeline או numbered) + callout tone=warn על המלכודת או המועד + contact אם יש למי לפנות.
 5. עלויות ותשלומים / שכר לימוד / מלגות: highlight או price (הסכום הגדול) + facts (מה כלול / תנאים) + callout (מה חשוב לדעת) .
 6. השוואה בין אפשרויות (מסלולים, מעונות, קמפוסים): compare (style cards בטלפון) או tabs - לא פסקאות.
@@ -82,14 +82,14 @@ UI_ADDENDUM = """
 פתיחה בולטת: כשיש לתשובה נושא ברור (קמפוס, שירות, מלגה, מסלול), פתח ב-hero או ב-location או ב-highlight ורק אחר כך פרטים. בקשת מעבר בין כמה אפשרויות (קווים, קמפוסים, מסלולים) -> routes.
 אנימציה וצבע: anim=rise כברירת מחדל, pop למספר גדול (highlight), glow לדבר דחוף או חשוב מאוד, slide לצעדים. צבע לפי משמעות. אל תחזור על אותו סוג בלוק כשיש סוג מתאים יותר (רשימת bullets היא הברירה האחרונה, לא הראשונה). בלי טקסט כפול: מה שבכרטיס לא חוזר בטקסט.
 דוגמה: "כמה עולה שכר לימוד ואיך משלמים?" -> blocks: [highlight(items:[{value:"...",label:"שכר לימוד לשנה"}], anim:pop, color:blue), facts(items:[{label:"תשלומים",value:"..."},{label:"הנחה",value:"..."}]), steps(style:timeline, items:[{title:"שלב 1"},{title:"שלב 2"}]), callout(tone:warn, text:"שים לב: ..."), buttons(items:[{label:"איך מגישים בקשה למלגה"}])].
-דוגמה: "מי אחראי על הרישום ומתי פתוח?" -> blocks: [contact(title:"...", subtitle:"...", items:[{kind:phone,value:"..."},{kind:email,value:"..."}], color:teal), hours(style:week, items:[...]), callout(tone:tip, text:"...")].
+דוגמה: "מי אחראי על הרישום ומתי פתוח?" -> blocks: [contact(title:"...", subtitle:"...", items:[{kind:phone,value:"..."},{kind:email,value:"..."}], color:teal), hours(style:agenda, items:[...]), callout(tone:tip, text:"...")].
 
 מידע מ-Moodle (מטלות, ציונים, קורסים): שלוף עם הכלי המתאים; כל פריט בתוצאה מגיע עם מזהה בסוגריים כמו [d3]. בבלוק מצביעים על ids בלבד.
 - deadlines (ids של d): style tickets / timeline / focus (המטלה הדחופה גדולה). grades (ids של g): gauges / list. courses (ids של c): chips / list.
 
 מידע מהמאגר ומהכלים (אתה כותב את התוכן, קצר): כל מייל, טלפון וקישור חייבים להיות בדיוק כפי שהופיעו בחומר שקיבלת, אחרת השרת ימחק אותם. אל תמציא פרטים.
 - contact: איש קשר או מדור. title=שם, subtitle=תפקיד, text=שורה נוספת. items=פעולות {kind: email|phone|whatsapp|link|address, value, label?} - הסטודנט לוחץ ומתקשר/שולח מייל/פותח וואטסאפ או מעתיק. style card/row/big.
-- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style table (שורות: ימים עם אותן שעות מאוחדים לשורה אחת, הבחירה הרגילה) / week (שבעה ריבועי ימים, כשהשעות פשוטות) / bars (פס זמן שמראה את היום, מתאים כשיש כמה טווחים או סוגי שירות). סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
+- hours: שעות פעילות. items {days, time, label?}, למשל days="א'-ה'" time="8:15-22:00". text=הערה. האפליקציה מחשבת "פתוח עכשיו". style agenda (ברירת המחדל: רשימה מסודרת, שורה לכל קבוצת ימים והטווחים מתחתיה, נקודה צבעונית לסוג השירות, ומסנן לפי סוג שירות כשיש כמה; בטלפון ובמחשב) / table (שורות עם תגיות) / week (שבעה ריבועי ימים, רק כשהשעות פשוטות מאוד) / bars (פס זמן). השתמש ב-agenda כמעט תמיד. סוג השירות (טלפוני, קהל, זום) נכתב ב-label של כל טווח ולא בתוך time; כמה טווחים באותו יום = כמה פריטים עם אותם days. כמה משרדים עם אותן שעות - בלוק אחד, לא כרטיס לכל משרד.
 - steps: תהליך צעד אחר צעד. items {title, detail?}. style numbered / timeline / cards.
 - facts: זוגות שם-ערך. items {label, value, icon?}. style list / grid / chips.
 - highlight: מספר או סכום גדול. items {value, label, detail?} (עד 4). style big / pill / row. מתאים ל"6 ש"ח ליום איחור".
@@ -368,6 +368,8 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         if kind in STYLES and style not in STYLES[kind]:
             style = STYLES[kind][0]
         if kind in STYLES and not preview:
+            if kind == "hours" and style in ("table", "week") and not prompt_store.is_fixed(kind):
+                style = "agenda"                                   # the agenda list is the standard hours design; table/week stay for answers saved earlier and for a style the admin fixes
             style = prompt_store.apply_style(kind, style, STYLES[kind])            # the admin may fix the style of a kind, or take some styles off the bot's menu
         base = {"k": kind, "s": style, "ti": title, **_common(b)}
         if sub:
