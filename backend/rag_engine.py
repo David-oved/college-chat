@@ -448,12 +448,13 @@ async def _generate_core(
                     db.bump_api_usage("model:google/" + model_name)
                 async with shared_client(30.0) as client:
                     resp = await client.post(url, json=payload, timeout=_model_timeout(model_name))
-                if resp.status_code == 200 and not personal:
-                    db.bump_api_usage("win:google/" + model_name)
-                elif resp.status_code != 200 and personal:
-                    db.bump_user_ai(personal, "google/" + model_name, fail=True)
+                if resp.status_code == 200:
+                    if not personal:
+                        db.bump_api_usage("win:google/" + model_name)
                     candidates = resp.json().get("candidates", [])
                     return candidates[0].get("content") if candidates else None
+                if personal:
+                    db.bump_user_ai(personal, "google/" + model_name, fail=True)
                 if resp.status_code not in (429, 500, 502, 503, 504):
                     # לא מנסים שוב (שגיאה קבועה, כמו 400 בבעיית סכמה) - אבל מדפיסים כדי שלא
                     # ייפול בשקט לנתיב-בלי-כלים בלי שום עקבה למה (זה בדיוק מה שקרה בבדיקה בפועל)
@@ -574,8 +575,30 @@ RICH_ADDENDUM = """
 כשהתשובה מגיעה, עדכן את הזיכרון: כל קורס שלא סומן הוא קורס שהסטודנט לא לומד - שמור אותו עם remember_about_student ו-kind="left_course" (קריאה אחת לכל קורס, בלי לשמור את מה שסומן). אשר בקצרה מה עודכן.
 חשוב: "לא לומד קורס X" נשמר רק כ-kind="left_course" עם course=שם הקורס המדויק, אף פעם לא כ-fact רגיל. נסח את שאלת הסקר בצורה חד-משמעית ("אילו מהקורסים האלה אתה לומד עכשיו?"), ואם הסטודנט סימן את כל הקורסים - אל תשמור כלום.
 זיכרון הסקרים - חשוב: אחרי שסקר הקורסים נענה, שמור גם עובדה אחת עם remember_about_student (kind="fact") בנוסח קבוע: "אימת אילו קורסים פעילים אצלו (סקר)". אם העובדה הזו כבר ברשימת מה שאתה זוכר, או שכבר שאלת את אותו סקר בשיחה הזו - אל תשלח אותו שוב, גם אם הסטודנט שואל שוב "מה הקורסים שלי": פשוט ענה לפי מה שאתה יודע (הקורסים שהוא עזב כבר מוסתרים אוטומטית). חזור לשאול רק אם הסטודנט עצמו אומר שמשהו השתנה או מבקש לעדכן את הרשימה. הכלל חל על כל סקר: אל תשאל שוב על מה שכבר נענה, בשיחה או בזיכרון.
-כלל: הסטודנט לא אמור להקליד כדי להמשיך. אל תסיים תשובה בשאלה פתוחה בטקסט ("רוצה שאסביר?", "מה מעניין אותך?") ואל תבקש ממנו לענות "כן" או "לא" - כל שאלה שלך אליו מוצגת ככפתורים (quick) או כסקר (poll), עם אפשרויות קונקרטיות שקשורות למה שהוא שאל. כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורים, אל תנחש. בסוף כל תשובה השרת מוסיף בעצמו כפתורי המשך מתאימים, אז אין צורך שתוסיף אותם; הוסף quick או poll רק כשיש שאלה ממוקדת שאתה צריך את תשובתה.
+כלל: הסטודנט לא אמור להקליד כדי להמשיך. אל תסיים תשובה בשאלה פתוחה בטקסט ("רוצה שאסביר?", "מה מעניין אותך?") ואל תבקש ממנו לענות "כן" או "לא" - כל שאלה שלך אליו מוצגת ככפתורים (quick) או כסקר (poll), עם אפשרויות קונקרטיות שקשורות למה שהוא שאל. כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורים, אל תנחש. בסוף כל תשובה מוסיפים כפתורי המשך (ראה "כפתורי המשך"); poll או quick נוספים רק כשיש שאלה ממוקדת שאתה צריך את תשובתה.
 אל תציף בסקרים: רק כשזה באמת חוסך הקלדה או מבהיר משהו, לא בכל תשובה ולא על מידע רגיש. אל תחזור על רשימת האפשרויות בטקסט שמעל הסקר.
+"""
+
+PARALLEL_ADDENDUM = """
+
+=== כמה נושאים ומקורות בשאלה אחת ===
+סטודנט שואל לא פעם על כמה דברים בבת אחת ("דרכי הגעה ומדיניות המעונות", "כמה עולים המעונות ומה המטלות שלי השבוע"). אז פורקים את השאלה לנושאים וקוראים לכל מה שצריך באותו צעד, במקביל, ולא אחד אחרי השני:
+1. לכל נושא של המכללה - קריאה נפרדת ל-search_college_info עם שאילתה ממוקדת בנושא הזה בלבד. שאילתה אחת לכל נושא; לעולם לא שני נושאים בשאילתה אחת, כי אז החיפוש מחזיר רק חלק מהמידע.
+2. אם השאלה כוללת גם מידע אישי מ-Moodle (מטלות, ציונים, מבחנים, קורסים, קבצים) - קרא לכלי ה-Moodle המתאים באותו צעד, יחד עם החיפושים (אלא אם נתוני Moodle כבר מצורפים לך למעלה).
+3. עד שש קריאות בצעד. אל תקרא ל-show_ui באותו צעד עם כלי נתונים: קודם הנתונים, ואז show_ui אחד שמכסה את כל הנושאים.
+4. אם חומר המכללה שמצורף למעלה (נשלף מראש) מכסה רק חלק מהנושאים - חפש את החסרים בלבד. נושא שכבר מכוסה היטב לא מחפשים שוב.
+5. עונים על כל הנושאים שנשאלו, כל נושא בבלוק או בקבוצת בלוקים משלו עם כותרת קצרה, והמידע האישי לצד המידע של המכללה באותה תשובה. אסור להשמיט נושא; אם על נושא אין מידע - אמור זאת בקצרה, ואל תמלא ממה שאתה זוכר.
+"""
+
+FOLLOWUPS_ADDENDUM = """
+
+=== כפתורי המשך: אתה שואל את הסטודנט מה הלאה ===
+כל תשובה מסתיימת בהצעה להמשך, והסטודנט לא צריך להקליד. אחרי כל תשובה (כרטיסים או טקסט) הוסף 2 עד 4 כפתורי המשך, בניסוח שהסטודנט עצמו היה כותב (גוף ראשון, עד 4 מילים, עד 28 תווים), למשל "איך נרשמים", "מה שעות המזכירות", "עוד על המעונות".
+- בתשובה עם show_ui: בלוק buttons אחרון באותה קריאה (בכל שורה label=השאלה). בתשובה בטקסט: [[quick|שאלה 1|שאלה 2|שאלה 3]] בשורה משלה, בסוף.
+- הכפתורים קשורים ישירות למה שנשאל ולמה שענית, ומובילים למידע שיש לך לענות עליו (מהמכללה, או מ-Moodle האישי שלו כשהוא מחובר). אם נושא מהשאלה נשאר בלי מענה מלא - אחד הכפתורים מבקש בדיוק אותו.
+- אסור: כן/לא, "יש לי שאלה נוספת", "תודה", שאלה כללית, וחזרה על מה שכבר נענה. בלי כפתורים בתשובה לברכה או לתודה, ובלי כפתורים כשכבר שלחת סקר (poll) או שאלה ממוקדת באותה תשובה.
+- הסעיף הזה גובר על כל אמירה קודמת בפרומפט שלפיה השרת מוסיף כפתורי המשך בעצמו או שאין צורך להוסיף אותם: אתה מוסיף אותם (השרת מוסיף כפתורים רק אם שכחת).
+- כשחסר לך פרט כדי לענות (איזה קורס? איזה קמפוס? איזו שנה?) - שאל בסקר או בכפתורי quick במקום לנחש.
 """
 
 # The question goes straight to the model; it decides if it needs the college's information (this tool), Moodle data (the Moodle tools), or nothing.
@@ -654,7 +677,8 @@ MOODLE_SYSTEM_ADDENDUM = """
 
 # the built-in text of every section the admin can edit (the admin's version, if any, is read through prompt_store.text)
 for _key, _val in (("persona", PERSONA_DEFAULT), ("rules", RULES_DEFAULT), ("rich", RICH_ADDENDUM), ("moodle", MOODLE_SYSTEM_ADDENDUM),
-                   ("no_moodle", NO_MOODLE_NOTE), ("kb_tool", KB_TOOL_NOTE), ("precedence", PRECEDENCE_ADDENDUM)):
+                   ("no_moodle", NO_MOODLE_NOTE), ("kb_tool", KB_TOOL_NOTE), ("precedence", PRECEDENCE_ADDENDUM),
+                   ("parallel", PARALLEL_ADDENDUM), ("followups", FOLLOWUPS_ADDENDUM)):
     PS.register(_key, _val)
 
 
@@ -668,7 +692,7 @@ def status_event(**kw) -> str:
     return STATUS_OPEN + json.dumps(kw, ensure_ascii=False, separators=(",", ":")) + STATUS_CLOSE
 
 
-MAX_TOOL_CALLS_PER_TURN = 4
+MAX_TOOL_CALLS_PER_TURN = 6
 MAX_FILE_SEARCHES_PER_TURN = 2
 MAX_TOOL_ROUNDS = 4
 
@@ -741,7 +765,8 @@ async def _stream_chat_inner(
         extra += PS.text("moodle")
     if user_id:
         extra += PS.text("memory") + build_memory_block(memories)
-    extra += (PS.text("no_moodle") if moodle_off_note else "") + (PS.text("kb_tool") if kb_search is not None else "") + PS.text("precedence")
+    extra += (PS.text("no_moodle") if moodle_off_note else "") + (PS.text("kb_tool") if (kb_search is not None and not context_chunks) else "")
+    extra += (PS.text("parallel") if (kb_search is not None or moodle_names) else "") + PS.text("followups") + PS.text("precedence")
     extra += PS.notes_text({"first": not conversation_summary and not recent_messages, "new_student": not memories, "moodle": bool(moodle_token and moodle_user_id),
                             "lang": lang or "he", "has_user": bool(user_id)})
 
@@ -776,7 +801,7 @@ async def _stream_chat_inner(
     failed = False
     if emit_status:
         yield status_event(s="think")
-    async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=800):
+    async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=2000):
         if kind == "text":
             if emit_status and not emitted_text:
                 yield status_event(s="write")
@@ -871,7 +896,7 @@ async def _stream_chat_inner(
         calls = []
         got_text = False
         failed = False
-        async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=800):
+        async for kind, value in _stream_gemini_events(contents, api_key, tools=tools, max_output_tokens=2000):
             if kind == "text":
                 if emit_status and not got_text:
                     yield status_event(s="write")
@@ -899,7 +924,7 @@ async def _stream_chat_inner(
 
 # A question about the student's own Moodle data (tasks, grades, exams, courses) needs no search in the college's information - that search costs 1-2 seconds
 # (an embedding call and a database search) for nothing. And its data is known in advance, so it is fetched at once instead of after a model round.
-_KB_MARKERS = re.compile(r"נוהל|נהלי|תקנון|ערעור|נרשמ|רישום|כמה עולה|מחיר|עלות|מלגה|שכר לימוד|מעונות|שעות (?:פתיחה|פעילות|קבלה)|טלפון|מייל|כתובת|איך מגיעים|חניה|קמפוס|מזכירות|יצירת קשר|לוח שנה|סמסטר|חופשה")
+_KB_MARKERS = re.compile(r"נוהל|נהלי|תקנון|ערעור|נרשמ|רישום|כמה עולה|מחיר|עלות|מלגה|שכר לימוד|מעונות|שעות (?:פתיחה|פעילות|קבלה)|טלפון|מייל|כתובת|איך מגיעים|הגעה|תחבורה|אוטובוס|הסעות?|חניה|חנייה|קמפוס|מזכירות|יצירת קשר|לוח שנה|סמסטר|חופשה|מדיניות|יוצרים קשר|ליצור קשר|דרכי התקשרות")
 _PERSONAL = re.compile(r"(?<![א-ת])(?:שלי|לי|אצלי|בשבילי)(?![א-ת])")
 _INTENTS = (
     (re.compile(r"מבחן|מבחנים|בוחן|בחנים|בחינה|בחינות"), "get_my_exams", True),                       # (pattern, tool, needs a personal word like "שלי")
@@ -910,6 +935,38 @@ _INTENTS = (
 )
 
 
+_CLAUSE_START = re.compile(r"\s*[,;]\s*|\s+(?=(?:וגם|בנוסף|ו(?:מה|איך|כמה|מתי|איפה|למי|האם|אילו|איזה)|ו[א-ת]{3,})(?![א-ת]))")
+
+
+def split_topics(head: str) -> List[str]:
+    """A question that asks about several college topics at once ("דרכי הגעה ומדיניות המעונות") becomes one focused search per topic: a single search for the whole
+    sentence returns only a blend of them. Clauses about the student's own Moodle data are left out (the Moodle tools answer those); a clause with no topic of its own
+    joins the one before it. One topic (or none) -> the whole question, as before."""
+    head = " ".join(str(head or "").split())
+    if len(head) < 12:
+        return [head]
+    cuts = [0] + [m.end() for m in _CLAUSE_START.finditer(head)]
+    parts = [head[a:b].strip(" ,;") for a, b in zip(cuts, cuts[1:] + [len(head)])]
+    clauses: List[List[str]] = []                                 # [text, kind] kind: kb / personal / other
+    for p in parts:
+        if not p:
+            continue
+        kind = "kb" if _KB_MARKERS.search(p) else ("personal" if (_MOODLE_WORDS.search(p) or _PERSONAL.search(p)) else "other")
+        clauses.append([p, kind])
+    merged: List[List[str]] = []
+    for text, kind in clauses:
+        if kind == "other" and merged:
+            merged[-1][0] += " " + text
+        else:
+            merged.append([text, kind])
+    kb = [re.sub(r"^(?:וגם\s+)?ו?(?=[א-ת]{2,})", "", t) if t.startswith("ו") or t.startswith("וגם") else t for t, k in merged if k == "kb"]
+    if len(kb) >= 2:
+        return kb[:4]
+    if len(kb) == 1 and any(k == "personal" for _, k in merged):
+        return [kb[0]]
+    return [head]
+
+
 def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     """{"skip_kb": bool, "tools": [names]}: decided from the words alone (instant, no model)."""
     q = str(question or "")
@@ -918,6 +975,12 @@ def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     head = q.split("\n\n[")[0].strip()
     if "\n\n[הסטודנט לחץ" in q:                              # a question about an item he pressed: the item's details come with it
         return {"skip_kb": True, "tools": []}
+    if _KB_MARKERS.search(head) and len(head) <= 400:
+        # a college question that ALSO asks for his own data ("... ומה המטלות שלי"): the college search still runs, and his data is fetched in parallel
+        if _PERSONAL.search(head):
+            mixed = [t for pat, t, _np in _INTENTS if pat.search(head) and t != "get_my_courses"]
+            return {"skip_kb": False, "tools": mixed[:2]}
+        return {"skip_kb": False, "tools": []}
     if _KB_MARKERS.search(head) or len(head) > 160:
         return {"skip_kb": False, "tools": []}
     personal = bool(_PERSONAL.search(head))

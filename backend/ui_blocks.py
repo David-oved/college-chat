@@ -129,10 +129,23 @@ def _split_ui(full: str) -> Dict[str, str]:
     return out
 
 
+UI_FIT = """
+
+=== אורך ותוכן בתוך הבלוקים (שלא יצא מהמסך) ===
+המסך בטלפון צר: בכותרת ובשורה נכנסות כמה מילים בלבד, וכל מה שארוך יותר נחתך או נשבר לכמה שורות.
+- title של בלוק: עד 3-4 מילים (עד 30 תווים). שם של נושא, לא משפט ולא רשימה. את הפרטים כותבים ב-subtitle, ב-text או בשורות.
+- label של שורה: שם קצר, עד 3-4 מילים (עד 30 תווים). הפירוט בא ב-detail או ב-value, לא בתוך ה-label.
+- value ב-highlight / stats / hero / price: מספר או סכום קצר בלבד, עד 12 תווים ("8,100 ש״ח", "עד 50%", "14 יום"). טווח, תנאי או הסבר - ב-label או ב-detail.
+- כפתורים (buttons): עד 4 מילים. text של callout או banner: עד שני משפטים קצרים.
+- הרבה מידע (יותר מ-6 שורות, או כמה נושאים בשאלה אחת): אל תדחוס הכול לבלוק אחד ואל תכתוב את זה בכותרת. פצל לבלוקים לפי נושא, כל אחד עם title או heading קצר; accordion או tabs כשכל פריט הוא פסקה, compare או table להשוואות, list או facts בקבוצות של עד 6-8 שורות. עדיף 4-6 בלוקים מסודרים מבלוק אחד גדול.
+- אל תקצר על חשבון העובדות: מה שלא נכנס לכותרת עובר לפירוט, לא נמחק. (השרת מקצר כותרת ארוכה ומעביר את הנוסח המלא לשורת המשנה, אבל עדיף לכתוב נכון מההתחלה.)
+"""
+
 UI_PARTS = _split_ui(UI_ADDENDUM)
+UI_PARTS["ui_fit"] = UI_FIT
 for _k, _v in UI_PARTS.items():
     prompt_store.register(_k, _v)
-UI_KEYS = ("ui_iron", "ui_recipes", "ui_standard", "ui_moodle", "ui_reference")
+UI_KEYS = ("ui_iron", "ui_recipes", "ui_standard", "ui_moodle", "ui_reference", "ui_fit")
 
 
 def ui_text() -> str:
@@ -204,7 +217,11 @@ def _s(v: Any, n: int) -> str:
     t = " ".join(str(v if v is not None else "").split())
     if _ARB.search(t) and len(_HEB.findall(t)) > len(_ARB.findall(t)):
         t = t.translate(_AR2HE)
-    return t[:n]
+    if len(t) <= n:
+        return t
+    cut = t[: n - 1]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp >= int(n * 0.55) else cut).rstrip(" ,;:-.") + "…"          # never a word cut in half
 
 
 def _digits(s: str) -> str:
@@ -294,6 +311,36 @@ def _hours_rows(raw_items: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     return rows[:16]
 
 
+_SPLITTABLE = ("facts", "list", "steps", "price", "timeline", "checklist", "links", "table", "compare", "accordion", "progress", "tags", "routes")
+
+
+def _expand(blocks: List[Any]) -> List[Any]:
+    """More rows than a block shows are not thrown away: they continue in the next block of the same kind (up to three blocks)."""
+    out: List[Any] = []
+    for b in blocks:
+        kind = _s(b.get("type"), 14).lower() if isinstance(b, dict) else ""
+        its = b.get("items") if isinstance(b, dict) else None
+        mx = _MAX_ITEMS.get(kind, 8)
+        if kind in _SPLITTABLE and isinstance(its, list) and len(its) > mx:
+            for i in range(0, min(len(its), mx * 3), mx):
+                nb = dict(b)
+                nb["items"] = its[i:i + mx]
+                if i:
+                    nb["title"], nb["subtitle"], nb["text"] = "", "", ""
+                out.append(nb)
+        else:
+            out.append(b)
+    return out
+
+
+def _fit_title(title: str, sub: str, limit: int = 38):
+    """A title is a name, not a sentence: when it is long it is shortened at a word, and the full words move to the subtitle (nothing is lost)."""
+    if len(title) <= limit:
+        return title, sub
+    short = _s(title, limit)
+    return short, sub or _s(title, 90)
+
+
 def _icon(x: Any) -> str:
     i = _s(x, 12).lower()
     return i if i in ICONS else ""
@@ -306,12 +353,14 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
     dropped = 0
     if not isinstance(blocks, list):
         return [], "blocks חייב להיות רשימה."
-    for b in blocks[:10]:
+    for b in _expand(blocks[:10])[:14]:
         if not isinstance(b, dict):
             continue
         kind = _s(b.get("type"), 14).lower()
         title = _s(b.get("title"), 70)
         sub = _s(b.get("subtitle"), 90)
+        if kind not in ("callout", "banner", "quote"):
+            title, sub = _fit_title(title, sub)
         text = _s(b.get("text"), 360)
         raw_items = [x for x in (b.get("items") or []) if isinstance(x, dict)]
         raw_items = raw_items[: _MAX_ITEMS.get(kind, 8)]
@@ -369,12 +418,15 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         elif kind in ("steps", "facts", "list", "highlight", "price", "tags", "checklist", "stats", "progress", "buttons", "summary"):
             its = []
             for x in raw_items:
-                label = _s(x.get("label") or x.get("title"), 80)
+                label = _s(x.get("label") or x.get("title"), 160)
                 if not label and kind != "highlight":
                     continue
-                row = {"l": label}
                 v = _s(x.get("value"), 120 if kind == "buttons" else 40)
                 d = _s(x.get("detail") or x.get("text"), 220)
+                if kind not in ("buttons", "tags", "summary") and len(label) > 44:          # a label is a name: the long sentence becomes the detail
+                    d = d or _s(label, 220)
+                    label = _s(label, 40)
+                row = {"l": label[:80]}
                 if v:
                     row["v"] = v
                 if d:

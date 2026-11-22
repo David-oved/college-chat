@@ -1316,12 +1316,12 @@ async def _stream_chat_response(
             return
 
         route = personal_route(question, bool(moodle_token and moodle_user_id))
-        from rag_engine import _is_smalltalk, _KB_MARKERS
+        from rag_engine import _is_smalltalk, _KB_MARKERS, split_topics
         head = question.split("\n\n[")[0]
         # Only a plainly college-information question is searched up front (the answer needs it anyway). Everything else goes STRAIGHT to the model, which
         # decides: it can call search_college_info, the Moodle tools, or answer at once. (A greeting or a Moodle question never waits for a search.)
         inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and bool(_KB_MARKERS.search(head))
-        use_tool = (not inline_kb) and (not _is_smalltalk(question))
+        use_tool = not _is_smalltalk(question)              # the search tool is always there: the model can look up whatever the material fetched up front does not cover
         if emit_status and inline_kb:
             yield status_event(s="kb")
         elif emit_status and route["skip_kb"]:
@@ -1336,13 +1336,31 @@ async def _stream_chat_response(
                 return []
 
         async def search():
-            return await search_q(question) if inline_kb else []
+            """A plain college question is searched up front. When it asks about several topics at once ("how to get there AND the dorm policy") every topic gets
+            its own search, in parallel, and the results are interleaved so each topic is represented (one search for the whole sentence returns only a blend)."""
+            if not inline_kb:
+                return []
+            topics = split_topics(head)
+            if len(topics) <= 1:
+                return await search_q(question)
+            groups = await asyncio.gather(*[search_q(t) for t in topics])
+            merged, seen = [], set()
+            for i in range(max((len(g) for g in groups), default=0)):
+                for g in groups:
+                    if i < len(g):
+                        key = (g[i].get("title"), str(g[i].get("text"))[:80])
+                        if key not in seen:
+                            seen.add(key)
+                            merged.append(g[i])
+            return merged[:9]
 
         # ambiguous questions: the search starts at once IN PARALLEL with the model's first call, so if the model asks for it the result is already there
-        spec = asyncio.create_task(search_q(head)) if (use_tool and not route["skip_kb"]) else None
+        spec = asyncio.create_task(search_q(head)) if (use_tool and not inline_kb and not route["skip_kb"]) else None
 
         async def kb_search(query):
-            if spec is not None and len(set(query.split()) & set(head.split())) >= max(1, min(len(head.split()), len(query.split())) // 2):
+            # the early search is reused only when the model's query is (nearly) the whole question; a focused query for one topic gets its own search
+            hw, qw = set(head.split()), set(query.split())
+            if spec is not None and hw and len(hw & qw) >= 0.7 * len(hw):
                 return await spec
             return await search_q(query)
 
