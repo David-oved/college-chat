@@ -87,6 +87,11 @@ check("neighbouring untitled cards of one kind merge", k == ["links"] and len(ou
 k, out, _ = kinds([{"type": "links", "items": [{"label": "א", "url": "https://www.jct.ac.il/a"}]}, {"type": "links", "title": "עוד", "items": [{"label": "ב", "url": "https://www.jct.ac.il/b"}]}])
 check("a card with its own title is not merged", k == ["links", "links"])
 
+# 9f. a long fact value is not cut with dots: it moves to the detail line whole
+long_v = "על בסיס מקום פנוי, בכניסה לקמפוס מול ביתן השומר ובחניון התחתון"
+k, out, _ = kinds([{"type": "facts", "items": [{"label": "תנאים", "value": long_v}]}])
+check("long fact value goes to the detail, whole", out[0]["it"][0].get("d") == long_v and not out[0]["it"][0].get("v"), str(out))
+
 # 10. the validator never crashes on malformed input (13% of random runs crashed before)
 random.seed(3)
 JUNK = [None, "", 0, 5, 3.5, True, [], {}, "<b>x</b>", "א" * 300, "08:00-17:00", "א'-ה'", ["x", None], {"a": 1}, "קו 6", "[[ui:abc]]"]

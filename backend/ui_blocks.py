@@ -528,6 +528,10 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                     label = re.sub(r"^(?:שלב|צעד|step)\s*\d+\s*[:.\-–]\s*", "", label, flags=re.I) or label
                 v = _s(x.get("value"), 120 if kind == "buttons" else 40)
                 d = _s(x.get("detail") or x.get("text"), 220)
+                if kind == "facts" and len(" ".join(str(x.get("value") or "").split())) > 40:
+                    # (found by testing: a long value was cut with "…" and the rest of the fact was lost.) A long value is a sentence: it goes to the detail line, whole.
+                    d = _s((str(x.get("value")) + " " + d).strip() if d else x.get("value"), 260)
+                    v = ""
                 if kind not in ("buttons", "tags", "summary") and len(label) > 44:          # a label is a name: the long sentence becomes the detail
                     d = d or _s(label, 220)
                     label = _s(label, 40)

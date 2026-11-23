@@ -1170,7 +1170,10 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
         yield VISUAL_TOKEN
         blocks = _parse_leaked_ui(text)
         if not blocks:
-            blocks = await _visualize_text(question, _LEAK.split(text)[0] + " " + text, api_key)
+            try:
+                blocks = await asyncio.wait_for(_visualize_text(question, _LEAK.split(text)[0] + " " + text, api_key), timeout=22)       # (bounded: the 45 s watchdog must not cut the stream before the message)
+            except Exception:
+                blocks = []
         db.bump_api_usage("ui:leak")
         if blocks:
             for blk in blocks:
@@ -1185,7 +1188,10 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
         api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
         quick = re.findall(r"\[\[quick\|[^\]\n]*\]\]", text)
         yield VISUAL_TOKEN                                          # the client replaces the text with a "designing it" line
-        blocks = await _visualize_text(question, text, api_key)
+        try:
+            blocks = await asyncio.wait_for(_visualize_text(question, text, api_key), timeout=25)
+        except Exception:
+            blocks = []
         if blocks:
             db.bump_api_usage("ui:guard")
             for blk in blocks:
