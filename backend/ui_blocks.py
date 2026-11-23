@@ -613,6 +613,8 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                 cells = [("לא צוין" if _NO_INFO.search(c) else c) for c in cells[:4]]          # the bot's "not in the text I got" must not reach the student as a cell
                 if cells or rl:
                     rows.append({"l": rl, "c": cells})
+            if rows and not cols and all(not r["l"] for r in rows) and len({len(r["c"]) for r in rows}) == 1 and len(rows[0]["c"]) >= 3 and all(len(r["c"][0]) <= 30 for r in rows):
+                rows = [{"l": r["c"][0], "c": r["c"][1:]} for r in rows]                 # no column headers and three or more cells: the first cell is the row's name
             # A "table" of just two fields per row (a name and a value) is not a table: on a phone it is a price list, a list of facts, or a timeline of dates.
             pairs = [((r["l"], r["c"][-1]) if r["l"] and len(r["c"]) == 1 else (r["c"][0], r["c"][1]) if not r["l"] and len(r["c"]) == 2 else None) for r in rows]
             if rows and all(pairs) and len(cols) <= 2 and all(len(v) <= 36 and 0 < len(k) <= 60 for k, v in pairs):
