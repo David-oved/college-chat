@@ -153,6 +153,7 @@ UI_CHOOSE = """
 - table רק כשבאמת יש 2 עד 3 עמודות קצרות (עד שלוש מילים בתא).
 - תשובה של משפט או שניים: טקסט קצר בלי כרטיסים. callout רק כשיש משהו שחשוב להדגיש (מועד אחרון, מלכודת), לא כדי לחזור על מה שכבר כתוב.
 - שאלה עמומה (למשל "כמה עולים המעונות" בלי לציין קמפוס): ברירת המחדל היא לענות על כל האפשרויות בקצרה (price או compare), לא לשאול חזרה. רק אם אי אפשר: משפט הבהרה אחד בטקסט ו-buttons עם האפשרויות. אף פעם לא שאלה בתוך כרטיס facts, וכפתורים לא נושאים תשובה בתוך ה-value שלהם.
+- שאלה אחת פשוטה ("כמה עולה שנה", "מתי הספרייה פתוחה"): עד 3 כרטיסים, הראשון הוא התשובה. הרבה כרטיסים נועדו לשאלה עם כמה נושאים, לא לשאלה אחת. מידע משני (נתונים ישנים, תכניות מיוחדות) - שורה אחת ב-callout, לא כרטיס משלו.
 - אל תוסיף כרטיס שלא מוסיף מידע: לא callout שחוזר על הכרטיס שלפניו, ולא buttons כשאין המשך טבעי.
 - כמה נושאים בשאלה אחת: כרטיס או שניים לכל נושא, עם heading קצר ביניהם. עדיף לתת את החשוב ביותר ולהציע המשך בכפתור מאשר לדחוס הכול.
 - כתוב עברית תקנית וקרא את הטקסט לפני השליחה: אין אותיות ערביות בתוך מילים בעברית, ואין שגיאות כתיב.
@@ -367,6 +368,8 @@ def _fit_title(title: str, sub: str, limit: int = 52):
     return short, sub or _s(title, 90)
 
 
+_DATE_LIKE = re.compile(r"^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?$")
+_PRICE_LIKE = re.compile(r"^[\d,.\-–\s]+(?:ש\"ח|ש״ח|שח|₪|נק\"ז|%)?$")
 _NO_INFO = re.compile(r"אינו מפורט|אינה מפורטת|לא מפורט|אין מידע|לא נמצא מידע|לא צוין בטקסט|המידע חסר")
 _TIME_RANGE = re.compile(r"\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}")
 _DAYS_CELL = re.compile(r"(?:^|[\s,\-–])[אבגדהוש]['׳\"](?=$|[\s,\-–])|\bימים?\b|\bיום\b")
@@ -610,6 +613,16 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                 cells = [("לא צוין" if _NO_INFO.search(c) else c) for c in cells[:4]]          # the bot's "not in the text I got" must not reach the student as a cell
                 if cells or rl:
                     rows.append({"l": rl, "c": cells})
+            # A "table" of just two fields per row (a name and a value) is not a table: on a phone it is a price list, a list of facts, or a timeline of dates.
+            pairs = [((r["l"], r["c"][-1]) if r["l"] and len(r["c"]) == 1 else (r["c"][0], r["c"][1]) if not r["l"] and len(r["c"]) == 2 else None) for r in rows]
+            if rows and all(pairs) and len(cols) <= 2 and all(len(v) <= 36 and 0 < len(k) <= 60 for k, v in pairs):
+                if all(_DATE_LIKE.match(k) for k, _ in pairs):
+                    out.append({**base, "k": "timeline", "s": "vertical", "it": [{"dt": k, "l": v, "d": ""} for k, v in pairs]})
+                elif all(_PRICE_LIKE.match(v) for _, v in pairs):
+                    out.append({**base, "k": "price", "s": "rows", "it": [{"l": k, "v": v} for k, v in pairs]})
+                else:
+                    out.append({**base, "k": "facts", "s": "list", "it": [{"l": k, "v": v} for k, v in pairs]})
+                continue
             if rows:
                 out.append({**base, "col": cols, "it": rows})
         # ---------------- location / quote / callout / banner / heading
