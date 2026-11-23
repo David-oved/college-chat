@@ -896,6 +896,16 @@ async def _stream_chat_inner(
                 weak = bool(blocks) and all(b.get("k") in ("buttons", "heading", "callout", "banner") or _hollow(b) for b in blocks)
                 if weak and (context_chunks or "search_college_info" in (_cd().get("called") or [])) and not _cd().get("weak_retry"):
                     _cd()["weak_retry"] = True
+                    try:
+                        material = "\n\n".join([f"{c.get('title', '')}: {c.get('text', '')}" for c in (context_chunks or [])] + [str(x) for x in allowed_parts[1:]])
+                        built = await _cards_from_material(question, material, api_key) if material.strip() else []
+                    except Exception as e:
+                        print(f"[ui-material] skipped: {type(e).__name__}: {e}")
+                        built = []
+                    if built and not all(b.get("k") in ("buttons", "heading", "callout", "banner") or _hollow(b) for b in built):
+                        _cd()["ui"] = built                                # the cards, made straight from the material: they hold the answer
+                        db.bump_api_usage("ui:material")
+                        return "הוצג לסטודנט בהצלחה. כתוב לכל היותר משפט קצר אחד (או כלום), בלי לחזור על מה שמוצג.", None
                     return "הכרטיסים שהצגת לא כוללים את התשובה עצמה (רק הערה, כותרת וכפתורים). הצג את המידע שנשאל עליו מתוך החומר שקיבלת (שעות ב-hours, פרטי קשר ב-contact, מחיר ב-price או highlight, שלבים ב-steps, פרטים ב-facts), ובלי להוסיף הערה על מה שלא נמצא.", None
                 if blocks:
                     _cd()["ui"] = blocks
@@ -1098,6 +1108,31 @@ async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[s
                 return blocks
     except Exception as e:
         print(f"[ui-guard] conversion failed: {type(e).__name__}: {e}")
+    return []
+
+
+async def _cards_from_material(question: str, material: str, api_key: str) -> List[Dict[str, Any]]:
+    """When the cards the model chose hold no answer (only a note and buttons), the cards are built from the college material itself with a forced show_ui call:
+    this path always comes back with the content of the material in the right kind of card. Returns [] when it cannot."""
+    try:
+        q = str(question or "").split("\n\n[")[0].strip()[:600]
+        prompt = (
+            "אתה אורי, העוזר של המרכז האקדמי לב. ענה על שאלת הסטודנט אך ורק בעזרת החומר שלמטה, באמצעות הכלי show_ui (2 עד 4 בלוקים). "
+            "הבלוק הראשון הוא התשובה עצמה (שעות ב-hours, פרטי קשר ב-contact, מחיר ב-price או highlight, כתובת ב-location, שלבים ב-steps, פרטים ב-facts). "
+            "אל תוסיף מידע שלא בחומר ואל תכתוב טקסט מחוץ לקריאה לכלי. כתוב את תוכן הבלוקים באותה שפה שבה נשאלה השאלה.\n"
+            f"{ui_text()}\n\nשאלת הסטודנט:\n{q}\n\nהחומר:\n{material[:6000]}"
+        )
+        content = await _generate_once(
+            [{"role": "user", "parts": [{"text": prompt}]}], api_key, tools=UI_TOOLS, max_output_tokens=2200, call_type="ui_guard",
+            tool_config={"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": ["show_ui"]}},
+        )
+        for part in (content or {}).get("parts", []):
+            fc = part.get("functionCall") if isinstance(part, dict) else None
+            if fc and fc.get("name") == "show_ui":
+                blocks, _msg = resolve_blocks((fc.get("args") or {}).get("blocks"), _cd().get("items", {}), material)
+                return blocks
+    except Exception as e:
+        print(f"[ui-material] failed: {type(e).__name__}: {e}")
     return []
 
 
