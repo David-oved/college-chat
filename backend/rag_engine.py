@@ -556,8 +556,24 @@ def _build_chat_user_turn(
 {context_text}
 =============================
 
-שאלת הסטודנט (הנוכחית): {question}
+שאלת הסטודנט (הנוכחית): {question}{_answer_language_note(question, ui_lang)}
 תשובה (בהתבסס אך ורק על המידע המצורף למעלה, ותוך המשכיות עם השיחה אם רלוונטי):"""
+
+
+def _answer_language_note(question: str, ui_lang: str = "") -> str:
+    """Found by testing: asked in English (with the app in English) the bot answered with Hebrew cards: the language rule sat far above, among Hebrew instructions. When the
+    question is clearly not Hebrew, the language is said again right at the end, next to the question, where the model follows it."""
+    q = str(question or "").split("\n\n[")[0]
+    if re.search(r"[א-ת]", q):
+        return ""
+    if re.search(r"[؀-ۿ]", q):
+        name = "العربية (Arabic)"
+    elif re.search(r"[A-Za-zÀ-ÿ]", q):
+        french = str(ui_lang or "").lower().startswith("fr") or re.search(r"\b(?:combien|comment|bonjour|merci|quand|pourquoi|est-ce|quelle?s?|je|les|des)\b|[àâçéèêëîïôûù]", q, re.I)
+        name = "Français" if french else "English"
+    else:
+        return ""
+    return f"\n(השפה של השאלה: {name}. כתוב את התשובה כולה, כולל כל הכרטיסים (כותרות, שורות, הערות וכפתורים), ב-{name} ולא בעברית. מספרי טלפון, מיילים ושמות מקומות נשארים כפי שהם.)"
 
 
 RICH_ADDENDUM = """
