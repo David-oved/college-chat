@@ -890,7 +890,10 @@ async def _stream_chat_inner(
                     return ("לא הוצג כלום: הבלוקים " + ", ".join(lost) + " נשלחו עם מזהים שלא קיימים. המזהים התקפים (השתמש רק בהם): " + (valid or "אין, קרא קודם לכלי המתאים") + ". שלח שוב את כל הבלוקים.", None)
                 # (Found by testing: "when is the library open?" came back as a note "hours may change" plus buttons - the hours themselves were missing.) A set of cards with
                 # no content in it (only notes, headings and buttons) while the college material was there is sent back once, with what is missing.
-                weak = bool(blocks) and all(b.get("k") in ("buttons", "heading", "callout", "banner") for b in blocks)
+                def _hollow(b):      # a list that promises "addresses" / "hours" / "prices" in its title but whose rows are only names ("the addresses of the campuses: Lev, Tal, Lustig")
+                    return (b.get("k") in ("list", "facts", "tags") and bool(b.get("it")) and all(not r.get("d") and not r.get("v") for r in b["it"])
+                            and bool(re.search(r"כתובת|כתובות|שעות|טלפון|טלפונים|מחיר|מחירים|עלות|עלויות|תאריכים|פרטים|הגעה", str(b.get("ti") or ""))))
+                weak = bool(blocks) and all(b.get("k") in ("buttons", "heading", "callout", "banner") or _hollow(b) for b in blocks)
                 if weak and (context_chunks or "search_college_info" in (_cd().get("called") or [])) and not _cd().get("weak_retry"):
                     _cd()["weak_retry"] = True
                     return "הכרטיסים שהצגת לא כוללים את התשובה עצמה (רק הערה, כותרת וכפתורים). הצג את המידע שנשאל עליו מתוך החומר שקיבלת (שעות ב-hours, פרטי קשר ב-contact, מחיר ב-price או highlight, שלבים ב-steps, פרטים ב-facts), ובלי להוסיף הערה על מה שלא נמצא.", None
