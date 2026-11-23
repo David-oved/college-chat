@@ -71,6 +71,16 @@ check("2-field table of dates -> timeline", kinds([{"type": "table", "columns": 
 check("2-field table of text -> facts", kinds([{"type": "table", "columns": ["מסלול", "משך"], "items": [{"label": "מדעי המחשב", "cells": ["3 שנים"]}]}])[0] == ["facts"])
 check("real comparison stays a comparison", kinds([{"type": "compare", "columns": ["a", "b"], "items": [{"label": "משך", "cells": ["3", "4"]}]}])[0] == ["compare"])
 
+# 9d. the display call written as text must be recovered, never shown as raw JSON
+import rag_engine as rag
+leak = (
+    'בדקתי לך:\n\n[[show_ui:[\n'
+    ' {"type":"highlight","items":[{"value":"7,530 ש\\"ח","label":"החל מ-"}]},\n'
+    ' {"type":"facts","items":[{"label":"א","value":"ב"}]}\n]]]'
+)
+check("leaked show_ui text is detected", bool(rag._LEAK.search(leak)) and not rag._LEAK.search("שאלה על show_ui בלי סוגריים"))
+check("leaked show_ui JSON becomes cards", [b["k"] for b in rag._parse_leaked_ui(leak)] == ["highlight", "facts"])
+
 # 10. the validator never crashes on malformed input (13% of random runs crashed before)
 random.seed(3)
 JUNK = [None, "", 0, 5, 3.5, True, [], {}, "<b>x</b>", "א" * 300, "08:00-17:00", "א'-ה'", ["x", None], {"a": 1}, "קו 6", "[[ui:abc]]"]

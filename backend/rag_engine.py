@@ -1076,6 +1076,25 @@ async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[s
     return []
 
 
+_LEAK = re.compile(r"\[\[show_ui\s*:|(?<![\w.])show_ui\s*\(")
+
+
+def _parse_leaked_ui(text: str) -> List[Dict[str, Any]]:
+    """Found by testing: now and then the model WRITES the display call as text ("[[show_ui:[{...}]]" or "show_ui(blocks: [...])") instead of calling the tool, and the student
+    saw raw JSON. When the text carries the JSON array of blocks it is read straight from it (no model call), validated like any other cards."""
+    try:
+        i = text.index("[[show_ui")
+        j = text.index("[", i + 9)
+        arr, _ = json.JSONDecoder().raw_decode(text[j:])
+        if isinstance(arr, dict):
+            arr = arr.get("blocks") or [arr]
+        allowed = "\n".join(str(x) for x in (_cd().get("allowed") or [])) or text
+        blocks, _msg = resolve_blocks(arr, _cd().get("items", {}), allowed)
+        return blocks
+    except Exception:
+        return []
+
+
 async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
     """עוטף את מנוע הצ'אט ומוודא שהבוט לא מבטיח קובץ שלא צירף: אם כתב "הנה הקובץ" בלי סמן - מצרפים את הקובץ שהכלי מצא, ואם לא נמצא כלום - אומרים את זה בפשטות."""
     from moodle_tools import get_cards as _gc
@@ -1085,6 +1104,21 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
             acc.append(tok)
         yield tok
     text = "".join(acc)
+    if kwargs.get("emit_status") and _LEAK.search(text):                # the display call written as text: never shown to the student
+        question = args[0] if args else kwargs.get("question", "")
+        api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
+        yield VISUAL_TOKEN
+        blocks = _parse_leaked_ui(text)
+        if not blocks:
+            blocks = await _visualize_text(question, _LEAK.split(text)[0] + " " + text, api_key)
+        db.bump_api_usage("ui:leak")
+        if blocks:
+            for blk in blocks:
+                db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
+            yield f"[[ui:{encode_blocks(blocks)}]]"
+        else:
+            yield "לא הצלחתי לסדר את התשובה בכרטיסים. אפשר לשאול שוב במילים אחרות?"
+        return
     # THE IRON RULE: a long or complex answer is never left as text. If the model wrote one anyway, it is converted to visual cards here.
     if kwargs.get("emit_status") and _needs_visual(text):
         question = args[0] if args else kwargs.get("question", "")
