@@ -152,6 +152,7 @@ UI_CHOOSE = """
 - שלבים בסדר קבוע: steps. תאריכים לאורך זמן: timeline. שעות פעילות: תמיד hours. שאלות ותשובות או כמה נושאים עם פסקה לכל אחד: accordion. רשימה קצרה של פריטים (פקולטות, מסמכים): list, ואם הסטודנט צריך להכין או להביא: checklist. הגעה: location ואחריו routes. פנייה לאדם או מדור: contact.
 - table רק כשבאמת יש 2 עד 3 עמודות קצרות (עד שלוש מילים בתא).
 - תשובה של משפט או שניים: טקסט קצר בלי כרטיסים. callout רק כשיש משהו שחשוב להדגיש (מועד אחרון, מלכודת), לא כדי לחזור על מה שכבר כתוב.
+- שאלה עמומה (למשל "כמה עולים המעונות" בלי לציין קמפוס): ברירת המחדל היא לענות על כל האפשרויות בקצרה (price או compare), לא לשאול חזרה. רק אם אי אפשר: משפט הבהרה אחד בטקסט ו-buttons עם האפשרויות. אף פעם לא שאלה בתוך כרטיס facts, וכפתורים לא נושאים תשובה בתוך ה-value שלהם.
 - אל תוסיף כרטיס שלא מוסיף מידע: לא callout שחוזר על הכרטיס שלפניו, ולא buttons כשאין המשך טבעי.
 - כמה נושאים בשאלה אחת: כרטיס או שניים לכל נושא, עם heading קצר ביניהם. עדיף לתת את החשוב ביותר ולהציע המשך בכפתור מאשר לדחוס הכול.
 - כתוב עברית תקנית וקרא את הטקסט לפני השליחה: אין אותיות ערביות בתוך מילים בעברית, ואין שגיאות כתיב.
@@ -518,6 +519,8 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                         x = {**x, "detail": "", "text": ""}
                 if not label and kind != "highlight":
                     continue
+                if kind in ("steps", "checklist"):                              # the card numbers its own steps: "שלב 1: כניסה" would show "1" twice
+                    label = re.sub(r"^(?:שלב|צעד|step)\s*\d+\s*[:.\-–]\s*", "", label, flags=re.I) or label
                 v = _s(x.get("value"), 120 if kind == "buttons" else 40)
                 d = _s(x.get("detail") or x.get("text"), 220)
                 if kind not in ("buttons", "tags", "summary") and len(label) > 44:          # a label is a name: the long sentence becomes the detail
