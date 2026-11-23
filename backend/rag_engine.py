@@ -888,6 +888,12 @@ async def _stream_chat_inner(
                     letter = {"deadlines": "d", "grades": "g", "courses": "c"}
                     valid = "; ".join(f"{k}: " + ", ".join(i for i, v in (_cd().get("items") or {}).items() if v.get("k") == letter[k])[:300] for k in lost)
                     return ("לא הוצג כלום: הבלוקים " + ", ".join(lost) + " נשלחו עם מזהים שלא קיימים. המזהים התקפים (השתמש רק בהם): " + (valid or "אין, קרא קודם לכלי המתאים") + ". שלח שוב את כל הבלוקים.", None)
+                # (Found by testing: "when is the library open?" came back as a note "hours may change" plus buttons - the hours themselves were missing.) A set of cards with
+                # no content in it (only notes, headings and buttons) while the college material was there is sent back once, with what is missing.
+                weak = bool(blocks) and all(b.get("k") in ("buttons", "heading", "callout", "banner") for b in blocks)
+                if weak and (context_chunks or "search_college_info" in (_cd().get("called") or [])) and not _cd().get("weak_retry"):
+                    _cd()["weak_retry"] = True
+                    return "הכרטיסים שהצגת לא כוללים את התשובה עצמה (רק הערה, כותרת וכפתורים). הצג את המידע שנשאל עליו מתוך החומר שקיבלת (שעות ב-hours, פרטי קשר ב-contact, מחיר ב-price או highlight, שלבים ב-steps, פרטים ב-facts), ובלי להוסיף הערה על מה שלא נמצא.", None
                 if blocks:
                     _cd()["ui"] = blocks
                 return msg, None
