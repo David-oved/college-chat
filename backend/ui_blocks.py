@@ -333,11 +333,19 @@ def _expand(blocks: List[Any]) -> List[Any]:
     return out
 
 
-def _fit_title(title: str, sub: str, limit: int = 38):
-    """A title is a name, not a sentence: when it is long it is shortened at a word, and the full words move to the subtitle (nothing is lost)."""
+_DANGLING = ("של", "ו", "ב", "ל", "את", "עם", "על", "או", "מן", "אל", "כל", "ה")
+
+
+def _fit_title(title: str, sub: str, limit: int = 52):
+    """A title is a name, not a sentence: when it is really long it is shortened at a word (never leaving "of the…" hanging), and the full words move to the subtitle
+    (nothing is lost). 52 characters: the app wraps a title to two lines, so a name of 40 characters is fine on a phone."""
     if len(title) <= limit:
         return title, sub
     short = _s(title, limit)
+    words = short.rstrip("…").split()
+    while len(words) > 2 and words[-1] in _DANGLING:
+        words.pop()
+    short = " ".join(words) + "…"
     return short, sub or _s(title, 90)
 
 
@@ -552,6 +560,20 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
                 out.append({**base, "tx": text})
         else:
             problems.append(f"סוג בלוק לא מוכר: {kind}")
+    # (Found by testing: a directions answer whose location / routes blocks came out empty was shown as a lone row of buttons - the student got no answer at all.)
+    # Buttons and headings alone are not an answer, and every kind the model asked for that did not make it is named, with what it was missing.
+    if not preview:
+        shown_k = {x.get("k") for x in out}
+        asked_k = list(dict.fromkeys(_s(b.get("type"), 14).lower() for b in blocks[:10] if isinstance(b, dict)))
+        converted = {"table": "hours", "compare": "hours", "facts": "list"}              # a block that became another kind is not a missing one
+        missing = [k for k in asked_k if k and k in STYLES and k not in shown_k and k not in ITEM_KINDS and converted.get(k) not in shown_k
+                   and k not in prompt_store.disabled_kinds() and not any(k in p for p in problems)]
+        need = {"location": "text = הכתובת", "contact": "פעולות (טלפון/מייל) שמופיעים בחומר, או text", "routes": "items עם label ו-title", "hours": "items עם days ו-time",
+                "links": "url מהחומר", "table": "columns ו-items עם cells", "compare": "columns ו-items עם cells", "facts": "label ו-value לכל שורה", "price": "label ו-value לכל שורה"}
+        if missing:
+            problems.append("הבלוקים הבאים לא הוצגו כי היו ריקים או לא תקינים: " + ", ".join(k + (f" (חסר: {need[k]})" if k in need else "") for k in missing) + ".")
+        if out and all(x.get("k") in ("buttons", "heading") for x in out):
+            return [], "לא הוצג תוכן: נשארו רק כפתורים או כותרת. " + " ".join(problems) + " שלח שוב בלוקים עם תוכן ממשי מהחומר (או כתוב את התשובה בטקסט)."
     if not out:
         return [], "לא הוצג כלום. " + " ".join(problems) + " תקן והצג שוב, או כתוב תשובה בטקסט."
     msg = "הוצג לסטודנט בהצלחה. כתוב לכל היותר משפט קצר אחד (או כלום), בלי לחזור על מה שמוצג."

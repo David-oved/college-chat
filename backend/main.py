@@ -1326,7 +1326,10 @@ async def _stream_chat_response(
         head = question.split("\n\n[")[0]
         # Only a plainly college-information question is searched up front (the answer needs it anyway). Everything else goes STRAIGHT to the model, which
         # decides: it can call search_college_info, the Moodle tools, or answer at once. (A greeting or a Moodle question never waits for a search.)
-        inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and bool(_KB_MARKERS.search(head))
+        # (Found by testing: a question with none of the marker words - "when is the library open", "CS vs software engineering", "which faculties" - was sent to the model
+        # with no material, and the model answered "I have no information" WITHOUT searching. So everything that is not small talk or a pure Moodle question is searched up
+        # front; the markers only matter now for splitting several topics.)
+        inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and (bool(_KB_MARKERS.search(head)) or len(head.split()) >= 2)
         use_tool = not _is_smalltalk(question)              # the search tool is always there: the model can look up whatever the material fetched up front does not cover
         if emit_status and inline_kb:
             yield status_event(s="kb")

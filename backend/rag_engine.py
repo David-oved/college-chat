@@ -889,10 +889,10 @@ async def _stream_chat_inner(
         for p in calls:
             db.bump_api_usage("tool:" + str(p["functionCall"].get("name", ""))[:40])            # admin sees what students use (counts only)
         _fm = _cd().setdefault("file_markers", [])
+        _cd().setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
         for _t, _ in outcomes:
             allowed_parts.append(str(_t))
-            _cd().setdefault("called", []).extend(p["functionCall"].get("name", "") for p in calls)
-        _fm.extend(re.findall(r"\[\[file:[^\]\n]+\]\]", str(_t)))
+            _fm.extend(re.findall(r"\[\[file:[^\]\n]+\]\]", str(_t)))          # (every result's file markers, not only the last one's)
         if emit_status:
             for _, event in outcomes:
                 if event:
@@ -1029,7 +1029,7 @@ _MARKERS = re.compile(r"\[\[[^\]]*\]\]")
 _LISTLINE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+", re.M)
 _NUMBERS = re.compile(r"\d[\d:.,/\-]*")
 _CONTACT = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|https?://|\b0\d{1,2}[-\s]?\d{6,8}\b|\*\d{3,5}")
-_FAILURE_OPEN = re.compile(r"^(?:לא הצלחתי|שגיאה|המערכת בעומס|התשובה התעכבה|אירעה שגיאה|מצטער)")
+_FAILURE_OPEN = re.compile(r"^(?:לא הצלחתי|שגיאה|המערכת בעומס|התשובה התעכבה|אירעה שגיאה|מצטער|אני מוגדר לענות רק|השרתים של ה-AI)")      # (an out-of-scope refusal gets no follow-up buttons: the model invented ones like "the schedule of the reenactments")
 
 
 def _needs_visual(text: str) -> bool:
