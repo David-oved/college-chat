@@ -6,6 +6,7 @@
 - השרת מאמת ומנקה הכול (סוגים וסגנונות מותרים, אורכים, צבעים, אייקונים), והאפליקציה מציירת.
 """
 import base64
+import html
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -141,11 +142,27 @@ UI_FIT = """
 - אל תקצר על חשבון העובדות: מה שלא נכנס לכותרת עובר לפירוט, לא נמחק. (השרת מקצר כותרת ארוכה ומעביר את הנוסח המלא לשורת המשנה, אבל עדיף לכתוב נכון מההתחלה.)
 """
 
+UI_CHOOSE = """
+
+=== איזה כרטיס מתי: בחירה לפי צורת המידע ===
+בחר את סוג הכרטיס לפי הצורה של המידע שיש לך, לא לפי ההרגל:
+- מספר או תאריך אחד שהוא התשובה (מחיר, מועד, ספירה): highlight או hero, ורק אחריו הפרטים.
+- כמה זוגות של שם וערך על דבר אחד (תנאים, מה כלול, פרטי מעונות): facts.
+- כמה אפשרויות ולכל אחת כמה מאפיינים (מסלולים, קמפוסים, מעונות): compare עד 3 עמודות ו-4 שורות, או tabs כשיש הרבה טקסט לכל אחת. אל תבנה טבלה רחבה: בטלפון כל שורה בה הופכת לכרטיס, וטקסט ארוך בתא נראה רע.
+- שלבים בסדר קבוע: steps. תאריכים לאורך זמן: timeline. שעות פעילות: תמיד hours. שאלות ותשובות או כמה נושאים עם פסקה לכל אחד: accordion. רשימה קצרה של פריטים (פקולטות, מסמכים): list, ואם הסטודנט צריך להכין או להביא: checklist. הגעה: location ואחריו routes. פנייה לאדם או מדור: contact.
+- table רק כשבאמת יש 2 עד 3 עמודות קצרות (עד שלוש מילים בתא).
+- תשובה של משפט או שניים: טקסט קצר בלי כרטיסים. callout רק כשיש משהו שחשוב להדגיש (מועד אחרון, מלכודת), לא כדי לחזור על מה שכבר כתוב.
+- אל תוסיף כרטיס שלא מוסיף מידע: לא callout שחוזר על הכרטיס שלפניו, ולא buttons כשאין המשך טבעי.
+- כמה נושאים בשאלה אחת: כרטיס או שניים לכל נושא, עם heading קצר ביניהם. עדיף לתת את החשוב ביותר ולהציע המשך בכפתור מאשר לדחוס הכול.
+- כתוב עברית תקנית וקרא את הטקסט לפני השליחה: אין אותיות ערביות בתוך מילים בעברית, ואין שגיאות כתיב.
+"""
+
 UI_PARTS = _split_ui(UI_ADDENDUM)
 UI_PARTS["ui_fit"] = UI_FIT
+UI_PARTS["ui_choose"] = UI_CHOOSE
 for _k, _v in UI_PARTS.items():
     prompt_store.register(_k, _v)
-UI_KEYS = ("ui_iron", "ui_recipes", "ui_standard", "ui_moodle", "ui_reference", "ui_fit")
+UI_KEYS = ("ui_iron", "ui_recipes", "ui_standard", "ui_moodle", "ui_reference", "ui_fit", "ui_choose")
 
 
 def ui_text() -> str:
@@ -214,7 +231,7 @@ _ARB = re.compile(r"[؀-ۿ]")
 
 
 def _s(v: Any, n: int) -> str:
-    t = " ".join(str(v if v is not None else "").split())
+    t = " ".join(html.unescape(str(v if v is not None else "")).split())          # (the model sometimes writes &quot; for a quote: the app escapes text itself, so it would show as is)
     if _ARB.search(t) and len(_HEB.findall(t)) > len(_ARB.findall(t)):
         t = t.translate(_AR2HE)
     if len(t) <= n:
@@ -375,7 +392,41 @@ def _icon(x: Any) -> str:
     return i if i in ICONS else ""
 
 
+def _as_list(v: Any) -> List[Any]:
+    if isinstance(v, list):
+        return v
+    if isinstance(v, dict):
+        return [v]
+    return []
+
+
+def _normalize(blocks: Any) -> Any:
+    """The model's arguments are not always the shape the schema promises (a number where a list belongs, a cell that is a list...). Fuzzing the validator with
+    malformed input crashed it in 13% of the runs, which would have failed the whole turn: everything is put in shape here, before the real work."""
+    if not isinstance(blocks, list):
+        return blocks
+    out = []
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        nb = dict(b)
+        nb["items"] = [dict(x, cells=[c for c in _as_list(x.get("cells")) if isinstance(c, (str, int, float))]) if "cells" in x else dict(x)
+                       for x in _as_list(b.get("items")) if isinstance(x, dict)]
+        nb["columns"] = [c for c in _as_list(b.get("columns")) if isinstance(c, (str, int, float))]
+        nb["ids"] = [c for c in _as_list(b.get("ids")) if isinstance(c, (str, int))]
+        out.append(nb)
+    return out
+
+
 def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str = "", preview: bool = False) -> Tuple[List[Dict[str, Any]], str]:
+    try:
+        return _resolve_blocks(_normalize(blocks), items, allowed, preview)
+    except Exception as e:                                          # never let a strange argument fail the answer: the model is told and sends it again
+        print(f"[ui] resolve failed: {type(e).__name__}: {e}")
+        return [], "הבלוקים לא היו במבנה תקין. שלח שוב רשימה של בלוקים עם type ו-items כרשימה של אובייקטים."
+
+
+def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str = "", preview: bool = False) -> Tuple[List[Dict[str, Any]], str]:
     """מאמת את מה שהמודל ביקש. מחזיר (בלוקים נקיים, הודעה למודל)."""
     out: List[Dict[str, Any]] = []
     problems: List[str] = []
@@ -460,7 +511,11 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         elif kind in ("steps", "facts", "list", "highlight", "price", "tags", "checklist", "stats", "progress", "buttons", "summary"):
             its = []
             for x in raw_items:
-                label = _s(x.get("label") or x.get("title"), 160)
+                label = _s(x.get("label") or x.get("title") or x.get("q"), 160)
+                if not label and kind in ("steps", "list", "checklist", "facts", "tags", "buttons"):
+                    label = _s(x.get("text") or x.get("detail") or x.get("a"), 160)          # (found by testing: steps that came with only a detail vanished and the answer promised steps it did not show)
+                    if label:
+                        x = {**x, "detail": "", "text": ""}
                 if not label and kind != "highlight":
                     continue
                 v = _s(x.get("value"), 120 if kind == "buttons" else 40)
@@ -480,6 +535,9 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
             # never an empty-looking card: rows of a value-type block must carry their value (facts may carry a detail instead)
             if kind in ("price", "stats", "progress", "highlight"):
                 its = [r for r in its if r.get("v")]
+                # a big-number card is for ONE or TWO short numbers. Three amounts, or a range ("8,100 עד 14,300 ש״ח"), set in 32px type breaks on a phone: it becomes a price list
+                if kind == "highlight" and its and (len(its) > 2 or any(len(r["v"]) > 14 for r in its)) and not prompt_store.is_fixed("highlight"):
+                    base = {**base, "k": "price", "s": "rows"}
             elif kind == "facts":
                 full = [r for r in its if r.get("v") or r.get("d")]
                 if full:
@@ -498,7 +556,7 @@ def resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str =
         elif kind == "routes":
             its = []
             for x in raw_items:
-                badge = _s(x.get("label"), 10)
+                badge = re.sub(r"^קו\s*(?=\d)", "", _s(x.get("label"), 10))          # the badge is a small circle: "קו 6" is just "6" (found by testing)
                 name = _s(x.get("title") or x.get("text"), 70)
                 if not badge:                                   # "קו 6 מגבעת שאול" -> badge "6", title "מגבעת שאול"
                     m = re.match(r"^(?:קו\s*)?(\d{1,3}[א-ת]?)\s*[-:–,]?\s*(.*)$", name)
