@@ -81,6 +81,12 @@ leak = (
 check("leaked show_ui text is detected", bool(rag._LEAK.search(leak)) and not rag._LEAK.search("שאלה על show_ui בלי סוגריים"))
 check("leaked show_ui JSON becomes cards", [b["k"] for b in rag._parse_leaked_ui(leak)] == ["highlight", "facts"])
 
+# 9e. two neighbouring link cards of one link each are one card; a card with its own title stays separate
+k, out, _ = kinds([{"type": "links", "items": [{"label": "א", "url": "https://www.jct.ac.il/a"}]}, {"type": "links", "items": [{"label": "ב", "url": "https://www.jct.ac.il/b"}]}])
+check("neighbouring untitled cards of one kind merge", k == ["links"] and len(out[0]["it"]) == 2, str(k))
+k, out, _ = kinds([{"type": "links", "items": [{"label": "א", "url": "https://www.jct.ac.il/a"}]}, {"type": "links", "title": "עוד", "items": [{"label": "ב", "url": "https://www.jct.ac.il/b"}]}])
+check("a card with its own title is not merged", k == ["links", "links"])
+
 # 10. the validator never crashes on malformed input (13% of random runs crashed before)
 random.seed(3)
 JUNK = [None, "", 0, 5, 3.5, True, [], {}, "<b>x</b>", "א" * 300, "08:00-17:00", "א'-ה'", ["x", None], {"a": 1}, "קו 6", "[[ui:abc]]"]

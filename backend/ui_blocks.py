@@ -641,6 +641,16 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                 out.append({**base, "tx": text})
         else:
             problems.append(f"סוג בלוק לא מוכר: {kind}")
+    # (Found by testing: two link cards of one link each, one after the other.) Neighbouring cards of the same kind and style with no title of their own are one card.
+    merged: List[Dict[str, Any]] = []
+    for blk in out:
+        prev = merged[-1] if merged else None
+        if (prev and blk.get("k") == prev.get("k") and blk.get("s") == prev.get("s") and blk.get("k") in ("links", "facts", "list", "price", "tags", "checklist")
+                and not blk.get("ti") and not blk.get("su") and not blk.get("tx") and len(prev.get("it", [])) + len(blk.get("it", [])) <= _MAX_ITEMS.get(blk["k"], 8)):
+            prev["it"] = prev["it"] + blk["it"]
+        else:
+            merged.append(blk)
+    out = merged
     # (Found by testing: a directions answer whose location / routes blocks came out empty was shown as a lone row of buttons - the student got no answer at all.)
     # Buttons and headings alone are not an answer, and every kind the model asked for that did not make it is named, with what it was missing.
     if not preview:
