@@ -1076,15 +1076,15 @@ async def _visualize_text(question: str, text: str, api_key: str) -> List[Dict[s
     return []
 
 
-_LEAK = re.compile(r"\[\[show_ui\s*:|(?<![\w.])show_ui\s*\(")
+_LEAK = re.compile(r"\[\[show_ui\s*:|(?<![\w.])show_ui\s*\(|\"show_ui\"\s*:")
 
 
 def _parse_leaked_ui(text: str) -> List[Dict[str, Any]]:
     """Found by testing: now and then the model WRITES the display call as text ("[[show_ui:[{...}]]" or "show_ui(blocks: [...])") instead of calling the tool, and the student
     saw raw JSON. When the text carries the JSON array of blocks it is read straight from it (no model call), validated like any other cards."""
     try:
-        i = text.index("[[show_ui")
-        j = text.index("[", i + 9)
+        i = text.index("show_ui")
+        j = text.index("[", i + 7)
         arr, _ = json.JSONDecoder().raw_decode(text[j:])
         if isinstance(arr, dict):
             arr = arr.get("blocks") or [arr]

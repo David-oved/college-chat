@@ -1349,6 +1349,8 @@ async def _stream_chat_response(
             its own search, in parallel, and the results are interleaved so each topic is represented (one search for the whole sentence returns only a blend)."""
             if not inline_kb:
                 return []
+            if re.search(r"(?:לדבר|לשוחח|לפנות|ליצור קשר|להתקשר) עם (?:בן אדם|נציג|אדם|מישהו|איש|אנשים)|נציג אנושי|נציג שירות", head):
+                return await search_q("יצירת קשר מזכירות מידע ורישום טלפון")       # "I want a human": the general contact details, not whatever department the words happen to match
             topics = split_topics(head)
             if len(topics) <= 1:
                 return await search_q(question)
