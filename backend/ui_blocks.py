@@ -367,6 +367,7 @@ def _fit_title(title: str, sub: str, limit: int = 52):
     return short, sub or _s(title, 90)
 
 
+_NO_INFO = re.compile(r"אינו מפורט|אינה מפורטת|לא מפורט|אין מידע|לא נמצא מידע|לא צוין בטקסט|המידע חסר")
 _TIME_RANGE = re.compile(r"\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}")
 _DAYS_CELL = re.compile(r"(?:^|[\s,\-–])[אבגדהוש]['׳\"](?=$|[\s,\-–])|\bימים?\b|\bיום\b")
 
@@ -600,9 +601,15 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
             cols = [_s(c, 30) for c in (b.get("columns") or [])[:4]]
             rows = []
             for x in raw_items:
-                cells = [_s(c, 80) for c in (x.get("cells") or [])[:4]]
-                if cells or _s(x.get("label"), 50):
-                    rows.append({"l": _s(x.get("label"), 50), "c": cells})
+                cells = [_s(c, 80) for c in (x.get("cells") or [])[:5]]
+                rl = _s(x.get("label"), 50)
+                # (found by testing: the model often writes the row's name as the first cell. With two columns and three cells the data slid one column to the right,
+                # so the dorm of campus A was shown under campus B.) A row with one cell more than the columns has its first cell as the row name.
+                if cols and not rl and len(cells) == len(cols) + 1:
+                    rl, cells = cells[0], cells[1:]
+                cells = [("לא צוין" if _NO_INFO.search(c) else c) for c in cells[:4]]          # the bot's "not in the text I got" must not reach the student as a cell
+                if cells or rl:
+                    rows.append({"l": rl, "c": cells})
             if rows:
                 out.append({**base, "col": cols, "it": rows})
         # ---------------- location / quote / callout / banner / heading

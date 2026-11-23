@@ -60,6 +60,11 @@ check("long title cut at a word, full text in the subtitle", not t.rstrip("…")
 # 9. a title of 40 characters is fine (the app wraps to two lines)
 check("40-character title is untouched", u._fit_title("מדור שכר לימוד והנהלת חשבונות של המכללה", "")[0] == "מדור שכר לימוד והנהלת חשבונות של המכללה")
 
+# 9b. a comparison whose row name was written as the first cell: the data must not slide one column over
+k, out, _ = kinds([{"type": "compare", "style": "cards", "columns": ["לב", "טל"], "items": [{"cells": ["קהל יעד", "סטודנטים", "סטודנטיות"]}, {"cells": ["תשלום", "המידע אינו מפורט בטקסט", "קבוע"]}]}])
+check("compare: first cell becomes the row name", out[0]["it"][0] == {"l": "קהל יעד", "c": ["סטודנטים", "סטודנטיות"]}, str(out))
+check("compare: 'not in the text' is not shown as a cell", out[0]["it"][1]["c"][0] == "לא צוין")
+
 # 10. the validator never crashes on malformed input (13% of random runs crashed before)
 random.seed(3)
 JUNK = [None, "", 0, 5, 3.5, True, [], {}, "<b>x</b>", "א" * 300, "08:00-17:00", "א'-ה'", ["x", None], {"a": 1}, "קו 6", "[[ui:abc]]"]
