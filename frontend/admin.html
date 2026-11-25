@@ -199,6 +199,13 @@
     .rsAct{border:1.5px solid var(--line);border-inline-start-width:5px;border-radius:12px;padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
     .rsEmpty{padding:14px;border-radius:12px;background:var(--bg);color:var(--muted);font-size:13px;text-align:center}
     .rsFoot{border-top:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--surface)}
+  
+    .rsListRule{border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+    .rsListRule.off{opacity:.55}.rsListRule.dim{opacity:.7}
+    .rsListTitle{font-weight:800;font-size:14px;background:none;border:0;padding:0;cursor:pointer;text-align:right;color:var(--text)}
+    .rsListTitle:hover{color:var(--accent)}
+    .rsListSentence{background:none;border:0;padding:0;text-align:right;font:inherit;font-size:12.5px;line-height:1.6;color:var(--muted);cursor:pointer}
+    .rsListSentence:hover{color:var(--text)}
   </style>
 </head>
 <body>
@@ -484,8 +491,8 @@
                 <div><h2>הכללים שלי</h2><p>כלל בנוי מקוביות: מתחילים ב"כאשר", מוסיפים "ואז", "וגם" או "או", ובוחרים פעולה, למשל להציג עיצוב מהגלריה, לשאול סקר או לקרוא לכלי. תנאים כמו "הודעה ראשונה" או "מחובר ל-Moodle" השרת בודק בעצמו; תנאי על תוכן השאלה הבוט מבין לבד.</p></div>
                 <div class="flex gap-2 flex-wrap items-center">
                   <input id="pmRuleSearch" type="search" class="input input-sm" style="width:190px" placeholder="חפש כלל (טקסט, שם, תנאי)" oninput="pmSearch(this.value)" autocomplete="off">
-                  <button type="button" onclick="pmOpenAll(true)" class="btn btn-sm">פתח הכול</button>
-                  <button type="button" onclick="pmOpenAll(false)" class="btn btn-sm">סגור הכול</button>
+                  <button type="button" onclick="pmOpenAll(true)" class="btn btn-sm">פתח את כל החלקים</button>
+                  <button type="button" onclick="pmOpenAll(false)" class="btn btn-sm">סגור את החלקים</button>
                   <select id="pmTplSel" class="select" style="width:auto;height:34px"><option value="">תבנית מוכנה...</option></select>
                   <button type="button" onclick="rsOpen()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>כלל חדש</button>
                 </div>
@@ -697,10 +704,16 @@
     <div class="modal" style="max-width:980px">
       <div class="modal-head"><span>בחירת עיצוב</span><button type="button" onclick="pmPickClose()" class="btn btn-ghost btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
       <div class="grid md:grid-cols-5 gap-4 p-4 overflow-auto">
-        <div class="md:col-span-2 space-y-2 overflow-auto" style="max-height:60vh" id="pmPickList"></div>
+        <div class="md:col-span-2 space-y-2">
+          <input id="pmPickSearch" type="search" class="input input-sm" placeholder="חפש עיצוב: שם או מה הוא עושה" oninput="pmPickFilter(this.value)" onkeydown="pmPickKey(event)" autocomplete="off">
+          <div id="pmPickChips" class="flex flex-wrap gap-1.5"></div>
+          <div id="pmPickCount" class="hint" style="margin:0"></div>
+          <div id="pmPickList" class="space-y-2 overflow-auto" style="max-height:50vh"></div>
+        </div>
         <div class="md:col-span-3 space-y-3">
           <div class="flex flex-wrap gap-1.5" id="pmPickStyles"></div>
           <div class="flex flex-wrap gap-1.5" id="pmPickColors"></div>
+          <div id="pmPickNote" class="hint" style="margin:0;color:var(--warn)"></div>
           <div id="pmPickHost" style="min-height:100px"></div>
           <button type="button" onclick="pmPickDone()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>בחר את העיצוב הזה</button>
         </div>
@@ -2197,10 +2210,7 @@
       must: { label: 'חובה', color: '#9a3412', bg: '#ffedd5' }, example: { label: 'דוגמה', color: '#475569', bg: '#e2e8f0' },
       info: { label: 'מידע', color: '#334155', bg: '#f1f5f9' }, text: { label: 'טקסט חופשי', color: '#334155', bg: '#f1f5f9' },
     };
-    const JOINS = [['', '—'], ['and', 'וגם'], ['then', 'ואז'], ['or', 'או'], ['else', 'אחרת'], ['except', 'חוץ מ']];
-    const WHEN_KINDS = [['topic', 'על תוכן השאלה (כתוב)'], ['first_message', 'הודעה ראשונה בשיחה'], ['new_student', 'סטודנט חדש'], ['moodle', 'מחובר ל-Moodle'], ['no_moodle', 'לא מחובר ל-Moodle'], ['lang', 'שפת האפליקציה'], ['once', 'פעם אחת לכל סטודנט']];
     const MACHINE = ['first_message', 'new_student', 'moodle', 'no_moodle', 'lang', 'once'];
-    const LEAD_HINT = { say: 'מה הבוט עושה או אומר', info: 'מידע לבוט', text: 'טקסט חופשי', dont: 'אל... (מה לא לעשות)', must: 'חובה: ...', example: 'דוגמה: ...', tone: 'באיזה טון (למשל: חם וקצר)', remember: 'מה לשמור בזיכרון' };
     const COLORS8 = ['blue', 'green', 'orange', 'red', 'purple', 'teal', 'pink', 'gray'];
     const COLOR_HEX = { blue: '#3b82f6', green: '#22a55e', orange: '#f08c1a', red: '#e5484d', purple: '#8b5cf6', teal: '#14b8a6', pink: '#ec4899', gray: '#64748b' };
     let PM_META = null;
@@ -2236,136 +2246,41 @@
       return b;
     }
 
-    function pmField(tag, val, ph, on, cls) {
-      const e = el(tag, cls || PM_INPUT); if (ph) e.placeholder = ph; e.value = val || '';
-      e.oninput = () => { on(e.value); pmDirty(); if (tag === 'textarea') { e.style.height = 'auto'; e.style.height = Math.min(320, e.scrollHeight + 2) + 'px'; } };
-      if (tag === 'textarea') { e.rows = 1; setTimeout(() => { e.style.height = 'auto'; e.style.height = Math.min(320, e.scrollHeight + 2) + 'px'; }, 0); }
-      return e;
-    }
-    function pmOptionsEditor(c, min, max) {
-      const box = el('div', 'space-y-1'); const o = c.p.options || (c.p.options = ['', '']);
-      o.forEach((v, i) => {
-        const row = el('div', 'flex gap-1'); row.appendChild(pmField('input', v, 'אפשרות ' + (i + 1), val => { o[i] = val; c.raw = null; }, PM_INPUT + ' text-xs'));
-        if (o.length > min) { const x = el('button', 'text-rose-600 px-1', '⟦x⟧'); x.type = 'button'; x.onclick = () => { o.splice(i, 1); pmRenderAll(); pmDirty(); }; row.appendChild(x); }
-        box.appendChild(row);
-      });
-      if (o.length < max) { const add = el('button', 'text-xs font-bold text-indigo-700', '＋ אפשרות'); add.type = 'button'; add.onclick = () => { o.push(''); pmRenderAll(); pmDirty(); }; box.appendChild(add); }
-      return box;
-    }
-    function pmCubeBody(c) {
-      const body = el('div', 'space-y-1.5 mt-1.5'); const t = c.t;
-      if (t === 'when') {
-        body.appendChild(pmSelect(WHEN_KINDS, c.p.kind || 'topic', v => { c.p.kind = v; c.raw = null; pmRenderAll(); }));
-        if (c.p.kind === 'topic') body.appendChild(pmField('input', c.text, 'למשל: שואלים על מחיר או שכר לימוד', v => { c.text = v; c.raw = null; }));
-        if (c.p.kind === 'lang') body.appendChild(pmSelect([['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']], c.p.lang || 'he', v => { c.p.lang = v; }));
-        if (MACHINE.includes(c.p.kind)) body.appendChild(el('div', 'text-[11px] text-slate-400', 'השרת בודק את התנאי הזה בעצמו.'));
-      } else if (t === 'design') {
-        const lab = c.p.kind ? ('עיצוב: ' + ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === c.p.kind) || {}).name) || c.p.kind) + (c.p.style ? ' · ' + c.p.style : '') + (c.p.color ? ' · ' + c.p.color : '')) : '⟦layout⟧ בחר עיצוב מהגלריה';
-        const b = el('button', 'w-full text-right text-sm font-bold rounded-lg border border-violet-300 bg-violet-50 text-violet-800 px-3 py-2', lab); b.type = 'button';
-        if (c.p.color) b.style.borderInlineStartWidth = '6px', b.style.borderInlineStartColor = COLOR_HEX[c.p.color] || '#8b5cf6';
-        b.onclick = () => pmPick(c); body.appendChild(b);
-        body.appendChild(pmField('input', c.text, 'הערה לבוט (למשל: רק כשיש מבצע)', v => { c.text = v; c.raw = null; }, PM_INPUT + ' text-xs'));
-      } else if (t === 'poll') {
-        body.appendChild(pmSelect([['multi', 'בחירה מרובה'], ['single', 'בחירה אחת']], c.p.mode || 'multi', v => { c.p.mode = v; c.raw = null; }));
-        body.appendChild(pmField('input', c.p.q, 'שאלת הסקר', v => { c.p.q = v; c.raw = null; }));
-        body.appendChild(pmOptionsEditor(c, 2, 12));
-      } else if (t === 'quick') {
-        body.appendChild(pmOptionsEditor(c, 2, 4));
-      } else if (t === 'tool') {
-        const tools = (PM_META && PM_META.tools || []).map(x => [x.name, x.label + ' (' + x.name + ')']);
-        body.appendChild(pmSelect(tools.length ? tools : [[c.p.name || '', c.p.name || '']], c.p.name, v => { c.p.name = v; c.raw = null; }));
-        body.appendChild(pmField('input', c.text, 'מתי / איך (לא חובה)', v => { c.text = v; c.raw = null; }, PM_INPUT + ' text-xs'));
-      } else if (t === 'length') {
-        body.appendChild(pmSelect([['short', 'קצר, עד 3 שורות, טקסט'], ['long', 'מורחב ומפורט'], ['visual', 'ויזואלי, כרטיסים']], c.p.mode || 'short', v => { c.p.mode = v; c.raw = null; }));
-      } else {
-        body.appendChild(pmField('textarea', c.text, LEAD_HINT[t] || '', v => { c.text = v; c.raw = null; }, PM_INPUT + ' leading-snug'));
-      }
-      return body;
-    }
-    function pmCube(rule, i) {
-      const c = rule.cubes[i]; const meta = CUBE_META[c.t] || CUBE_META.info;
-      const wrap = el('div', 'flex items-start gap-1.5 min-w-0');
-      if (i > 0) {
-        const j = el('button', 'pmJoin', (JOINS.find(x => x[0] === c.join) || JOINS[0])[1]); j.type = 'button'; j.title = 'חיבור לקובייה הקודמת (לחץ להחלפה)';
-        j.onclick = () => { const k = JOINS.findIndex(x => x[0] === c.join); c.join = JOINS[(k + 1) % JOINS.length][0]; c.raw = c.raw && c.join === '' ? c.raw : (c.join ? null : c.raw); pmRenderAll(); pmDirty(); };
-        wrap.appendChild(j);
-      }
-      const card = el('div', 'pmCube'); card.style.borderColor = meta.color; card.style.background = '#fff';
-      const head = el('div', 'flex items-center gap-1 cube-tools');
-      const sel = el('select', 'pmType'); sel.style.background = meta.bg; sel.style.color = meta.color;
-      Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; if (k === c.t) o.selected = true; sel.appendChild(o); });
-      sel.onchange = () => { const old = c.text; Object.assign(c, newCube(sel.value, c.join), { id: c.id, text: old, raw: null }); pmRenderAll(); pmDirty(); };
-      head.appendChild(sel);
-      if (c.raw !== null && c.raw !== undefined) { const o = el('span', 'text-[10px] text-slate-400', 'מקורי'); o.title = 'הנוסח המקורי, לא שונה'; head.appendChild(o); }
-      const sp = el('span', 'flex-1'); head.appendChild(sp);
-      const mv = (d) => { const k = i + d; if (k < 0 || k >= rule.cubes.length) return; const a = rule.cubes; [a[i], a[k]] = [a[k], a[i]]; if (a[0].join) { a[0].join = ''; } pmRenderAll(); pmDirty(); };
-      [['⟦up⟧', () => mv(-1), 'הזז קודם'], ['⟦down⟧', () => mv(1), 'הזז אחר כך'], ['⟦x⟧', () => { rule.cubes.splice(i, 1); if (rule.cubes[0]) rule.cubes[0].join = ''; pmRenderAll(); pmDirty(); }, 'מחק קובייה']].forEach(([t, f, ti]) => {
-        const b = el('button', 'text-slate-400 hover:text-slate-700 text-xs px-1', t); b.type = 'button'; b.title = ti; b.onclick = f; head.appendChild(b);
-      });
-      card.appendChild(head); card.appendChild(pmCubeBody(c)); wrap.appendChild(card);
-      return wrap;
-    }
-    let PM_EYE = {};      // rule id -> compiled text shown (when its eye panel is open)
-    let PM_OPEN = {};     // rule id -> expanded
-    async function pmEye(rule, box) {
-      box.textContent = '⟦clock⟧';
-      try {
-        const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: [rule], ctx: pmCtx() }) })).json();
-        const x = (r.rules || {})[rule.id]; box.textContent = x ? (x.active ? (x.text || '(כלל ריק)') : '(כלל לא חל בתרחיש הזה, הבוט לא מקבל אותו)') : '';
-      } catch (e) { box.textContent = 'שגיאה'; }
-    }
-    function pmRule(rule, list, idx, collapsedDefault) {
-      const open = PM_OPEN[rule.id] != null ? PM_OPEN[rule.id] : !collapsedDefault;
-      const active = ruleActive(rule), machine = ruleHasMachine(rule);
-      const card = el('div', 'rounded-xl border bg-white ' + (rule.enabled ? (machine && !active ? 'border-slate-200 opacity-60' : 'border-slate-300') : 'border-slate-200 opacity-50'));
-      card.dataset.rid = rule.id;
-      const top = el('div', 'flex items-center gap-2 p-2');
-      const tg = el('button', 'text-slate-500 text-sm px-1', open ? '▾' : '◂'); tg.type = 'button'; tg.onclick = () => { PM_OPEN[rule.id] = !open; pmRenderAll(); }; top.appendChild(tg);
+    let PM_OPEN = {};     // rule id -> its section is opened by the search (kept for the search and for "open all")
+    // a rule in the list: its name, the rule read as a sentence, its status and a few buttons. ALL editing happens in the rule studio (the Edit button, or a click on the rule).
+    function pmRule(rule, list, idx) {
+      const active = ruleActive(rule), machine = ruleHasMachine(rule), warns = rule.enabled ? ruleWarnings(rule) : [];
+      const card = el('div', 'rsListRule' + (!rule.enabled ? ' off' : (machine && !active ? ' dim' : ''))); card.dataset.rid = rule.id;
+      const open = () => rsOpen(rule, list, idx);
+      const top = el('div', 'flex items-center gap-2 flex-wrap');
       const first = rule.cubes[0] || {};
-      const title = pmField('input', rule.title, (first.text || 'שם הכלל').slice(0, 60), v => { rule.title = v; }, PM_INPUT + ' font-bold text-sm border-transparent bg-transparent hover:border-slate-300 flex-1 min-w-0');
-      top.appendChild(title);
+      const title = el('button', 'rsListTitle', rule.title || String(first.text || 'כלל ללא שם').slice(0, 60)); title.type = 'button'; title.onclick = open; top.appendChild(title);
+      top.appendChild(el('span', 'flex-1'));
       if (machine) top.appendChild(el('span', 'text-[10px] font-bold rounded-full px-2 py-0.5 ' + (active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'), active ? 'חל בתרחיש' : 'לא חל'));
-      const warns = rule.enabled ? ruleWarnings(rule) : [];
       if (warns.length) { const wb = el('span', 'badge badge-warn', 'לא תקין'); wb.title = warns.join('\n'); top.appendChild(wb); }
       const stBadge = el('span', 'badge'); stBadge.dataset.rstat = '1'; top.appendChild(stBadge);
-      const foot = el('div', 'flex flex-wrap items-center justify-between gap-2 pt-3'); foot.style.borderTop = '1px solid var(--line)';
-      const footMsg = el('span', 'hint'); footMsg.style.margin = '0';
-      const saveBtn = el('button', 'btn btn-primary btn-sm', '⟦save⟧שמור ופרסם'); saveBtn.type = 'button'; saveBtn.onclick = () => pmSave();
       stBadge._upd = () => {
-        const snap = PM_SNAP[rule.id]; const st = snap == null ? 'new' : (snap !== JSON.stringify(rule) ? 'edited' : 'saved');
+        const snap = PM_SNAP[rule.id], st = snap == null ? 'new' : (snap !== JSON.stringify(rule) ? 'edited' : 'saved');
         stBadge.className = 'badge ' + (st === 'saved' ? 'badge-ok' : 'badge-warn');
         stBadge.style.display = (st === 'saved' && rule.section !== 'mine') ? 'none' : '';
         stBadge.textContent = st === 'new' ? 'חדש, עוד לא נשמר' : st === 'edited' ? 'שונה, עוד לא נשמר' : 'נשמר';
-        footMsg.textContent = st === 'new' ? 'הכלל עוד לא נשמר: הבוט לא מכיר אותו עד שתשמור.' : st === 'edited' ? 'יש שינויים בכלל שלא נשמרו.' : 'הכלל שמור ופעיל.';
-        saveBtn.disabled = st === 'saved';
       };
       stBadge._upd();
-      const edBtn = el('button', 'btn btn-sm btn-soft', 'ערוך'); edBtn.type = 'button'; edBtn.onclick = () => rsOpen(rule, list, idx); top.appendChild(edBtn);
-      top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
+      const ed = el('button', 'btn btn-sm btn-soft', 'ערוך'); ed.type = 'button'; ed.onclick = open; top.appendChild(ed);
       const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
-      const dup = () => { const r2 = JSON.parse(JSON.stringify(rule)); r2.id = uid(); r2.cubes.forEach(c => { c.id = uid(); }); r2.title = (rule.title || '') + (rule.title ? ' (עותק)' : ''); list.splice(idx + 1, 0, r2); PM_OPEN[r2.id] = true; pmRenderAll(); pmDirty(); };
-      [['שכפל', dup], ['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
+      const dup = () => { const r2 = JSON.parse(JSON.stringify(rule)); r2.id = uid(); r2.cubes.forEach(c => { c.id = uid(); }); r2.title = (rule.title || '') + (rule.title ? ' (עותק)' : ''); list.splice(idx + 1, 0, r2); pmRenderAll(); pmDirty(); };
+      [['שכפל', 'copy', dup], ['הזז למעלה', 'up', () => mv(-1)], ['הזז למטה', 'down', () => mv(1)], ['מחק', 'trash', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([ti, ic, f]) => {
+        const b = el('button', 'btn btn-ghost btn-sm'); b.type = 'button'; b.title = ti; if (ic === 'copy') b.textContent = 'שכפל'; else b.appendChild(rsIcon(ic)); b.onclick = f; top.appendChild(b);
+      });
+      top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
       card.appendChild(top);
-      if (!open) { const pv = el('div', 'px-3 pb-2 text-[12.5px] text-slate-600'); pv.textContent = rsSentenceText(rule); card.appendChild(pv); return card; }
-      const body = el('div', 'p-2 pt-0 space-y-2');
-      const row = el('div', 'flex flex-wrap gap-2 items-start');
-      rule.cubes.forEach((c, i) => row.appendChild(pmCube(rule, i)));
-      const add = el('select', 'border border-dashed border-slate-300 rounded-lg px-2 py-1 text-xs bg-white self-center');
-      const o0 = el('option', '', '＋ קובייה'); o0.value = ''; add.appendChild(o0);
-      Object.entries(CUBE_META).forEach(([k, m]) => { const o = el('option', '', m.label); o.value = k; add.appendChild(o); });
-      add.onchange = () => { if (!add.value) return; rule.cubes.push(newCube(add.value, rule.cubes.length ? 'then' : '')); pmRenderAll(); pmDirty(); };
-      row.appendChild(add); body.appendChild(row);
-      const eye = el('button', 'text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-2.5 py-1', '⟦eye⟧ הטקסט שהבוט מקבל'); eye.type = 'button';
-      const out = el('pre', 'hidden whitespace-pre-wrap text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 leading-relaxed'); out.dir = 'rtl';
-      eye.onclick = () => { const h = out.classList.toggle('hidden'); if (!h) pmEye(rule, out); };
-      body.appendChild(eye); body.appendChild(out);
-      foot.appendChild(footMsg); foot.appendChild(saveBtn); body.appendChild(foot); card.appendChild(body);
+      const pv = el('button', 'rsListSentence'); pv.type = 'button'; pv.textContent = rsSentenceText(rule); pv.onclick = open; card.appendChild(pv);
       return card;
     }
     function pmRenderMine() {
       const box = document.getElementById('pmMine'); if (!box || !PM) return; box.innerHTML = '';
       if (!PM.mine.length) box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין כללים. לחץ "כלל חדש" או בחר תבנית מוכנה.'));
-      let shown = 0; PM.mine.forEach((r, i) => { if (ruleMatches(r)) { shown++; box.appendChild(pmRule(r, PM.mine, i, true)); } });
+      let shown = 0; PM.mine.forEach((r, i) => { if (ruleMatches(r)) { shown++; box.appendChild(pmRule(r, PM.mine, i)); } });
       if (PM.mine.length && !shown) box.appendChild(el('div', 'text-sm text-slate-400', 'אין כלל שמתאים לחיפוש.'));
       const sel = document.getElementById('pmTplSel');
       if (PM_META && sel.options.length === 1) {
@@ -2373,7 +2288,6 @@
         sel.onchange = () => { if (sel.value === '') return; const t = PM_META.templates[+sel.value]; sel.value = ''; rsOpen(null, null, -1, t); };
       }
     }
-    function pmAddRule() { const r = newRule('mine'); PM.mine.unshift(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); }
     function pmRenderAll() { pmRenderMine(); pmRenderSections(true); pmRenderRuleChips(); }
     // ---- finding rules: the search looks in the title and in the text of every cube
     let PM_Q = '', PM_FORCE_SEC = null, PM_KQ = '', PM_RF = '', PM_KF = '', PM_CQ = '', PM_VQ = '';
@@ -2424,8 +2338,8 @@
           top.appendChild(rs); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
           c.appendChild(top);
           const body = el('div', 'pmSecBody p-3 pt-0 space-y-2 ' + (openSecs[s.key] || ((PM_Q || PM_RF) && s.rules.some(ruleMatches)) ? '' : 'hidden'));
-          s.rules.forEach((r, i) => { if (ruleMatches(r)) body.appendChild(pmRule(r, s.rules, i, true)); });
-          const add = el('button', 'text-xs font-bold text-indigo-700', '＋ כלל בחלק הזה'); add.type = 'button'; add.onclick = () => { const r = newRule(s.key); s.rules.push(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); };
+          s.rules.forEach((r, i) => { if (ruleMatches(r)) body.appendChild(pmRule(r, s.rules, i)); });
+          const add = el('button', 'btn btn-sm btn-soft', 'כלל חדש בחלק הזה'); add.type = 'button'; add.onclick = () => rsOpen(null, null, -1, null, s);
           body.appendChild(add); c.appendChild(body);
           info.onclick = () => { body.classList.toggle('hidden'); };
           wrap.appendChild(c);
@@ -2434,29 +2348,62 @@
       });
     }
 
-    // ---------- the design picker (gallery inside a cube)
+    // ---------- the design picker (opened from the rule studio): the built-in designs AND the ones I made, with search and filter chips
     let PM_PICK = null, PM_PICKPV = null;
+    const PM_PICK_FILTERS = [['', 'הכול'], ['mine', 'שלי'], ['builtin', 'מובנים'], ['moodle', 'Moodle'], ['on', 'פעילים']];
     async function pmPick(cube) {
       if (!PM_CAT) PM_CAT = await (await adminFetch(`${API_BASE}/api/admin/ui/catalog`)).json();
-      PM_PICK = { cube, kind: cube.p.kind || PM_CAT.kinds[0].kind, style: cube.p.style || '', color: cube.p.color || '' };
+      const items = pmKindItems();
+      PM_PICK = { cube, kind: cube.p.kind || (items[0] && items[0].kind) || '', style: cube.p.style || '', color: cube.p.color || '', q: '', f: '' };
       document.getElementById('pmPicker').classList.remove('hidden');
+      const s = document.getElementById('pmPickSearch'); if (s) { s.value = ''; setTimeout(() => s.focus(), 40); }
       if (!PM_PICKPV) PM_PICKPV = pmPreview(document.getElementById('pmPickHost'));
       pmPickRender();
     }
     function pmPickClose() { document.getElementById('pmPicker').classList.add('hidden'); PM_PICK = null; }
-    function pmPickDone() { const c = PM_PICK.cube; c.p = { ...c.p, kind: PM_PICK.kind, style: PM_PICK.style, color: PM_PICK.color }; c.raw = null; pmPickClose(); if (typeof RS !== 'undefined' && RS.rule) rsRender(); else { pmRenderAll(); pmDirty(); } }
+    function pmPickDone() {
+      if (!PM_PICK || !PM_PICK.kind) return; const c = PM_PICK.cube;
+      c.p = { ...c.p, kind: PM_PICK.kind, style: PM_PICK.style, color: PM_PICK.color }; c.raw = null; pmPickClose();
+      if (typeof RS !== 'undefined' && RS.rule) rsRender(); else { pmRenderAll(); pmDirty(); }
+    }
+    function pmPickFilter(v) { if (PM_PICK) { PM_PICK.q = String(v || ''); pmPickRender(); } }
+    // arrows move through the list, Enter chooses, Esc closes
+    function pmPickKey(e) {
+      if (!PM_PICK) return;
+      if (e.key === 'Escape') { e.preventDefault(); pmPickClose(); return; }
+      if (e.key === 'Enter') { e.preventDefault(); pmPickDone(); return; }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return; e.preventDefault();
+      const kinds = [...document.querySelectorAll('#pmPickList [data-kind]')].map(b => b.dataset.kind); if (!kinds.length) return;
+      const i = kinds.indexOf(PM_PICK.kind), j = Math.max(0, Math.min(kinds.length - 1, (i < 0 ? 0 : i) + (e.key === 'ArrowDown' ? 1 : -1)));
+      PM_PICK.kind = kinds[j]; PM_PICK.style = ''; pmPickRender(); const n = document.querySelector('#pmPickList [data-kind="' + kinds[j] + '"]'); if (n) n.scrollIntoView({ block: 'nearest' });
+    }
     function pmChip(text, on, f, color) { const b = el('button', 'text-xs font-bold rounded-full px-3 py-1 border ' + (on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'), text); b.type = 'button'; if (color) { b.style.borderColor = color; if (on) b.style.background = color; } b.onclick = f; return b; }
     async function pmPickRender() {
-      const P = PM_PICK, list = document.getElementById('pmPickList'); list.innerHTML = '';
-      PM_CAT.kinds.forEach(k => { const b = el('button', 'w-full text-right rounded-lg border px-3 py-2 text-sm ' + (k.kind === P.kind ? 'border-indigo-500 bg-indigo-50 font-bold' : 'border-slate-200 bg-white'), k.name); b.type = 'button'; b.appendChild(el('div', 'text-[11px] text-slate-500 font-normal', k.desc));
-        b.onclick = () => { P.kind = k.kind; P.style = ''; pmPickRender(); }; list.appendChild(b); });
-      const k = PM_CAT.kinds.find(x => x.kind === P.kind);
-      const st = document.getElementById('pmPickStyles'); st.innerHTML = ''; st.appendChild(el('span', 'text-xs text-slate-500 self-center', 'סגנון:'));
-      st.appendChild(pmChip('ברירת מחדל', !P.style, () => { P.style = ''; pmPickRender(); })); (k.styles || []).forEach(s => st.appendChild(pmChip(s, P.style === s, () => { P.style = s; pmPickRender(); })));
+      const P = PM_PICK; if (!P) return; const list = document.getElementById('pmPickList'); list.innerHTML = '';
+      const all = pmKindItems(), terms = sTerms(P.q), items = all.filter(it => kindFilterOk(it, P.f) && kindTextOk(it, terms));
+      chipRow(document.getElementById('pmPickChips'), PM_PICK_FILTERS, P.f, k => all.filter(it => kindFilterOk(it, k) && kindTextOk(it, terms)).length, k => { P.f = k; pmPickRender(); });
+      document.getElementById('pmPickCount').textContent = (P.f || terms.length) ? 'מוצגים ' + items.length + ' מתוך ' + all.length : all.length + ' עיצובים (' + all.filter(x => x.custom).length + ' שלי)';
+      if (!items.length) list.appendChild(el('div', 'text-sm text-slate-400 p-2', 'אין עיצוב שמתאים לחיפוש או לסינון.'));
+      items.forEach(it => {
+        const b = el('button', 'w-full text-right rounded-lg border px-3 py-2 text-sm ' + (it.kind === P.kind ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white') + (it.enabled ? '' : ' opacity-60')); b.type = 'button'; b.dataset.kind = it.kind;
+        const nm = el('div', 'font-bold'); nm.innerHTML = sMark(it.name, terms); if (it.custom) nm.appendChild(el('span', 'gsTag mine', 'שלי')); if (!it.enabled) nm.appendChild(el('span', 'gsTag', 'כבוי'));
+        b.appendChild(nm); const ds = el('div', 'text-[11px] text-slate-500 font-normal'); ds.innerHTML = sMark(it.desc, terms); b.appendChild(ds);
+        b.onclick = () => { P.kind = it.kind; P.style = ''; pmPickRender(); }; b.ondblclick = () => pmPickDone(); list.appendChild(b);
+      });
+      const cur = all.find(x => x.kind === P.kind), note = document.getElementById('pmPickNote');
+      note.textContent = cur && !cur.enabled ? 'העיצוב הזה כבוי כרגע, ולכן הבוט לא יציג אותו גם אם הכלל יבחר בו. אפשר להפעיל אותו בדף העיצובים.' : '';
+      const st = document.getElementById('pmPickStyles'); st.innerHTML = '';
+      const styles = cur && !cur.custom && cur.k ? (cur.k.styles || []) : [];
+      if (cur && !cur.custom) { st.appendChild(el('span', 'text-xs text-slate-500 self-center', 'סגנון:')); st.appendChild(pmChip('ברירת מחדל', !P.style, () => { P.style = ''; pmPickRender(); })); styles.forEach(s => st.appendChild(pmChip(s, P.style === s, () => { P.style = s; pmPickRender(); }))); }
       const co = document.getElementById('pmPickColors'); co.innerHTML = ''; co.appendChild(el('span', 'text-xs text-slate-500 self-center', 'צבע:'));
       co.appendChild(pmChip('אוטומטי', !P.color, () => { P.color = ''; pmPickRender(); })); COLORS8.forEach(c => co.appendChild(pmChip(c, P.color === c, () => { P.color = c; pmPickRender(); }, COLOR_HEX[c])));
-      const r = await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: k.kind, ...(P.style ? { style: P.style } : {}), ...(P.color ? { color: P.color } : {}), ...k.sample }] }) })).json();
-      if (PM_PICK === P && r.marker) PM_PICKPV.show([{ name: '', marker: r.marker }]);
+      if (!cur) return;
+      try {
+        let marker = '';
+        if (cur.custom) marker = (await (await adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: cur.d }) })).json()).marker;
+        else marker = (await (await adminFetch(`${API_BASE}/api/admin/ui/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blocks: [{ type: cur.kind, ...(P.style ? { style: P.style } : {}), ...(P.color ? { color: P.color } : {}), ...cur.k.sample }] }) })).json()).marker;
+        if (PM_PICK === P && marker) PM_PICKPV.show([{ name: '', marker }]);
+      } catch (e) { /* the preview is optional */ }
     }
 
     // ---------- gallery
@@ -3026,7 +2973,7 @@
     }
     function rsActText(c) {
       const t = String(c.text || '').replace(/\s+/g, ' ').trim(), cut = (s, n) => (s.length > n ? s.slice(0, n) + '…' : s), p = c.p || {};
-      const kind = p.kind && PM_CAT ? ((PM_CAT.kinds.find(k => k.kind === p.kind) || {}).name || p.kind) : '';
+      const kind = p.kind ? ((((PM_CAT && PM_CAT.kinds) || []).find(k => k.kind === p.kind) || (((PM && PM.custom) || []).find(d => d.id === p.kind)) || {}).name || p.kind) : '';
       switch (c.t) {
         case 'design': return kind ? 'להציג את העיצוב "' + kind + '"' : 'להציג עיצוב (עוד לא נבחר)';
         case 'poll': return 'לשאול סקר' + (p.q ? ' "' + cut(p.q, 40) + '"' : '');
@@ -3046,10 +2993,10 @@
     const rsSentenceText = rule => { const s = rsSentenceParts(rule); return (s.when === 'תמיד' ? 'תמיד: ' : 'כאשר ' + s.when + ' - אז ') + s.then; };
 
     // ---- opening and closing
-    function rsOpen(rule, list, idx, tpl) {
+    function rsOpen(rule, list, idx, tpl, section) {
       if (!PM) { showToast('הכללים עדיין נטענים, נסה שוב בעוד רגע', true); return; }
-      RS.isNew = !rule; RS.list = list || null; RS.idx = rule && list ? idx : -1;
-      RS.rule = rule ? rsClone(rule) : Object.assign(newRule('mine', ''), { cubes: [] });
+      RS.isNew = !rule; RS.list = list || (section ? section.rules : null); RS.idx = rule && list ? idx : -1; RS.append = !rule && !!section;
+      RS.rule = rule ? rsClone(rule) : Object.assign(newRule(section ? section.key : 'mine', ''), { cubes: [] });
       if (tpl) { const t = rsClone(tpl.rule); RS.rule.title = t.title || tpl.name || ''; RS.rule.cubes = t.cubes.map(c => ({ ...newCube(c.t), ...c, id: uid() })); }
       rsNormalize(RS.rule); RS.snap = JSON.stringify(RS.rule); RS.tpl = RS.isNew && !RS.rule.cubes.length;
       document.getElementById('rsOverlay').classList.remove('hidden'); document.getElementById('rsTitle').textContent = RS.isNew ? 'כלל חדש' : 'עריכת כלל';
@@ -3167,7 +3114,7 @@
     function rsActBody(c) {
       const d = el('div', 'space-y-2'), p = c.p || (c.p = {});
       if (c.t === 'design') {
-        const lab = p.kind ? ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === p.kind) || {}).name) || p.kind) + (p.style ? ' · ' + p.style : '') + (p.color ? ' · ' + p.color : '') : '';
+        const lab = p.kind ? rsActText({ t: 'design', p: { kind: p.kind }, text: '' }).replace(/^להציג את העיצוב "|"$/g, '') + (p.style ? ' · ' + p.style : '') + (p.color ? ' · ' + p.color : '') : '';
         const b = el('button', 'btn btn-soft', lab ? 'עיצוב: ' + lab + '  (שנה)' : 'בחר עיצוב מהגלריה'); b.type = 'button'; b.onclick = () => pmPick(c); d.appendChild(b);
         d.appendChild(rsText(c, 'הערה לבוט: מתי להשתמש בו (למשל: רק כשיש מבצע)', 2));
       } else if (c.t === 'poll') {
@@ -3204,7 +3151,7 @@
     }
     function rsApply() {
       const r = rsClone(RS.rule); rsNormalize(r);
-      if (RS.list && RS.idx >= 0) RS.list[RS.idx] = r; else PM.mine.unshift(r);
+      if (RS.list && RS.idx >= 0) RS.list[RS.idx] = r; else if (RS.append && RS.list) RS.list.push(r); else PM.mine.unshift(r);
       PM_OPEN[r.id] = false; RS.snap = JSON.stringify(RS.rule); return r;
     }
     async function rsSave(publish) {
@@ -3214,7 +3161,7 @@
     }
     document.addEventListener('keydown', (e) => {
       const ov = document.getElementById('rsOverlay'); if (!ov || ov.classList.contains('hidden') || !RS.rule) return;
-      const pk = document.getElementById('pmPicker'); if (pk && !pk.classList.contains('hidden')) return;
+      const pk = document.getElementById('pmPicker'); if (pk && !pk.classList.contains('hidden')) { if (e.key === 'Escape') { e.preventDefault(); pmPickClose(); } return; }
       if (e.key === 'Escape') { e.preventDefault(); rsClose(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); rsSave(true); }
     });
 
