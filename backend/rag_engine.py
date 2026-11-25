@@ -582,9 +582,20 @@ def _answer_language_note(question: str, ui_lang: str = "") -> str:
         return ""
     if re.search(r"[؀-ۿ]", q):
         name = "العربية (Arabic)"
+    elif re.search(r"[Ѐ-ӿ]", q):                         # (found by testing: a question in Russian was answered in Hebrew - only Arabic, French and English were handled)
+        name = "Русский (Russian)"
+    elif re.search(r"[ሀ-፿]", q):
+        name = "አማርኛ (Amharic)"
     elif re.search(r"[A-Za-zÀ-ÿ]", q):
         french = str(ui_lang or "").lower().startswith("fr") or re.search(r"\b(?:combien|comment|bonjour|merci|quand|pourquoi|est-ce|quelle?s?|je|les|des)\b|[àâçéèêëîïôûù]", q, re.I)
-        name = "Français" if french else "English"
+        if french:
+            name = "Français"
+        elif re.search(r"\b(?:the|what|how|where|when|why|can|could|do|does|is|are|i|my|me|to|of|and|for|a|an|in|on|it|you|your|please|hi|hello)\b", q, re.I):
+            name = "English"
+        else:
+            name = "the same language as the question (not Hebrew)"        # Spanish, German, Italian, Portuguese...: the model recognises it
+    elif any(ch.isalpha() for ch in q):                  # any other script: Ukrainian, Persian, Chinese...
+        name = "the same language as the question (not Hebrew)"
     else:
         return ""
     return f"\n(השפה של השאלה: {name}. כתוב את התשובה כולה, כולל כל הכרטיסים (כותרות, שורות, הערות וכפתורים), ב-{name} ולא בעברית. מספרי טלפון, מיילים ושמות מקומות נשארים כפי שהם.)"

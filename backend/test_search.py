@@ -50,6 +50,16 @@ check("topics: 'and' inside one topic stays whole", len(r.split_topics("What are
 check("topics: the student's own data is not searched", r.split_topics("What are my grades and how much is tuition") == ["What are my grades and how much is tuition"], r.split_topics("What are my grades and how much is tuition"))
 check("topics: Hebrew is as before", len(r.split_topics("איך מגיעים לקמפוס ומה מדיניות המעונות")) == 2)
 
+# ---- the answer is written in the language of the question (a Russian question was once answered in Hebrew)
+for q, want in [("Как оплатить обучение?", "Russian"), ("كيف أسجل في الدراسة؟", "Arabic"), ("Comment payer les frais ?", "Français"), ("How do I pay tuition", "English"),
+                ("¿Cómo puedo pagar la matrícula?", "same language"), ("Wie bezahle ich die Studiengebühren", "same language"), ("如何缴纳学费", "same language"),
+                ("እንዴት መመዝገብ እችላለሁ", "Amharic")]:
+    note = r._answer_language_note(q)
+    check("language note: " + q, want in note, note[:80])
+check("language note: Hebrew gets none", r._answer_language_note("איך משלמים שכר לימוד") == "")
+check("language note: only numbers get none", r._answer_language_note("12345 ?") == "")
+check("language note: the card marker is not part of the question", r._answer_language_note("איך משלמים\n\n[Как оплатить]") == "")
+
 # ---- greetings and thanks in every language are not searched
 for w in ["היי", "תודה רבה", "thanks a lot", "Hello!", "merci beaucoup", "Привет", "спасибо большое", "شكرا", "مرحبا!", "السلام عليكم", "bonsoir", "good morning"]:
     check("smalltalk: " + w, r._is_smalltalk(w))
