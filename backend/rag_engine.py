@@ -14,6 +14,8 @@ import gemini_stats
 from hebdate import hebrew_date_str
 from ui_blocks import UI_ADDENDUM, UI_TOOLS, resolve_blocks, encode_blocks, ui_text
 import prompt_store as PS
+import langmsg
+import leakparse
 
 from db import db
 
@@ -846,7 +848,7 @@ async def _stream_chat_inner(
                 got = True
             yield token
         if not got:
-            yield "לא הצלחתי לענות כרגע. אפשר לנסות שוב?"
+            yield langmsg.msg("no_answer", question)
         return
 
     # קריאה מוזרמת אחת עם הכלים: שאלה רגילה מתחילה להיענות מיד; רק אם המודל מבקש כלי יש סבב שני אחרי ביצוע הכלים
@@ -961,6 +963,7 @@ async def _stream_chat_inner(
         card = _cd()
         ui_blocks_out = card.pop("ui", None)
         if ui_blocks_out:
+            ui_blocks_out = await _localize_blocks(ui_blocks_out, question, api_key)
             for blk in ui_blocks_out:
                 db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
             yield f"[[ui:{encode_blocks(ui_blocks_out)}]]"          # the cards the model chose to show (validated by the server)
@@ -1000,7 +1003,7 @@ async def _stream_chat_inner(
         answered = True
         yield token
     if not answered:
-        yield "לא הצלחתי להשלים את הבקשה כרגע. נסה שוב בעוד רגע."
+        yield langmsg.msg("no_request", question)
 
 
 # A question about the student's own Moodle data (tasks, grades, exams, courses) needs no search in the college's information - that search costs 1-2 seconds
@@ -1205,6 +1208,39 @@ async def _cards_from_material(question: str, material: str, api_key: str) -> Li
     return []
 
 
+async def _translate_blocks(blocks: List[Dict[str, Any]], lang: str, api_key: str) -> List[Dict[str, Any]]:
+    names = {"en": "English", "fr": "French", "es": "Spanish", "de": "German", "ru": "Russian", "ar": "Arabic"}.get(lang, "English")
+    prompt = ("Translate every human-readable text in this JSON (titles, labels, details, notes, questions, answers) into " + names + ". Keep the structure and every key exactly as they are. "
+              "Do not change numbers, times, prices, phone numbers, emails, links, icon names or colour names. Keep proper names that have no usual translation as they are. Return ONLY the JSON.\n"
+              + json.dumps(blocks, ensure_ascii=False)[:9000])
+    content = await _generate_once([{"role": "user", "parts": [{"text": prompt}]}], api_key, max_output_tokens=3000, call_type="ui_translate", gen_extra={"responseMimeType": "application/json"})
+    txt = "".join(p.get("text", "") for p in (content or {}).get("parts", []) if isinstance(p, dict))
+    m = re.search(r"[\[{].*[\]}]", txt, re.S)
+    if not m:
+        return blocks
+    return langmsg.merge_translation(blocks, json.loads(m.group(0)))
+
+
+async def _localize_blocks(blocks: List[Dict[str, Any]], question: str, api_key: str) -> List[Dict[str, Any]]:
+    """Found by testing: asked in French, Russian, Arabic or English, the cards sometimes came out in Hebrew, or with Hebrew names in the middle of foreign text (the material is Hebrew).
+    The campus names are written in the question's letters; when most of the text is still Hebrew it is translated once (bounded), keeping the structure and every number."""
+    lang = langmsg.lang_of(question)
+    if lang == "he" or not blocks:
+        return blocks
+    try:
+        out = langmsg.localize_names(blocks, lang)
+        if langmsg.hebrew_ratio(out) >= 0.12 and api_key:
+            tr = await asyncio.wait_for(_translate_blocks([b for b in out if b.get("k") != "x"], lang, api_key), timeout=14)
+            if tr and len(tr) == len([b for b in out if b.get("k") != "x"]):
+                it = iter(tr)
+                out = [b if b.get("k") == "x" else next(it) for b in out]
+                db.bump_api_usage("ui:translated")
+        return out
+    except Exception as e:
+        print(f"[ui-localize] failed: {type(e).__name__}: {e}")
+        return blocks
+
+
 _LEAK = re.compile(r"\[\[show_ui\s*:|(?<![\w.])show_ui\s*\(|\"show_ui\"\s*:")
 
 
@@ -1219,9 +1255,19 @@ def _parse_leaked_ui(text: str) -> List[Dict[str, Any]]:
             arr = arr.get("blocks") or [arr]
         allowed = "\n".join(str(x) for x in (_cd().get("allowed") or [])) or text
         blocks, _msg = resolve_blocks(arr, _cd().get("items", {}), allowed)
-        return blocks
+        if blocks:
+            return blocks
     except Exception:
-        return []
+        pass
+    try:                                                      # show_ui(blocks: [location(title: "..."), ...]) and show_ui(type="compare", ...): not JSON, read by the tolerant reader
+        raw = leakparse.parse_call(text)
+        if raw:
+            allowed = "\n".join(str(x) for x in (_cd().get("allowed") or [])) or text
+            blocks, _msg = resolve_blocks(raw, _cd().get("items", {}), allowed)
+            return blocks
+    except Exception:
+        pass
+    return []
 
 
 async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
@@ -1233,6 +1279,7 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
             acc.append(tok)
         yield tok
     text = "".join(acc)
+    question = args[0] if args else kwargs.get("question", "")
     if kwargs.get("emit_status") and _LEAK.search(text):                # the display call written as text: never shown to the student
         question = args[0] if args else kwargs.get("question", "")
         api_key = args[2] if len(args) > 2 else kwargs.get("api_key", "")
@@ -1245,11 +1292,12 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
                 blocks = []
         db.bump_api_usage("ui:leak")
         if blocks:
+            blocks = await _localize_blocks(blocks, question, api_key)
             for blk in blocks:
                 db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
             yield f"[[ui:{encode_blocks(blocks)}]]"
         else:
-            yield "לא הצלחתי לסדר את התשובה בכרטיסים. אפשר לשאול שוב במילים אחרות?"
+            yield langmsg.msg("no_cards", question)
         return
     # THE IRON RULE: a long or complex answer is never left as text. If the model wrote one anyway, it is converted to visual cards here.
     if kwargs.get("emit_status") and _needs_visual(text):
@@ -1262,6 +1310,7 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
         except Exception:
             blocks = []
         if blocks:
+            blocks = await _localize_blocks(blocks, question, api_key)
             db.bump_api_usage("ui:guard")
             for blk in blocks:
                 db.bump_api_usage("ui:" + str(blk.get("k", ""))[:20])
@@ -1279,7 +1328,7 @@ async def _stream_chat_guarded(*args, **kwargs) -> AsyncGenerator[str, None]:
     if promised and markers:
         yield "\n\n" + "\n".join(markers[:3])
     elif files_called and (promised or (text.rstrip().endswith(":") and re.search(r"קובץ|קבצים|מסמך", text))):
-        yield "\n\nלא הצלחתי למשוך את הקובץ כרגע. אפשר לנסות שוב בעוד רגע, או לפתוח אותו ישירות ב-Moodle."
+        yield "\n\n" + langmsg.msg("no_file", question)
 
 
 _FOLLOW_SKIP = re.compile(r"\[\[(?:poll|quick)")

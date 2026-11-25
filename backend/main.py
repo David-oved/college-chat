@@ -1322,6 +1322,7 @@ async def _stream_chat_response(
             return
 
         route = personal_route(question, bool(moodle_token and moodle_user_id))
+        import langmsg
         from rag_engine import _is_smalltalk, _KB_MARKERS, split_topics, contextual_query, merge_chunk_lists
         head = question.split("\n\n[")[0]
         # Only a plainly college-information question is searched up front (the answer needs it anyway). Everything else goes STRAIGHT to the model, which
@@ -1452,7 +1453,7 @@ async def _stream_chat_response(
             except Exception:
                 pass
             if not full_answer.strip():
-                full_answer = "התשובה התעכבה יותר מדי ולא הצלחתי להשלים אותה. נסה לשלוח שוב."
+                full_answer = langmsg.msg("stalled", question)
                 yield full_answer
 
         _spawn(_finish_chat(conversation_id, full_answer, save_task, api_key))     # הזרם נסגר עכשיו; השמירה והסיכום ברקע
