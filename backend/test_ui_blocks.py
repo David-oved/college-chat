@@ -101,6 +101,11 @@ def junk():
     return random.choice(JUNK)
 
 
+out, _m = u.resolve_blocks([{"type": "facts", "items": [{"label": "שכר לימוד", "value": "12,000 ש״ח"}]},
+                            {"type": "buttons", "items": [{"label": "איך נרשמים?"}, {"label": "איך נרשמים"}, {"label": "איך נרשמים ?"}, {"label": "כמה זה עולה"}]}], {}, "")
+_btn = [b for b in out if b.get("k") == "buttons"]
+check("buttons: the same follow-up question three times is one button", len(_btn) == 1 and [r["l"] for r in _btn[0]["it"]] == ["איך נרשמים?", "כמה זה עולה"], str(out))
+
 errors = 0
 for _ in range(2000):
     blocks = []

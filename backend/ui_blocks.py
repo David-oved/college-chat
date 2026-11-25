@@ -535,6 +535,10 @@ def _resolve_blocks(blocks: Any, items: Dict[str, Dict[str, Any]], allowed: str 
                 if kind not in ("buttons", "tags", "summary") and len(label) > 44:          # a label is a name: the long sentence becomes the detail
                     d = d or _s(label, 220)
                     label = _s(label, 40)
+                if kind == "buttons":                                           # the same follow-up question twice (or three times) is one button
+                    key = re.sub(r"[\W_]+", "", (v or label).lower())
+                    if any(re.sub(r"[\W_]+", "", (r.get("v") or r["l"]).lower()) == key for r in its):
+                        continue
                 row = {"l": label[:80]}
                 if v:
                     row["v"] = v
