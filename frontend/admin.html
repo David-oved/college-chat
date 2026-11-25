@@ -432,7 +432,10 @@
             <div class="card">
               <div class="card-head">
                 <div><h2>הכללים שלי</h2><p>כלל בנוי מקוביות: מתחילים ב"כאשר", מוסיפים "ואז", "וגם" או "או", ובוחרים פעולה, למשל להציג עיצוב מהגלריה, לשאול סקר או לקרוא לכלי. תנאים כמו "הודעה ראשונה" או "מחובר ל-Moodle" השרת בודק בעצמו; תנאי על תוכן השאלה הבוט מבין לבד.</p></div>
-                <div class="flex gap-2 flex-wrap">
+                <div class="flex gap-2 flex-wrap items-center">
+                  <input id="pmRuleSearch" type="search" class="input input-sm" style="width:190px" placeholder="חפש כלל (טקסט, שם, תנאי)" oninput="pmSearch(this.value)" autocomplete="off">
+                  <button type="button" onclick="pmOpenAll(true)" class="btn btn-sm">פתח הכול</button>
+                  <button type="button" onclick="pmOpenAll(false)" class="btn btn-sm">סגור הכול</button>
                   <select id="pmTplSel" class="select" style="width:auto;height:34px"><option value="">תבנית מוכנה...</option></select>
                   <button type="button" onclick="pmAddRule()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>כלל חדש</button>
                 </div>
@@ -487,7 +490,7 @@
           <div id="pmView-gallery" class="page">
             <div class="grid lg:grid-cols-5 gap-4 items-start">
               <div class="lg:col-span-3 card">
-                <div class="card-head"><div><h2>סוגי העיצוב שהבוט מכיר</h2><p>לחץ על עיצוב כדי לראות אותו בדיוק כפי שהסטודנט רואה, בכל הסגנונות. אפשר לכבות עיצוב, לתת לו עדיפות ולכתוב לבוט הערה עליו.</p></div></div>
+                <div class="card-head"><div><h2>סוגי העיצוב שהבוט מכיר</h2><p>לחץ על עיצוב כדי לראות אותו בדיוק כפי שהסטודנט רואה, בכל הסגנונות. אפשר לכבות עיצוב, לתת לו עדיפות ולכתוב לבוט הערה עליו.</p></div><input id="pmKindSearch" type="search" class="input input-sm" style="width:190px" placeholder="חפש עיצוב" oninput="pmKindFilter(this.value)" autocomplete="off"></div>
                 <div class="card-body"><div id="pmKinds" class="space-y-2"></div></div>
               </div>
               <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px">
@@ -527,7 +530,8 @@
               <div class="card-body"><div id="pmLibrary" class="grid md:grid-cols-2 gap-3"><div class="empty" style="grid-column:1/-1">טוען...</div></div></div>
             </div>
             <div class="card">
-              <div class="card-head"><h2>העיצובים שיצרתי</h2></div>
+              <div class="card-head"><div><h2>העיצובים שיצרתי</h2><p>אפשר לערוך כל עיצוב ידנית (תבנית ו-CSS) עם תצוגה חיה, לשכפל, לייצא ולייבא.</p></div><button type="button" onclick="pmImportOpen()" class="btn btn-sm">ייבוא עיצוב</button></div>
+              <div id="pmImport" class="card-body hidden space-y-2" style="border-bottom:1px solid var(--line)"><div class="hint" style="margin:0">הדבק כאן קובץ עיצוב שייצאת (JSON). הוא יקבל מזהה חדש ולא ידרוס עיצוב קיים.</div><textarea id="pmImportText" rows="6" class="textarea" dir="ltr" placeholder='{"name": "...", "template": "...", "css": "..."}'></textarea><div class="flex gap-2"><button type="button" onclick="pmImportDo()" class="btn btn-primary btn-sm">ייבא ושמור</button><button type="button" onclick="document.getElementById('pmImport').classList.add('hidden')" class="btn btn-sm">סגור</button></div></div>
               <div class="card-body"><div id="pmCustom" class="space-y-3"></div></div>
             </div>
           </div>
@@ -537,7 +541,7 @@
         <section id="tabPanel-mascot" class="tab-panel page hidden">
           <div class="card" style="padding:14px 18px">
             <div class="flex flex-wrap items-center gap-3">
-              <div class="min-w-0 flex-1"><b class="text-[15px]">אורי</b><div class="hint" style="margin:2px 0 0">דמות אחת שמצוירת מאותו מקום בכל האפליקציה: הכפתור הצף, ההודעות, מסך הפתיחה, הסיור וההדגמה. רק אתה מעצב אותה, לסטודנטים אין מה לשנות. מה שתפרסם יתעדכן אצל כולם (מכשיר פתוח בודק כל דקה, ופתיחת הצ'אט או חזרה לאפליקציה בודקות מיד).</div></div>
+              <div class="min-w-0 flex-1"><b class="text-[15px]">אורי</b><div class="hint" style="margin:2px 0 0">דמות אחת שמצוירת מאותו מקום בכל האפליקציה. כאן קובעים את הצבע והלבוש, ערכות נושא לפי תאריכים (חורף, קיץ, תקופת מבחנים, חגים) ואת אנימציית הפתיחה של הצ'אט עם משפט משלך. מה שתפרסם יתעדכן אצל כולם (מכשיר פתוח בודק כל דקה, ופתיחת הצ'אט או חזרה לאפליקציה בודקות מיד).</div></div>
               <span id="mcDirty" class="badge badge-warn hidden">יש שינויים שלא נשמרו</span>
               <button type="button" onclick="mcReset()" class="btn">איפוס למקור</button>
               <button type="button" id="mcSaveBtn" onclick="mcSave()" class="btn btn-primary" disabled title="כפתור פעיל רק אחרי שינוי"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>שמור ופרסם</button>
@@ -545,7 +549,7 @@
           </div>
           <div class="grid lg:grid-cols-5 gap-4 items-start">
             <div class="lg:col-span-3 space-y-4" id="mcControls"><div class="empty">טוען...</div></div>
-            <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px"><div class="text-sm font-bold mb-2">התצוגה של אורי</div><div id="mcHost"></div></div>
+            <div class="lg:col-span-2 card lg:sticky lg:top-0" style="padding:14px"><div class="text-sm font-bold mb-2">התצוגה של אורי (משחזרת את האנימציה אחרי כל שינוי)</div><button type="button" onclick="mcPlay()" class="btn btn-sm btn-soft mb-2">נגן את אנימציית הפתיחה שוב</button><div id="mcHost"></div></div>
           </div>
         </section>
 
@@ -713,7 +717,7 @@
       knowledge: ['מאגר ידע', 'המידע הרשמי של המכללה שהבוט מחפש בו: הוספה, עריכה ובדיקת חיפוש.'],
       models: ['ספקים ומודלים', 'מפתחות, איזה ספק עונה לסטודנטים ואילו מודלים משמשים אותו.'],
       identity: ['זהות והוראות', 'מי הבוט ואיך הוא מתנהג: כללים בנויים מקוביות, זהות, ותצוגת מה שהוא מקבל.'],
-      mascot: ['אורי, הדמות', 'איך אורי נראה, מה הוא לובש, איך הוא מתנהג ומה אפשר לעשות איתו. כל שינוי חל בכל האפליקציה בלי עדכון.'],
+      mascot: ['אורי, הדמות', 'צבע ולבוש, ערכות נושא לחורף, קיץ ומבחנים, ואנימציית הפתיחה של הצ׳אט. כל שינוי חל אצל כולם בלי עדכון תוכנה.'],
       designs: ['עיצובים', 'כל סוגי הכרטיסים שהבוט מציג, ויצירת עיצובים חדשים עם AI.'],
       moodle: ['חיבור Moodle', 'בדיקת טוקן והפעלה או כיבוי של הפונקציות שהבוט יכול להפעיל.'],
       system: ['הגדרות', 'מכסה, איפוס משתמש וסיסמת כניסה.'],
@@ -2042,7 +2046,10 @@
     }
 
     // ===================== פרומט ועיצוב =====================
+    // The preview page is part of the students' app (it draws with the very same code). After the merge into the main repository, change ONLY this address
+    // (to https://aorizoro.github.io/moodle-task/beta/ui-preview.html): the origin below is taken from it.
     const PM_PREVIEW_URL = 'https://david-oved.github.io/moodle-task/beta/ui-preview.html';
+    const PM_ORIGIN = new URL(PM_PREVIEW_URL).origin;
     const PM_GROUPS = ['זהות', 'תגובה', 'עיצוב', 'Moodle', 'זיכרון', 'חיפוש'];
     let PM = null;            // { sections, notes, designs, custom, versions }
     let PM_DIRTY = false;
@@ -2100,10 +2107,10 @@
       fr.src = PM_PREVIEW_URL; fr.className = 'w-full rounded-xl border border-slate-200 bg-white'; fr.style.minHeight = '80px'; fr.style.height = '120px'; fr.title = 'תצוגה מקדימה';
       host.innerHTML = ''; host.appendChild(fr);
       const st = { ready: false, items: null };
-      const post = (m) => { try { fr.contentWindow.postMessage(m, 'https://david-oved.github.io'); } catch (e) {} };
+      const post = (m) => { try { fr.contentWindow.postMessage(m, PM_ORIGIN); } catch (e) {} };
       const flush = () => { if (st.ready && st.items) post({ t: 'render', items: st.items, width: PM_DEV === 'all' ? 'all' : Number(PM_DEV) }); };
       window.addEventListener('message', (e) => {
-        if (e.source !== fr.contentWindow || e.origin !== 'https://david-oved.github.io') return;
+        if (e.source !== fr.contentWindow || e.origin !== PM_ORIGIN) return;
         if (e.data && e.data.t === 'ready') { st.ready = true; post({ t: 'theme', dark: false }); flush(); }
         if (e.data && e.data.t === 'h') fr.style.height = Math.min(6000, Math.max(80, e.data.h + 4)) + 'px';
         if (e.data && e.data.t === 'check') pmCheckSummary(checkBox, e.data.results);
@@ -2261,6 +2268,8 @@
       const title = pmField('input', rule.title, (first.text || 'שם הכלל').slice(0, 60), v => { rule.title = v; }, PM_INPUT + ' font-bold text-sm border-transparent bg-transparent hover:border-slate-300 flex-1 min-w-0');
       top.appendChild(title);
       if (machine) top.appendChild(el('span', 'text-[10px] font-bold rounded-full px-2 py-0.5 ' + (active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'), active ? 'חל בתרחיש' : 'לא חל'));
+      const warns = rule.enabled ? ruleWarnings(rule) : [];
+      if (warns.length) { const wb = el('span', 'badge badge-warn', 'לא תקין'); wb.title = warns.join('\n'); top.appendChild(wb); }
       const stBadge = el('span', 'badge'); stBadge.dataset.rstat = '1'; top.appendChild(stBadge);
       const foot = el('div', 'flex flex-wrap items-center justify-between gap-2 pt-3'); foot.style.borderTop = '1px solid var(--line)';
       const footMsg = el('span', 'hint'); footMsg.style.margin = '0';
@@ -2276,7 +2285,8 @@
       stBadge._upd();
       top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
       const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
-      [['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
+      const dup = () => { const r2 = JSON.parse(JSON.stringify(rule)); r2.id = uid(); r2.cubes.forEach(c => { c.id = uid(); }); r2.title = (rule.title || '') + (rule.title ? ' (עותק)' : ''); list.splice(idx + 1, 0, r2); PM_OPEN[r2.id] = true; pmRenderAll(); pmDirty(); };
+      [['שכפל', dup], ['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
       card.appendChild(top);
       if (!open) { if (!rule.title) { const pv = el('div', 'px-3 pb-2 text-xs text-slate-500 truncate', rule.cubes.map(c => c.text || (CUBE_META[c.t] || {}).label || '').join(' ').slice(0, 140)); card.appendChild(pv); } return card; }
       const body = el('div', 'p-2 pt-0 space-y-2');
@@ -2297,7 +2307,8 @@
     function pmRenderMine() {
       const box = document.getElementById('pmMine'); if (!box || !PM) return; box.innerHTML = '';
       if (!PM.mine.length) box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין כללים. לחץ "כלל חדש" או בחר תבנית מוכנה.'));
-      PM.mine.forEach((r, i) => box.appendChild(pmRule(r, PM.mine, i, false)));
+      let shown = 0; PM.mine.forEach((r, i) => { if (ruleMatches(r)) { shown++; box.appendChild(pmRule(r, PM.mine, i, false)); } });
+      if (PM.mine.length && !shown) box.appendChild(el('div', 'text-sm text-slate-400', 'אין כלל שמתאים לחיפוש.'));
       const sel = document.getElementById('pmTplSel');
       if (PM_META && sel.options.length === 1) {
         PM_META.templates.forEach((t, i) => { const o = el('option', '', t.name + ' - ' + t.desc); o.value = i; sel.appendChild(o); });
@@ -2306,12 +2317,41 @@
     }
     function pmAddRule() { const r = newRule('mine'); PM.mine.unshift(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); }
     function pmRenderAll() { pmRenderMine(); pmRenderSections(true); }
+    // ---- finding rules: the search looks in the title and in the text of every cube
+    let PM_Q = '', PM_FORCE_SEC = null, PM_KQ = '';
+    const ruleText = r => ((r.title || '') + ' ' + r.cubes.map(c => (c.text || '') + ' ' + ((c.p && c.p.q) || '') + ' ' + (((c.p && c.p.options) || []).join(' '))).join(' ')).toLowerCase();
+    const ruleMatches = r => !PM_Q || ruleText(r).includes(PM_Q);
+    function pmSearch(v) { PM_Q = String(v || '').trim().toLowerCase(); if (PM) pmRenderAll(); }
+    function pmKindFilter(v) { PM_KQ = String(v || '').trim().toLowerCase(); if (PM_CAT) pmRenderKinds(); }
+    function pmOpenAll(on) { if (!PM) return; [].concat(...PM.sections.map(x => x.rules), PM.mine).forEach(r => { PM_OPEN[r.id] = on; }); PM_FORCE_SEC = on; pmRenderAll(); }
+    // ---- what is wrong with a rule (shown on the rule, and asked about before saving): an empty cube or an unfinished poll would only confuse the bot
+    const TEXT_CUBES = ['say', 'info', 'text', 'dont', 'must', 'example', 'tone', 'remember'];
+    function ruleWarnings(r) {
+      const w = [];
+      if (!r.cubes.length) return ['כלל בלי קוביות'];
+      const filled = a => (a || []).filter(x => String(x || '').trim()).length;
+      r.cubes.forEach(c => {
+        const nm = (CUBE_META[c.t] || {}).label || c.t;
+        if (c.t === 'when' && (c.p.kind || 'topic') === 'topic' && !String(c.text || '').trim() && c.raw == null) w.push('קובייה "כאשר" בלי טקסט');
+        else if (TEXT_CUBES.includes(c.t) && !String(c.text || '').trim() && c.raw == null) w.push('קובייה "' + nm + '" ריקה');
+        else if (c.t === 'poll' && (!String(c.p.q || '').trim() || filled(c.p.options) < 2) && c.raw == null) w.push('סקר לא שלם (שאלה ושתי אפשרויות לפחות)');
+        else if (c.t === 'quick' && filled(c.p.options) < 2 && c.raw == null) w.push('כפתורים: חסרות אפשרויות');
+        else if (c.t === 'design' && !c.p.kind && c.raw == null) w.push('לא נבחר עיצוב');
+      });
+      if (r.cubes.length && r.cubes.every(c => c.t === 'when')) w.push('אין פעולה אחרי "כאשר"');
+      return w;
+    }
+    function pmAllWarnings() {
+      const out = []; [].concat(...PM.sections.map(x => x.rules), PM.mine).forEach(r => { if (!r.enabled) return; ruleWarnings(r).forEach(m => out.push((r.title || (r.cubes[0] && r.cubes[0].text) || 'כלל') .toString().slice(0, 40) + ': ' + m)); });
+      return out;
+    }
     function pmRenderSections(keep) {
       const box = document.getElementById('pmSections'); if (!box || !PM) return;
       const openSecs = {}; box.querySelectorAll('[data-sec]').forEach(d => { openSecs[d.dataset.sec] = !d.querySelector('.pmSecBody').classList.contains('hidden'); });
+      if (PM_FORCE_SEC !== null) { PM.sections.forEach(x => { openSecs[x.key] = PM_FORCE_SEC; }); PM_FORCE_SEC = null; }
       box.innerHTML = '';
       PM_GROUPS.forEach(g => {
-        const list = PM.sections.filter(s => s.group === g); if (!list.length) return;
+        const list = PM.sections.filter(s => s.group === g && (!PM_Q || s.rules.some(ruleMatches) || (s.title + ' ' + s.desc).toLowerCase().includes(PM_Q))); if (!list.length) return;
         const wrap = el('div', 'space-y-2'); wrap.appendChild(el('div', 'text-xs font-extrabold text-slate-500 tracking-wide', g));
         list.forEach(s => {
           const c = el('div', 'rounded-xl border border-slate-200 bg-slate-50/60 ' + (s.enabled ? '' : 'opacity-60')); c.dataset.sec = s.key;
@@ -2323,8 +2363,8 @@
           rs.onclick = async () => { if (!confirm('לאפס את "' + s.title + '" לנוסח המקורי? שינויים שעשית בחלק הזה יימחקו.')) return; const r = await (await adminFetch(`${API_BASE}/api/admin/prompt/default-rules?key=${s.key}`)).json(); s.rules = r.rules; pmRenderAll(); pmDirty(); };
           top.appendChild(rs); top.appendChild(pmSwitch(s.enabled, v => { s.enabled = v; c.classList.toggle('opacity-60', !v); }));
           c.appendChild(top);
-          const body = el('div', 'pmSecBody p-3 pt-0 space-y-2 ' + (openSecs[s.key] ? '' : 'hidden'));
-          s.rules.forEach((r, i) => body.appendChild(pmRule(r, s.rules, i, true)));
+          const body = el('div', 'pmSecBody p-3 pt-0 space-y-2 ' + (openSecs[s.key] || (PM_Q && s.rules.some(ruleMatches)) ? '' : 'hidden'));
+          s.rules.forEach((r, i) => { if (ruleMatches(r)) body.appendChild(pmRule(r, s.rules, i, true)); });
           const add = el('button', 'text-xs font-bold text-indigo-700', '＋ כלל בחלק הזה'); add.type = 'button'; add.onclick = () => { const r = newRule(s.key); s.rules.push(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); };
           body.appendChild(add); c.appendChild(body);
           info.onclick = () => { body.classList.toggle('hidden'); };
@@ -2374,7 +2414,9 @@
     const STYLE_HE = { table: 'שורות', week: 'שבוע', bars: 'פס זמן', compact: 'מצומצם' };
     function pmRenderKinds() {
       const box = document.getElementById('pmKinds'); box.innerHTML = '';
-      PM_CAT.kinds.forEach(k => {
+      const kinds = PM_CAT.kinds.filter(k => !PM_KQ || (k.name + ' ' + k.kind + ' ' + (k.desc || '')).toLowerCase().includes(PM_KQ));
+      if (!kinds.length) box.appendChild(el('div', 'text-sm text-slate-400', 'אין עיצוב שמתאים לחיפוש.'));
+      kinds.forEach(k => {
         const cfg = PM.designs[k.kind] || { enabled: true, priority: 'normal', note: '' };
         const c = el('div', 'rounded-xl border p-3 cursor-pointer ' + (PM_KIND === k.kind ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200 bg-white') + (cfg.enabled === false ? ' opacity-60' : ''));
         c.dataset.kind = k.kind;
@@ -2516,11 +2558,69 @@
     async function pmReloadKeepEdits() { // new designs are saved on their own; unsaved edits to notes/sections stay in the page
       const r = await (await adminFetch(`${API_BASE}/api/admin/prompt`)).json(); PM.custom = r.custom; PM.versions = r.versions; PM_CAT = null; pmRenderCustom(); pmRenderVersions();
     }
+    // ---------- the designs I made: edit by hand (template + CSS + sample, with a live preview), change with AI, duplicate, export, import, switch off, delete
+    const PM_SAMPLE_DEFAULT = { title: 'כותרת לדוגמה', subtitle: 'כותרת משנה', text: 'טקסט לדוגמה', icon: 'star', color: 'blue', items: [{ label: 'שורה ראשונה', value: '10', detail: 'פירוט' }, { label: 'שורה שנייה', value: '20', detail: 'פירוט' }] };
+    function pmFileName(d) { return (d.id || 'design') + '.json'; }
+    function pmExport(d) {
+      const data = JSON.stringify({ name: d.name, when: d.when, template: d.template, css: d.css, sample: d.sample }, null, 2);
+      try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = pmFileName(d); document.body.appendChild(a); a.click(); a.remove(); showToast('הקובץ ירד: ' + pmFileName(d), false); }
+      catch (e) { navigator.clipboard && navigator.clipboard.writeText(data); showToast('הועתק ללוח', false); }
+    }
+    const pmNewId = () => 'x_' + Math.random().toString(36).replace(/[^a-z0-9]/g, '').slice(0, 7).padEnd(5, 'x');
+    async function pmDuplicate(d) {
+      const copy = Object.assign({}, d, { id: pmNewId(), name: (d.name || '') + ' (עותק)' });
+      const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: copy }) });
+      const j = await res.json(); showToast(j.message || j.detail || 'בוצע', !res.ok); if (res.ok) await pmReloadKeepEdits();
+    }
+    function pmImportOpen() { const b = document.getElementById('pmImport'); b.classList.toggle('hidden'); if (!b.classList.contains('hidden')) document.getElementById('pmImportText').focus(); }
+    async function pmImportDo() {
+      let d; try { d = JSON.parse(document.getElementById('pmImportText').value); } catch (e) { showToast('זה לא JSON תקין', true); return; }
+      if (!d || typeof d !== 'object' || !d.template) { showToast('חסרה תבנית (template) בקובץ', true); return; }
+      d = Object.assign({}, d, { id: pmNewId(), enabled: true });
+      const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) });
+      const j = await res.json(); showToast(j.message || j.detail || 'בוצע', !res.ok);
+      if (res.ok) { document.getElementById('pmImportText').value = ''; document.getElementById('pmImport').classList.add('hidden'); await pmReloadKeepEdits(); }
+    }
+    // the manual editor of one design: the form fills a draft, the preview is drawn by the server's own check (so an invalid template shows the reason), "save" stores it
+    function pmEditor(d, previewHost, onSaved) {
+      const draft = { id: d.id, name: d.name, when: d.when || '', template: d.template || '', css: d.css || '', enabled: d.enabled !== false, sample: d.sample && Object.keys(d.sample).length ? d.sample : PM_SAMPLE_DEFAULT };
+      const box = el('div', 'space-y-2 pt-2'); box.style.borderTop = '1px solid var(--line)';
+      const fld = (label, node) => { const w = el('label', 'block'); w.appendChild(el('div', 'text-[12px] font-bold mb-1', label)); w.appendChild(node); return w; };
+      const nm = el('input', 'input input-sm'); nm.value = draft.name || ''; nm.oninput = () => { draft.name = nm.value; };
+      const wh = el('input', 'input input-sm'); wh.value = draft.when; wh.oninput = () => { draft.when = wh.value; };
+      const mkTa = (key, rows, label) => { const t = el('textarea', 'textarea'); t.rows = rows; t.dir = 'ltr'; t.style.fontFamily = 'ui-monospace,Consolas,monospace'; t.style.fontSize = '12px'; t.value = draft[key]; t.oninput = () => { draft[key] = t.value; live(); }; return fld(label, t); };
+      const sm = el('textarea', 'textarea'); sm.rows = 6; sm.dir = 'ltr'; sm.style.fontFamily = 'ui-monospace,Consolas,monospace'; sm.style.fontSize = '12px'; sm.value = JSON.stringify(draft.sample, null, 2);
+      const msg = el('div', 'hint'); msg.style.margin = '0';
+      let T = null;
+      function live() { clearTimeout(T); T = setTimeout(show, 600); }
+      sm.oninput = () => { try { draft.sample = JSON.parse(sm.value); sm.style.borderColor = ''; live(); } catch (e) { sm.style.borderColor = 'var(--err)'; msg.textContent = 'הדוגמה אינה JSON תקין'; } };
+      async function show() {
+        msg.textContent = 'בודק...'; msg.style.color = '';
+        try {
+          const res = await adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: draft }) });
+          const j = await res.json();
+          if (!res.ok) { msg.textContent = j.detail || 'שגיאה'; msg.style.color = 'var(--err)'; return; }
+          msg.textContent = 'התצוגה מעודכנת.'; if (j.marker) previewHost.show([{ name: '', marker: j.marker }]);
+        } catch (e) { msg.textContent = 'שגיאה: ' + e.message; msg.style.color = 'var(--err)'; }
+      }
+      const hint = el('div', 'hint'); hint.style.margin = '0';
+      hint.textContent = 'מקומות מילוי: {{title}} {{subtitle}} {{text}} {{icon}} ורשימה: {{#items}}...{{label}} {{value}} {{detail}}...{{/items}}. מותרות תגיות פשוטות ו-class בלבד, ו-CSS בלי @, url, position:fixed ו-z-index. הצבע של הכרטיס הוא var(--bc).';
+      const row = el('div', 'grid sm:grid-cols-2 gap-2'); row.append(fld('שם העיצוב', nm), fld('מתי הבוט משתמש בו', wh));
+      const bar = el('div', 'flex flex-wrap gap-2 items-center');
+      const save = el('button', 'btn btn-primary btn-sm', 'שמור'); save.type = 'button';
+      save.onclick = async () => { const res = await adminFetch(`${API_BASE}/api/admin/ui/design`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: draft }) }); const j = await res.json(); showToast(j.message || j.detail || 'בוצע', !res.ok); if (res.ok) onSaved(); };
+      const sh = el('button', 'btn btn-sm', 'הצג תצוגה'); sh.type = 'button'; sh.onclick = show;
+      bar.append(save, sh, msg);
+      box.append(row, mkTa('template', 8, 'תבנית (HTML)'), mkTa('css', 6, 'עיצוב (CSS)'), fld('תוכן לדוגמה (JSON)', sm), hint, bar);
+      setTimeout(show, 50);
+      return box;
+    }
     function pmRenderCustom() {
       const box = document.getElementById('pmCustom'); if (!box || !PM) return; box.innerHTML = '';
       if (!PM.custom.length) { box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין לא יצרת עיצובים.')); return; }
       PM.custom.forEach(d => {
-        const c = el('div', 'rounded-xl border border-slate-200 p-3 grid sm:grid-cols-2 gap-3');
+        const c = el('div', 'rounded-xl border border-slate-200 p-3 space-y-2');
+        const grid = el('div', 'grid sm:grid-cols-2 gap-3'); c.appendChild(grid);
         const left = el('div', 'space-y-2');
         left.appendChild(el('div', 'font-bold text-sm', d.name + ' '));
         left.firstChild.appendChild(el('span', 'text-[11px] font-mono text-slate-400', d.id));
@@ -2529,15 +2629,22 @@
         const lab = el('span', 'font-bold', d.enabled === false ? 'כבוי' : 'פעיל');
         bar.appendChild(pmSwitch(d.enabled !== false, async v => { d.enabled = v; lab.textContent = v ? 'פעיל' : 'כבוי'; await pmPutDesign(d); }));
         bar.appendChild(lab);
-        const edit = el('button', 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', '⟦edit⟧ שנה עם AI'); edit.type = 'button';
-        edit.onclick = () => { PM_GEN = { ...d }; document.getElementById('pmGenDesc').value = d.when || d.name; document.getElementById('pmGenForm').classList.remove('hidden');
+        const right = el('div'); grid.appendChild(right);
+        const pv = pmPreview(right);
+        const edit = el('button', 'font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5', 'שנה עם AI'); edit.type = 'button';
+        edit.onclick = () => { pmSub('create'); PM_GEN = { ...d }; document.getElementById('pmGenDesc').value = d.when || d.name; document.getElementById('pmGenForm').classList.remove('hidden');
           document.getElementById('pmGenName').value = d.name; document.getElementById('pmGenId').value = d.id; document.getElementById('pmGenWhen').value = d.when || ''; document.getElementById('pmGenFix').focus();
           adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => r.marker && pmShowGen(r.marker)); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+        const man = el('button', 'font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5', 'עריכה ידנית'); man.type = 'button';
+        let ed = null;
+        man.onclick = () => { if (ed) { ed.remove(); ed = null; man.textContent = 'עריכה ידנית'; return; } ed = pmEditor(d, pv, async () => { await pmReloadKeepEdits(); }); c.appendChild(ed); man.textContent = 'סגור עריכה'; };
+        const dp = el('button', 'font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5', 'שכפל'); dp.type = 'button'; dp.onclick = () => pmDuplicate(d);
+        const ex = el('button', 'font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5', 'ייצוא'); ex.type = 'button'; ex.onclick = () => pmExport(d);
         const del = el('button', 'font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5', 'מחק'); del.type = 'button';
         del.onclick = async () => { if (!confirm('למחוק את העיצוב "' + d.name + '"?')) return; await adminFetch(`${API_BASE}/api/admin/ui/design/${encodeURIComponent(d.id)}`, { method: 'DELETE' }); await pmReloadKeepEdits(); showToast('נמחק'); };
-        bar.appendChild(edit); bar.appendChild(del); left.appendChild(bar); c.appendChild(left);
-        const right = el('div'); c.appendChild(right); box.appendChild(c);
-        adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => { if (r.marker) pmPreview(right).show([{ name: '', marker: r.marker }]); });
+        bar.append(edit, man, dp, ex, del); left.appendChild(bar); grid.insertBefore(left, right);
+        box.appendChild(c);
+        adminFetch(`${API_BASE}/api/admin/ui/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ design: d }) }).then(r => r.json()).then(r => { if (r.marker) pv.show([{ name: '', marker: r.marker }]); });
       });
     }
     async function pmPutDesign(d) {
@@ -2547,6 +2654,8 @@
 
     // ---------- save, versions
     async function pmSave() {
+      const bad = pmAllWarnings();
+      if (bad.length && !confirm('יש ' + bad.length + ' דברים לא תקינים בכללים:\n\n' + bad.slice(0, 8).join('\n') + (bad.length > 8 ? '\n...' : '') + '\n\nלשמור בכל זאת?')) return;
       const sections = {}; PM.sections.forEach(x => { sections[x.key] = { enabled: x.enabled, text: null }; });
       const rules = [].concat(...PM.sections.map(x => x.rules), PM.mine).filter(r => r.cubes.length);
       const ruled = PM.sections.map(x => x.key).concat(['mine']);
@@ -2627,12 +2736,21 @@
       } catch (e) { body.innerHTML = '<div class="empty" style="color:var(--err)">שגיאה בטעינת ההשוואה</div>'; }
     }
     window.addEventListener('beforeunload', (e) => { if (PM_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+    // Ctrl+S saves the rules while the rules or designs page is open
+    document.addEventListener('keydown', (e) => {
+      if (!((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 's')) return;
+      const open = ['identity', 'designs'].some(n => { const p = document.getElementById('tabPanel-' + n); return p && !p.classList.contains('hidden'); });
+      if (!open || !PM) return; e.preventDefault(); if (PM_DIRTY) pmSave(); else showToast('אין שינוי לשמור', false);
+    });
 
     // ===================== אורי, הדמות =====================
+    // Version 3 is deliberately small: the face (colour, star, tag, what he wears), THEMES (winter, summer, exams, holidays: a period of the year with its own outfit, colour,
+    // opening animation and opening line) and the OPENING ANIMATION of the chat (entry + what the face does + what floats around it: more than 900 combinations).
     let MC = null, MC_DIRTY = false, MC_T = null, MC_FR = null, MC_READY = false;
-    const MC_MOODS = { happy: 'רגיל', think: 'חושב', wow: 'מופתע', wink: 'קורץ' };
     const MC_BODIES = [['לבן', '#ffffff'], ['מנטה', '#d9f7ec'], ['אפרסק', '#ffe3d1'], ['לבנדר', '#e9e1ff'], ['שמיים', '#dbeeff'], ['לימון', '#fff4c2'], ['ורוד', '#ffdfe9']];
+    const MC_BGS = [['שחור (ברירת מחדל)', ''], ['כחול לילה', '#0b1230'], ['ירוק יער', '#0d2418'], ['בורדו', '#2a1020'], ['חום חם', '#2a1a0c'], ['אפור', '#1c1c20']];
     const MC_SLOT_HE = { hat: 'כובע', face: 'פנים', neck: 'צוואר' };
+    const MC_LANGS = [['he', 'עברית'], ['en', 'אנגלית'], ['fr', 'צרפתית']];
     // "dirty" is not a flag somebody remembered to raise: it is whether the settings differ from what is saved (change something and put it back, and nothing is left to save)
     function mcDirty(on) {
       if (MC && on === false) MC.snap = JSON.stringify(MC.cfg);
@@ -2640,23 +2758,29 @@
       const b = document.getElementById('mcDirty'); if (b) b.classList.toggle('hidden', !MC_DIRTY);
       const sv = document.getElementById('mcSaveBtn'); if (sv) sv.disabled = !MC_DIRTY;
     }
-    function mcChanged() { mcDirty(); clearTimeout(MC_T); MC_T = setTimeout(mcSend, 120); }
-    function mcSend() {
-      if (!MC_FR || !MC_READY || !MC) return;
+    function mcChanged() { mcDirty(); clearTimeout(MC_T); MC_T = setTimeout(mcSend, 700); }
+    function mcLabels() {
       const slotOf = {}; Object.entries(MC.slots).forEach(([sl, items]) => items.forEach(i => { slotOf[i] = sl; }));
-      try { MC_FR.contentWindow.postMessage({ t: 'uri', cfg: MC.cfg, labels: { moods: MC_MOODS, items: MC.labels, slots: slotOf, hMoods: 'הבעות', hSizes: 'בגדלים שבהם הוא מופיע', hItems: 'מה אפשר להלביש עליו', hSeasons: 'עונות וחגים', hBubble: 'הבועה שהוא מדבר בה', sample: MC.cfg.phrases.open[0] || 'היי, במה אפשר לעזור?',
-        fab: 'הכפתור הצף', hdr: 'כותרת הצ׳אט', bub: 'בהודעות', dead: 'כשיש תקלה' } }, 'https://david-oved.github.io'); } catch (e) {}
+      return { items: MC.labels, slots: slotOf, hIntro: 'אנימציית הפתיחה (כך נראית כשפותחים את הצ׳אט)', hSizes: 'בגדלים שבהם הוא מופיע', hItems: 'מה אפשר להלביש עליו', hThemes: 'ערכות נושא', fab: 'הכפתור הצף', hdr: 'כותרת הצ׳אט', bub: 'בהודעות', dead: 'כשיש תקלה' };
+    }
+    function mcPost(m) { if (!MC_FR || !MC_READY) return; try { MC_FR.contentWindow.postMessage(m, PM_ORIGIN); } catch (e) {} }
+    function mcSend() { if (MC) mcPost({ t: 'uri', cfg: MC.cfg, labels: mcLabels() }); }
+    // plays the opening animation again in the preview: with the saved-in-the-form settings, optionally one combination (id), optionally as if a theme were active today
+    function mcPlay(id, theme) {
+      if (!MC) return; let cfg = MC.cfg;
+      if (theme) cfg = Object.assign({}, cfg, { themes: [Object.assign({}, theme, { from: '01-01', to: '12-31', enabled: true })] });
+      mcPost({ t: 'introPlay', cfg, id: id || '', labels: mcLabels() });
     }
     async function mcLoad() {
       if (!MC) { MC = await (await adminFetch(`${API_BASE}/api/admin/mascot`)).json(); MC.cfg = MC.config; mcDirty(false); }
       const host = document.getElementById('mcHost');
       if (!MC_FR) {
-        MC_FR = document.createElement('iframe'); MC_FR.src = PM_PREVIEW_URL; MC_FR.className = 'w-full rounded-xl border border-slate-200 bg-white'; MC_FR.style.height = '420px'; MC_FR.title = 'אורי';
+        MC_FR = document.createElement('iframe'); MC_FR.src = PM_PREVIEW_URL; MC_FR.className = 'w-full rounded-xl border border-slate-200 bg-white'; MC_FR.style.height = '560px'; MC_FR.title = 'אורי';
         host.innerHTML = ''; host.appendChild(MC_FR);
         window.addEventListener('message', (e) => {
-          if (e.source !== MC_FR.contentWindow || e.origin !== 'https://david-oved.github.io') return;
-          if (e.data && e.data.t === 'ready') { MC_READY = true; try { MC_FR.contentWindow.postMessage({ t: 'theme', dark: false }, 'https://david-oved.github.io'); } catch (x) {} mcSend(); }
-          if (e.data && e.data.t === 'h') MC_FR.style.height = Math.min(1600, Math.max(200, e.data.h + 4)) + 'px';
+          if (e.source !== MC_FR.contentWindow || e.origin !== PM_ORIGIN) return;
+          if (e.data && e.data.t === 'ready') { MC_READY = true; mcPost({ t: 'theme', dark: false }); mcSend(); }
+          if (e.data && e.data.t === 'h') MC_FR.style.height = Math.min(1600, Math.max(420, e.data.h + 4)) + 'px';
         });
       }
       mcRender(); mcSend();
@@ -2666,124 +2790,111 @@
     function mcSeg(opts, val, on) { const seg = el('div', 'seg'); opts.forEach(([v, t]) => { const b = el('button', v === val ? 'active' : '', t); b.type = 'button'; b.onclick = () => { seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b)); on(v); mcChanged(); }; seg.appendChild(b); }); return seg; }
     function mcRow(label, ctl, hint) { const r = el('div', 'flex flex-wrap items-center gap-3 py-2'); r.style.borderTop = '1px solid var(--line)'; const l = el('div', 'w-40 shrink-0'); l.appendChild(el('div', 'text-[13px] font-bold', label)); if (hint) l.appendChild(el('div', 'hint', hint)); r.appendChild(l); const c = el('div', 'flex-1 min-w-0 flex flex-wrap items-center gap-2'); (Array.isArray(ctl) ? ctl : [ctl]).forEach(x => c.appendChild(x)); r.appendChild(c); return r; }
     function mcCard(title, desc) { const c = el('div', 'card'); const h = el('div', 'card-head'); const d = el('div'); d.appendChild(el('h2', '', title)); if (desc) d.appendChild(el('p', '', desc)); h.appendChild(d); c.appendChild(h); const b = el('div', 'card-body'); c.appendChild(b); return [c, b]; }
-    function mcOutfitSelects(o, onchange) {
-      return Object.keys(MC.slots).map(sl => { const w = el('label', 'flex items-center gap-1.5 text-[12.5px]'); w.appendChild(el('span', 'font-semibold', MC_SLOT_HE[sl]));
-        w.appendChild(mcSel([['', 'ללא']].concat(MC.slots[sl].map(i => [i, MC.labels[i] || i])), o[sl] || '', v => { o[sl] = v; onchange && onchange(); })); return w; });
-    }
-    function mcRender() {
-      const box = document.getElementById('mcControls'); box.innerHTML = ''; const c = MC.cfg;
-      const colorCtl = (obj, key, clearable, dflt) => { const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'color'; i.value = obj[key] || dflt || '#3b5bdb'; i.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; i.oninput = () => { obj[key] = i.value; mcChanged(); };
-        w.appendChild(i); if (clearable) { const x = el('button', 'btn btn-sm btn-ghost', 'ברירת מחדל'); x.type = 'button'; x.onclick = () => { obj[key] = ''; mcChanged(); mcRender2(); }; w.appendChild(x); } if (!obj[key]) w.appendChild(el('span', 'hint', 'לפי נושא האפליקציה')); return w; };
-      // the body
-      let [card, b] = mcCard('איך אורי נראה', 'הצורה, הצבע והעיניים. האפליקציה מציירת אותו מההגדרות האלה בלבד.');
-      b.appendChild(mcRow('צורה', mcSeg(MC.shapes.map(k => [k, MC.shape_labels[k] || k]), c.shape, v => { c.shape = v; })));
-      const sw = el('div', 'flex flex-wrap items-center gap-2');
-      MC_BODIES.forEach(([n, hex]) => { const x = el('button', 'rounded-full'); x.type = 'button'; x.title = n; x.style.cssText = 'width:30px;height:30px;border:2px solid ' + (c.body.toLowerCase() === hex ? 'var(--accent)' : 'var(--line-strong)') + ';background:' + hex; x.onclick = () => { c.body = hex; mcChanged(); mcRender(); }; sw.appendChild(x); });
-      const ci = el('input', ''); ci.type = 'color'; ci.value = c.body; ci.title = 'צבע אחר'; ci.style.cssText = 'width:34px;height:30px;border:0;background:none;padding:0'; ci.oninput = () => { c.body = ci.value; mcChanged(); }; sw.appendChild(ci);
-      b.appendChild(mcRow('צבע', sw));
-      b.appendChild(mcRow('עיניים', mcSeg([['oval', 'עגולות קטנות (המקורי)'], ['big', 'גדולות ונוצצות'], ['happy', 'מחייכות']], c.eyes, v => { c.eyes = v; })));
-      b.appendChild(mcRow('כוכב קטן בפינה', mcSw(c.spark, v => { c.spark = v; })));
-      box.appendChild(card);
-      // what he wears: only the admin dresses him
-      [card, b] = mcCard('מה אורי לובש', 'רק אתה מלביש אותו: משקפיים, כובע, צעיף. אפשר גם להלביש אותו אחרת בין שני תאריכים (למשל כובע בוגרים בתקופת מבחנים).');
-      b.appendChild(mcRow('ברירת מחדל', mcOutfitSelects(c.outfit)));
-      const list = el('div', 'space-y-2 mt-2');
-      const md2date = md => '2000-' + md, date2md = d => (d || '').slice(5);
-      (c.seasons || []).forEach((x, idx) => {
-        const r = el('div', 'rounded-xl border border-slate-200 p-2.5 space-y-2');
-        const top = el('div', 'flex flex-wrap items-center gap-2');
-        const lab = el('input', 'input input-sm'); lab.placeholder = 'שם (למשל: תקופת מבחנים)'; lab.value = x.label || ''; lab.style.width = '170px'; lab.oninput = () => { x.label = lab.value; mcChanged(); };
-        const f = el('input', 'input input-sm'); f.type = 'date'; f.value = md2date(x.from); f.style.width = '140px'; f.onchange = () => { x.from = date2md(f.value); mcChanged(); };
-        const t = el('input', 'input input-sm'); t.type = 'date'; t.value = md2date(x.to); t.style.width = '140px'; t.onchange = () => { x.to = date2md(t.value); mcChanged(); };
-        const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.type = 'button'; del.onclick = () => { c.seasons.splice(idx, 1); mcChanged(); mcRender(); };
-        top.append(lab, el('span', 'text-xs', 'מ-'), f, el('span', 'text-xs', 'עד'), t, del); r.appendChild(top);
-        const o = el('div', 'flex flex-wrap items-center gap-3'); o.appendChild(el('span', 'text-[12.5px] font-bold', 'לובש:')); mcOutfitSelects(x.outfit || (x.outfit = { hat: '', face: '', neck: '' })).forEach(n => o.appendChild(n)); r.appendChild(o);
-        list.appendChild(r);
-      });
-      const add = el('button', 'btn btn-sm', 'הוסף תקופה'); add.type = 'button';
-      add.onclick = () => { c.seasons = c.seasons || []; c.seasons.push({ label: '', from: '01-01', to: '01-31', outfit: { hat: 'gradcap', face: '', neck: '' } }); mcChanged(); mcRender(); };
-      b.appendChild(list); b.appendChild(add); box.appendChild(card);
-      // speech bubble
-      [card, b] = mcCard('הבועה שאורי מדבר בה', 'הצורה והצבעים של הבועה שבה מופיע המשפט.');
-      b.appendChild(mcRow('צורה', mcSeg([['round', 'מעוגלת'], ['square', 'מרובעת'], ['pill', 'אליפסה']], c.bubble.shape, v => { c.bubble.shape = v; })));
-      b.appendChild(mcRow('צבע הרקע', colorCtl(c.bubble, 'bg', true, '#ffffff')));
-      b.appendChild(mcRow('צבע הטקסט', colorCtl(c.bubble, 'text', true, '#1f2937')));
-      b.appendChild(mcRow('צבע המסגרת', colorCtl(c.bubble, 'border', true, '#d0d5dd')));
-      const tryB = el('button', 'btn btn-sm btn-soft', 'הצג בועה על הבמה'); tryB.type = 'button'; tryB.onclick = () => mcPlay('', (c.phrases.open || [])[0] || 'היי, במה אפשר לעזור?'); b.appendChild(mcRow('', tryB));
-      box.appendChild(card);
-      // behaviour
-      [card, b] = mcCard('התנהגות', 'מה אורי עושה מעצמו. כבוי = הוא יושב בשקט.');
-      [['blink', 'מצמץ', ''], ['look', 'העיניים עוקבות אחרי האצבע או העכבר', 'רק בפנים הגדולות'], ['react', 'זז ומדבר ברגעים שמוגדרים למטה', 'פתיחת צ\'אט, המתנה, תשובה, שגיאה'], ['idle', 'זז לפעמים מעצמו', 'בפרקי זמן שמוגדרים למטה']]
-        .forEach(([k, l, h]) => b.appendChild(mcRow(l, mcSw(c.behavior[k] !== false, v => { c.behavior[k] = v; }), h)));
-      box.appendChild(card);
-      // movements
-      [card, b] = mcCard('תנועות', 'כמה תנועות עדינות. כבה תנועה כדי שלא תופיע בשום מקום. "נגן" מראה אותה על הבמה בצד.');
-      b.appendChild(mcRow('מהירות', mcSlider(0.5, 2, 0.1, c.anim.speed, v => { c.anim.speed = v; }, v => v.toFixed(1) + 'x'), '0.5 איטי, 2 מהיר'));
-      const grid2 = el('div', 'grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2');
-      Object.entries(MC.anims).forEach(([id, label]) => {
-        const t = el('div', 'rounded-xl border border-slate-200 p-2 flex items-center gap-2');
-        t.appendChild(mcSw(c.anim.enabled.includes(id), v => { c.anim.enabled = c.anim.enabled.filter(x => x !== id); if (v) c.anim.enabled.push(id); mcRender2(); }));
-        t.appendChild(el('span', 'text-[13px] font-semibold flex-1 min-w-0', label));
-        const pl = el('button', 'btn btn-sm btn-soft', 'נגן'); pl.type = 'button'; pl.onclick = () => mcPlay(id); t.appendChild(pl); grid2.appendChild(t);
-      });
-      b.appendChild(grid2); box.appendChild(card);
-      // moments
-      [card, b] = mcCard('מתי אורי זז ומדבר', 'לכל רגע בוחרים אילו תנועות מתאימות לו (נבחרת אחת באקראי), ובכמה אחוזים מהפעמים הוא גם אומר משפט.');
-      Object.entries(MC.triggers).forEach(([key, label]) => {
-        const r = el('div', 'py-3 space-y-2'); r.style.borderTop = '1px solid var(--line)';
-        const top = el('div', 'flex flex-wrap items-center gap-3'); top.appendChild(el('b', 'text-[13.5px]', label));
-        top.appendChild(el('span', 'flex-1'));
-        top.appendChild(el('span', 'text-[12px]', 'אומר משפט ב-'));
-        top.appendChild(mcSlider(0, 100, 5, c.talk[key], v => { c.talk[key] = v; }, v => v + '%'));
-        const t = el('button', 'btn btn-sm btn-soft', 'נסה'); t.type = 'button';
-        t.onclick = () => { const l = (c.triggers[key] || []).filter(i => c.anim.enabled.includes(i)); const ph = c.phrases[key === 'open' ? 'open' : key] || []; mcPlay(l[Math.floor(Math.random() * l.length)] || '', ph[Math.floor(Math.random() * ph.length)] || ''); };
-        top.appendChild(t); r.appendChild(top);
-        const chips = el('div', 'flex flex-wrap gap-1.5');
-        c.anim.enabled.forEach(id => {
-          const on = (c.triggers[key] || []).includes(id), x = el('button', 'badge ' + (on ? 'badge-accent' : ''), MC.anims[id] || id); x.type = 'button'; x.style.cursor = 'pointer'; x.style.border = '1px solid ' + (on ? 'var(--accent-line)' : 'var(--line)');
-          x.onclick = () => { const l = c.triggers[key] || (c.triggers[key] = []); const i = l.indexOf(id); if (i >= 0) l.splice(i, 1); else l.push(id); x.className = 'badge ' + (i >= 0 ? '' : 'badge-accent'); x.style.border = '1px solid ' + (i >= 0 ? 'var(--line)' : 'var(--accent-line)'); mcChanged(); };
-          chips.appendChild(x);
-        });
-        r.appendChild(chips); b.appendChild(r);
-      });
-      const idl = el('div', 'flex flex-wrap items-center gap-2 py-2'); idl.style.borderTop = '1px solid var(--line)';
-      idl.appendChild(el('span', 'text-[13px] font-bold', 'כשאף אחד לא עושה כלום, אורי זז כל'));
-      const mi = el('input', 'input input-sm'); mi.type = 'number'; mi.min = 10; mi.max = 600; mi.value = c.idle.min; mi.style.width = '72px'; mi.oninput = () => { c.idle.min = Math.max(10, parseInt(mi.value, 10) || 10); mcChanged(); };
-      const ma = el('input', 'input input-sm'); ma.type = 'number'; ma.min = 10; ma.max = 1200; ma.value = c.idle.max; ma.style.width = '72px'; ma.oninput = () => { c.idle.max = Math.max(c.idle.min, parseInt(ma.value, 10) || c.idle.min); mcChanged(); };
-      idl.append(mi, el('span', 'text-[13px]', 'עד'), ma, el('span', 'text-[13px]', 'שניות'));
-      b.appendChild(idl); box.appendChild(card);
-      // phrases
-      [card, b] = mcCard('מה אורי אומר', 'משפטים לכל מצב, אחד בכל שורה (עד 14). בפתיחת הצ\'אט הוא בוחר לפי השעה. קטגוריה ריקה חוזרת למשפטי ברירת המחדל שלה.');
-      Object.entries(MC.phrase_keys).forEach(([key, label]) => {
-        const w = el('div', 'py-2'); w.style.borderTop = '1px solid var(--line)';
-        const top = el('div', 'flex items-center gap-2 mb-1'); top.appendChild(el('b', 'text-[13px] flex-1', label));
-        const t = el('button', 'btn btn-sm', 'נסה'); t.type = 'button'; t.onclick = () => { const l = c.phrases[key] || []; mcPlay('', l[Math.floor(Math.random() * l.length)] || ''); }; top.appendChild(t); w.appendChild(top);
-        const ta = el('textarea', 'textarea'); ta.rows = 2; ta.value = (c.phrases[key] || []).join('\n');
-        ta.oninput = () => { c.phrases[key] = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 14); mcDirty(); };
-        w.appendChild(ta); b.appendChild(w);
-      });
-      box.appendChild(card);
-      // advanced look
-      [card, b] = mcCard('תצוגה מתקדמת', 'צבע עיניים, מסגרת, הילה, הכפתור הצף והתג הקטן.');
-      b.appendChild(mcRow('צבע עיניים ופה', colorCtl(c.look, 'eye', true)));
-      b.appendChild(mcRow('מסגרת', [colorCtl(c.look, 'outline', true), mcSlider(0, 3, 0.5, c.look.outlineW, v => { c.look.outlineW = v; }, v => 'עובי ' + v)]));
-      b.appendChild(mcRow('הילה זוהרת', [colorCtl(c.look, 'aura', true), mcSlider(0, 24, 1, c.look.auraSize, v => { c.look.auraSize = v; }, v => 'עוצמה ' + v)]));
-      b.appendChild(mcRow('צבעי הכפתור הצף וההודעות', [colorCtl(c.look, 'fab1', true), colorCtl(c.look, 'fab2', true)], 'מעבר צבע משני הצבעים'));
-      b.appendChild(mcRow('גודל הכפתור הצף', mcSlider(0.8, 1.5, 0.05, c.look.fabScale, v => { c.look.fabScale = v; }, v => Math.round(v * 100) + '%')));
-      const tg = el('input', 'input input-sm'); tg.maxLength = 4; tg.value = c.look.tag; tg.style.width = '84px'; tg.oninput = () => { c.look.tag = tg.value; mcChanged(); };
-      b.appendChild(mcRow('התג הקטן ליד אורי', [tg, el('span', 'hint', 'עד 4 תווים. ריק מסתיר אותו.')]));
-      box.appendChild(card);
-    }
-    function mcRender2() { const y = document.querySelector('main').scrollTop; mcRender(); document.querySelector('main').scrollTop = y; mcChanged(); }
     function mcSlider(min, max, step, val, on, fmt) {
-      const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = val; i.style.width = '140px';
-      const l = el('span', 'text-[12px] font-bold w-16', fmt(Number(val))); i.oninput = () => { const v = Number(i.value); l.textContent = fmt(v); on(v); mcChanged(); };
+      const w = el('div', 'flex items-center gap-2'); const i = el('input', ''); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = val; i.style.width = '150px';
+      const l = el('span', 'text-[12px] font-bold w-14', fmt(Number(val))); i.oninput = () => { const v = Number(i.value); l.textContent = fmt(v); on(v); mcChanged(); };
       w.append(i, l); return w;
     }
-    function mcPlay(id, text) {
-      if (!MC_FR || !MC_READY || !MC) return;
-      try { MC_FR.contentWindow.postMessage({ t: 'uriPlay', id: id || '', text: text || '', cfg: MC.cfg }, 'https://david-oved.github.io'); } catch (e) {}
+    function mcOutfitSelects(o) {
+      return Object.keys(MC.slots).map(sl => { const w = el('label', 'flex items-center gap-1.5 text-[12.5px]'); w.appendChild(el('span', 'font-semibold', MC_SLOT_HE[sl]));
+        w.appendChild(mcSel([['', 'ללא']].concat(MC.slots[sl].map(i => [i, MC.labels[i] || i])), o[sl] || '', v => { o[sl] = v; })); return w; });
     }
+    // a swatch row: the given colours, one chosen, and a free colour; "" means "not set" (shown first when allowed)
+    function mcColors(list, val, on, freeToo) {
+      const w = el('div', 'flex flex-wrap items-center gap-2');
+      list.forEach(([n, hex]) => { const x = el('button', 'rounded-full'); x.type = 'button'; x.title = n; const sel = (val || '').toLowerCase() === hex;
+        x.style.cssText = 'width:28px;height:28px;border:2px solid ' + (sel ? 'var(--accent)' : 'var(--line-strong)') + ';background:' + (hex || 'repeating-linear-gradient(45deg,#fff,#fff 4px,#e5e7eb 4px,#e5e7eb 8px)') + ';box-shadow:' + (sel ? '0 0 0 2px var(--accent-line)' : 'none');
+        x.onclick = () => { on(hex); mcChanged(); mcRender2(); }; w.appendChild(x); });
+      if (freeToo) { const ci = el('input', ''); ci.type = 'color'; ci.value = val || '#3b5bdb'; ci.title = 'צבע אחר'; ci.style.cssText = 'width:32px;height:28px;border:0;background:none;padding:0'; ci.oninput = () => { on(ci.value); mcChanged(); }; w.appendChild(ci); }
+      return w;
+    }
+    // opening lines: one in each row, in each language; one of them is chosen at random each time
+    function mcLines(t, hint) {
+      const w = el('div', 'grid sm:grid-cols-3 gap-2 w-full');
+      MC_LANGS.forEach(([k, name]) => {
+        const f = el('label', 'block'); f.appendChild(el('div', 'text-[12px] font-bold mb-1', name));
+        const ta = el('textarea', 'textarea'); ta.rows = 2; ta.placeholder = hint || ''; ta.value = (t[k] || []).join('\n');
+        ta.oninput = () => { t[k] = ta.value.split('\n').map(x => x.trim()).filter(Boolean).slice(0, 10); mcChanged(); };
+        f.appendChild(ta); w.appendChild(f);
+      });
+      return w;
+    }
+    const mcPresetOpts = () => [['', 'לפי ברירת המחדל']].concat(MC.presets.map(([id, name]) => [id, name]));
+    function mcPresetName(id) { const p = MC.presets.find(x => x[0] === id); return p ? p[1] : id; }
+    function mcThemeCard(th, idx) {
+      const c = MC.cfg, d = el('div', 'rounded-xl border p-3 space-y-2'); d.style.borderColor = 'var(--line-strong)'; if (th.enabled === false) d.style.opacity = '.6';
+      const top = el('div', 'flex flex-wrap items-center gap-2');
+      top.appendChild(mcSw(th.enabled !== false, v => { th.enabled = v; d.style.opacity = v ? '1' : '.6'; }));
+      const lab = el('input', 'input input-sm'); lab.placeholder = 'שם הערכה (למשל: חורף)'; lab.value = th.label || ''; lab.style.width = '180px'; lab.oninput = () => { th.label = lab.value; mcChanged(); };
+      top.appendChild(lab); top.appendChild(el('span', 'flex-1'));
+      const tr = el('button', 'btn btn-sm btn-soft', 'נסה את הערכה'); tr.type = 'button'; tr.onclick = () => mcPlay('', th); top.appendChild(tr);
+      const dup = el('button', 'btn btn-sm', 'שכפל'); dup.type = 'button'; dup.onclick = () => { c.themes.splice(idx + 1, 0, JSON.parse(JSON.stringify(Object.assign({}, th, { label: (th.label || '') + ' (עותק)' })))); mcChanged(); mcRender(); }; top.appendChild(dup);
+      const del = el('button', 'btn btn-sm btn-danger', 'מחק'); del.type = 'button'; del.onclick = () => { if (!confirm('למחוק את הערכה "' + (th.label || '') + '"?')) return; c.themes.splice(idx, 1); mcChanged(); mcRender(); }; top.appendChild(del);
+      d.appendChild(top);
+      const md2date = md => '2000-' + (md || '01-01'), date2md = v => (v || '').slice(5);
+      const dates = el('div', 'flex flex-wrap items-center gap-2 text-[13px]');
+      const f = el('input', 'input input-sm'); f.type = 'date'; f.value = md2date(th.from); f.style.width = '140px'; f.onchange = () => { th.from = date2md(f.value) || th.from; mcChanged(); };
+      const t = el('input', 'input input-sm'); t.type = 'date'; t.value = md2date(th.to); t.style.width = '140px'; t.onchange = () => { th.to = date2md(t.value) || th.to; mcChanged(); };
+      dates.append(el('span', 'font-bold', 'בין'), f, el('span', '', 'ל'), t, el('span', 'hint', 'כל שנה. אפשר לחצות סוף שנה (למשל דצמבר עד פברואר).'));
+      d.appendChild(dates);
+      d.appendChild(mcRow('צבע הפנים', mcColors([['כמו ברירת המחדל', '']].concat(MC_BODIES), th.body || '', v => { th.body = v; }, true)));
+      th.outfit = th.outfit || { hat: '', face: '', neck: '' };
+      d.appendChild(mcRow('לובש', mcOutfitSelects(th.outfit)));
+      d.appendChild(mcRow('אנימציית פתיחה', mcSel(mcPresetOpts(), th.intro || '', v => { th.intro = v; }), 'ריק = לפי ההגדרה הכללית'));
+      th.text = th.text || { he: [], en: [], fr: [] };
+      const tl = el('div', 'py-2'); tl.style.borderTop = '1px solid var(--line)'; tl.appendChild(el('div', 'text-[13px] font-bold mb-1', 'משפט פתיחה בתקופה הזו')); tl.appendChild(mcLines(th.text, 'ריק = המשפט הכללי')); d.appendChild(tl);
+      return d;
+    }
+    function mcRender() {
+      const box = document.getElementById('mcControls'); box.innerHTML = ''; const c = MC.cfg; c.themes = c.themes || []; c.intro.text = c.intro.text || { he: [], en: [], fr: [] };
+      // 1. the face
+      let [card, b] = mcCard('איך אורי נראה', 'צבע הפנים, הכוכב, התג ומה הוא לובש בדרך כלל. אורי לא קופץ ולא זז: הוא רק מצמץ.');
+      b.appendChild(mcRow('צבע הפנים', mcColors(MC_BODIES, c.body, v => { c.body = v; }, true)));
+      b.appendChild(mcRow('כוכב קטן בפינה', mcSw(c.spark, v => { c.spark = v; })));
+      const tg = el('input', 'input input-sm'); tg.maxLength = 4; tg.value = c.tag; tg.style.width = '84px'; tg.oninput = () => { c.tag = tg.value; mcChanged(); };
+      b.appendChild(mcRow('תג קטן ליד הכפתור', [tg, el('span', 'hint', 'עד 4 תווים. ריק מסתיר אותו.')]));
+      b.appendChild(mcRow('לובש בדרך כלל', mcOutfitSelects(c.outfit)));
+      box.appendChild(card);
+      // 2. themes
+      [card, b] = mcCard('ערכות נושא: חורף, קיץ, תקופת מבחנים, חגים', 'תקופה בשנה עם לבוש, צבע פנים, אנימציית פתיחה ומשפט פתיחה משלה. כשהתאריך של היום בתוך תקופה היא מחליפה את ההגדרות הכלליות (ערכה ראשונה שמתאימה לתאריך גוברת). בלי עדכון תוכנה.');
+      const quick = el('div', 'flex flex-wrap items-center gap-2 mb-3'); quick.appendChild(el('span', 'text-[13px] font-bold', 'הוסף ערכה מוכנה:'));
+      MC.themes.forEach(t => { const x = el('button', 'btn btn-sm', t.label); x.type = 'button'; x.onclick = () => { c.themes.push(JSON.parse(JSON.stringify(Object.assign({ enabled: true }, t)))); mcChanged(); mcRender(); }; quick.appendChild(x); });
+      const emp = el('button', 'btn btn-sm btn-soft', 'ערכה ריקה'); emp.type = 'button'; emp.onclick = () => { c.themes.push({ enabled: true, label: '', from: '01-01', to: '01-31', body: '', outfit: { hat: '', face: '', neck: '' }, intro: '', text: { he: [], en: [], fr: [] } }); mcChanged(); mcRender(); };
+      quick.appendChild(emp); b.appendChild(quick);
+      if (!c.themes.length) b.appendChild(el('div', 'hint', 'עדיין אין ערכות. לחץ על אחת המוכנות, ואחר כך שנה כל דבר בה.'));
+      const list = el('div', 'space-y-3'); c.themes.forEach((th, i) => list.appendChild(mcThemeCard(th, i))); b.appendChild(list);
+      box.appendChild(card);
+      // 3. the opening animation
+      const I = c.intro; const parts = (I.fixed || MC.default_intro).split('-');
+      [card, b] = mcCard('אנימציית הפתיחה', 'מה שרואים כשפותחים את הצ׳אט. היא בנויה משלושה חלקים שמשתלבים חופשי: איך הפנים נכנסות, מה הן עושות, ומה מסביבן. יש מעל 900 צירופים ו-' + MC.presets.length + ' מוכנים בשם. לחץ על צירוף מוכן כדי לראות אותו בתצוגה.');
+      b.appendChild(mcRow('אנימציית פתיחה', mcSw(I.enabled !== false, v => { I.enabled = v; }), 'כבוי: הצ׳אט נפתח בלי אנימציה'));
+      b.appendChild(mcRow('איזו להציג', mcSeg([['fixed', 'תמיד אותה אחת'], ['random', 'אקראית מתוך מאגר שאבחר']], I.mode, v => { I.mode = v; mcRender2(); })));
+      if (I.mode === 'fixed') {
+        const mk = (label, key, idx) => { const w = el('label', 'flex items-center gap-1.5 text-[12.5px]'); w.appendChild(el('span', 'font-semibold', label));
+          w.appendChild(mcSel(Object.entries(MC[key]), parts[idx], v => { const q = (I.fixed || MC.default_intro).split('-'); q[idx] = v; I.fixed = q.join('-'); mcPlay(I.fixed); mcDirty(); })); return w; };
+        const play = el('button', 'btn btn-sm btn-primary', 'נגן'); play.type = 'button'; play.onclick = () => mcPlay(I.fixed);
+        b.appendChild(mcRow('הרכבה חופשית', [mk('כניסה', 'entries', 0), mk('מה הפנים עושות', 'faces', 1), mk('מסביב', 'ambients', 2), play], 'הצירוף הנוכחי: ' + mcPresetName(I.fixed)));
+      } else {
+        b.appendChild(el('div', 'hint', 'בכל פתיחה נבחרת אנימציה אחת מהמסומנות למטה. מסומנות כרגע: ' + (I.pool.length || 'אין (תוצג האנימציה הקבועה)')));
+      }
+      b.appendChild(mcRow('צבע הרקע', mcColors(MC_BGS, I.bg || '', v => { I.bg = v; }, true), 'מאחורי הפנים'));
+      b.appendChild(mcRow('זמן מינימלי', mcSlider(1.2, 6, 0.1, I.min, v => { I.min = Math.round(v * 10) / 10; }, v => v.toFixed(1) + ' שניות'), 'האנימציה נשארת לפחות כך'));
+      const tl = el('div', 'py-2'); tl.style.borderTop = '1px solid var(--line)'; tl.appendChild(el('div', 'text-[13px] font-bold mb-1', 'משפט פתיחה (מופיע מתחת לפנים)')); tl.appendChild(el('div', 'hint mb-1', 'אחד בכל שורה. בכל פתיחה נבחר אחד באקראי. ריק = בלי משפט. אפשר להוסיף שם משלך, בקשה, ברכה.')); tl.appendChild(mcLines(I.text, 'למשל: שלום! במה אפשר לעזור?')); b.appendChild(tl);
+      const lib = el('div', 'py-2'); lib.style.borderTop = '1px solid var(--line)';
+      lib.appendChild(el('div', 'text-[13px] font-bold mb-2', 'צירופים מוכנים (' + MC.presets.length + ')'));
+      const grid = el('div', 'grid grid-cols-2 sm:grid-cols-3 gap-2');
+      MC.presets.forEach(([id, name]) => {
+        const chosen = I.mode === 'fixed' ? I.fixed === id : I.pool.includes(id);
+        const x = el('button', 'rounded-xl border px-2.5 py-2 text-right text-[13px] font-semibold', name); x.type = 'button';
+        x.style.cssText = 'border:1.5px solid ' + (chosen ? 'var(--accent)' : 'var(--line-strong)') + ';background:' + (chosen ? 'var(--accent-soft)' : 'var(--card)') + ';color:var(--text)';
+        x.title = id;
+        x.onclick = () => { if (I.mode === 'fixed') I.fixed = id; else { const i = I.pool.indexOf(id); if (i >= 0) I.pool.splice(i, 1); else I.pool.push(id); } mcPlay(id); mcDirty(); mcRender2(); };
+        grid.appendChild(x);
+      });
+      lib.appendChild(grid); b.appendChild(lib);
+      box.appendChild(card);
+    }
+    function mcRender2() { const m = document.querySelector('main'), y = m ? m.scrollTop : 0, w = window.scrollY; mcRender(); if (m) m.scrollTop = y; window.scrollTo(0, w); }
     async function mcSave() {
       mcDirty(); if (!MC_DIRTY) { showToast('אין שינוי לשמור', false); return; }
       const res = await adminFetch(`${API_BASE}/api/admin/mascot`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: MC.cfg }) });
