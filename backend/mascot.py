@@ -1,15 +1,17 @@
 """
-Uri, the face of the app's AI part, as DATA. The picture and the movement are drawn by ONE renderer in the app (chat.js); this module holds the settings that renderer reads:
-the body (shape, colour, eyes), what he wears (by default and by date: only the admin dresses him), the speech bubble's look, a few quiet animations and WHEN each may play
-(opening the chat, waiting for an answer, an answer arriving, an error, now and then), how often he says a line and WHAT he says, and a few look settings (eye colour, outline,
-glow, the floating button's colours and size, the small tag).
-It is a serious app: no games, no wardrobe for students. The admin changes everything here in the admin app; the app fetches it (small, public, never cached) and every place Uri appears
-is redrawn from it, with no software update. New drawing parts and new animation SHAPES are the only things that need an app update.
+Uri, the face of the app's AI part, as DATA. ONE renderer in the app (chat.js) draws him; this module holds the settings it reads. Version 3 is deliberately small:
+no jumping or movements any more, only what a serious app needs -
+  * the face: its colour, the small star, the small tag next to it;
+  * what he wears by default, and THEMES: a period of the year (winter, summer, exams, a holiday) with its own outfit, face colour, opening animation and opening line;
+  * the OPENING ANIMATION of the chat: how the face arrives (entry), what it does (face), what floats around it (ambient), the background, how long it stays, and the line of text.
+    The three parts combine freely (10 x 9 x 11 = 990 animations); ready-made names are only shortcuts to a combination. An animation is the id "entry-face-ambient".
+The admin changes everything here in the admin app, the app fetches it (small, public, never cached), and nothing needs an app update: the app already knows every entry, face and
+ambient listed below. A NEW entry, face or ambient is the one thing that needs an app update, so this list is generous.
 """
 import re
 from typing import Any, Dict, List
 
-VERSION = 2          # settings saved by the first (playful) version carry no version: they are dropped, so everything starts clean
+VERSION = 3
 
 SLOTS: Dict[str, List[str]] = {
     "hat": ["gradcap", "partyhat", "bow", "headphones"],
@@ -17,59 +19,72 @@ SLOTS: Dict[str, List[str]] = {
     "neck": ["scarf"],
 }
 ITEM_LABELS = {"gradcap": "כובע בוגרים", "partyhat": "כובע חגיגי", "bow": "פפיון", "headphones": "אוזניות", "glasses": "משקפיים", "sunglasses": "משקפי שמש", "scarf": "צעיף"}
-ALL_ITEMS = [i for items in SLOTS.values() for i in items]
-SHAPES = ("bubble", "blob", "circle", "square")
-SHAPE_LABELS = {"bubble": "בועת שיחה", "blob": "ביצה רכה", "circle": "עיגול", "square": "ריבוע מעוגל"}
-EYES = ("oval", "big", "happy")
-BUBBLE_SHAPES = ("round", "square", "pill")
-MOODS = ("happy", "think", "wow", "wink")
-MOOD_LABELS = {"happy": "רגיל", "think": "חושב", "wow": "מופתע", "wink": "קורץ"}
 
-# the movements the app can play, with their names in the admin (the movement itself is in the app)
-ANIMS: Dict[str, str] = {
-    "jump": "קפיצה קטנה", "nod": "הנהון", "wiggle": "ניענוע עדין", "tilt": "הטיית ראש", "pulse": "פעימה", "zoom": "התקרבות",
-    "shake": "רעד", "lookaround": "מסתכל סביב", "float": "ריחוף", "wink": "קריצה",
+# how the face ARRIVES in the opening animation
+ENTRIES: Dict[str, str] = {
+    "pop": "קפיצת כניסה", "spin": "סיבוב", "drop": "נפילה ונחיתה", "slide": "החלקה מלמטה", "flip": "היפוך",
+    "zoom": "התקרבות מטושטשת", "stretch": "מתיחה ומעיכה", "swing": "נדנוד", "rise": "עלייה מתוך הברק", "shake": "רעידה",
 }
-# the moments an animation (and a line) can be tied to
-TRIGGERS: Dict[str, str] = {
-    "open": "פותחים את הצ'אט", "think": "ממתינים לתשובה", "done": "התשובה הגיעה", "error": "שגיאה", "idle": "מדי פעם, כשאף אחד לא עושה כלום",
+# what the face DOES once it is there
+FACES: Dict[str, str] = {
+    "wink": "קריצה", "winkl": "קריצה שמאלית", "double": "קריצה כפולה", "smile": "חיוך רחב", "wow": "הפתעה",
+    "think": "מחשבה", "nod": "הנהון", "sleepy": "מתעורר", "love": "עיניים אוהבות",
 }
-# the categories of lines (the opening greeting changes with the hour)
-PHRASE_KEYS: Dict[str, str] = {
-    "open": "בפתיחת הצ'אט (כללי)", "open_morning": "בפתיחה בבוקר (5 עד 11)", "open_noon": "בפתיחה בצהריים (11 עד 17)", "open_evening": "בפתיחה בערב (17 עד 22)",
-    "open_night": "בפתיחה בלילה (22 עד 5)", "think": "בזמן שממתינים לתשובה", "done": "כשהתשובה הגיעה", "error": "כשיש שגיאה", "idle": "מדי פעם, מעצמו",
+# what floats around it
+AMBIENTS: Dict[str, str] = {
+    "none": "בלי כלום", "sparkle": "ניצנוצים", "rings": "גלים", "orbit": "כוכבי לכת", "confetti": "קונפטי", "stars": "כוכבים",
+    "snow": "שלג", "leaves": "עלים", "hearts": "לבבות", "bubbles": "בועות", "rays": "קרניים",
 }
-LOOK_COLORS = ("eye", "outline", "aura", "fab1", "fab2")
-BUBBLE_COLORS = ("bg", "text", "border")
+# ready-made names for a combination (id = entry-face-ambient)
+PRESETS: List[List[str]] = [
+    ["pop-wink-sparkle", "קריצה קלאסית"], ["spin-wink-sparkle", "קריצה בסיבוב"], ["drop-wink-rings", "נחיתה וקריצה"], ["slide-wink-none", "החלקה וקריצה"],
+    ["flip-wink-stars", "היפוך וקריצה"], ["pop-double-sparkle", "קריצה כפולה"], ["pop-winkl-sparkle", "קורץ לשמאל"], ["pop-wink-confetti", "קריצה בקונפטי"],
+    ["rise-wink-hearts", "קריצה עם לבבות"], ["pop-smile-sparkle", "חיוך רחב"], ["rise-smile-snow", "חיוך ושלג"], ["rise-wink-snow", "חורף: קריצה בשלג"],
+    ["swing-wink-leaves", "סתיו: קריצה בעלים"], ["slide-wink-bubbles", "קיץ: בועות"], ["zoom-smile-rays", "קיץ: שמש"], ["pop-wink-stars", "מבחנים: בהצלחה"],
+    ["zoom-think-orbit", "מבחנים: ריכוז"], ["shake-wow-sparkle", "הפתעה"], ["drop-wow-confetti", "הפתעה בקונפטי"], ["slide-think-none", "חושב ומחייך"],
+    ["rise-sleepy-rings", "מתעורר"], ["pop-nod-none", "הנהון נעים"], ["pop-love-hearts", "אוהב"], ["drop-wow-rings", "נפילה והפתעה"],
+    ["stretch-wink-sparkle", "מתיחה עליזה"], ["stretch-smile-bubbles", "מתיחה וחיוך"], ["swing-smile-rings", "נדנוד שקט"], ["swing-wink-stars", "נדנוד וקריצה"],
+    ["zoom-wink-rays", "זום וקריצה"], ["zoom-smile-confetti", "זום חגיגי"], ["shake-wink-none", "רעידה וקריצה"], ["flip-smile-confetti", "היפוך חגיגי"],
+    ["flip-think-orbit", "היפוך וחשיבה"], ["rise-sleepy-stars", "ירח וכוכבים"], ["pop-smile-rays", "קרניים"], ["rise-wink-bubbles", "בועות וקריצה"],
+    ["drop-wow-hearts", "לבבות בהפתעה"], ["rise-double-snow", "שלג וקריצה כפולה"], ["swing-nod-leaves", "עלים והנהון"], ["pop-smile-none", "מינימלי"],
+    ["zoom-wink-none", "קורץ מהחושך"], ["pop-smile-rings", "גלים וחיוך"],
+]
+DEFAULT_INTRO_ID = "pop-wink-sparkle"
+LANGS = ("he", "en", "fr")
+ALL_ITEMS = [i for items in SLOTS.values() for i in items]
+
+DEFAULT_TEXT: Dict[str, List[str]] = {"he": [], "en": [], "fr": []}
+
+# themes the admin can add with one click (the admin edits everything afterwards)
+THEME_TEMPLATES: List[Dict[str, Any]] = [
+    {"label": "חורף", "from": "12-01", "to": "02-28", "body": "#dbeeff", "outfit": {"hat": "", "face": "", "neck": "scarf"}, "intro": "rise-wink-snow", "text": {"he": ["חורף נעים, במה אפשר לעזור?"], "en": ["Cosy winter, how can I help?"], "fr": ["Bel hiver, comment puis-je aider ?"]}},
+    {"label": "קיץ", "from": "06-15", "to": "08-31", "body": "#fff4c2", "outfit": {"hat": "", "face": "sunglasses", "neck": ""}, "intro": "zoom-smile-rays", "text": {"he": ["קיץ טוב, במה אפשר לעזור?"], "en": ["Happy summer, how can I help?"], "fr": ["Bon été, comment puis-je aider ?"]}},
+    {"label": "תקופת מבחנים", "from": "01-10", "to": "02-15", "body": "", "outfit": {"hat": "gradcap", "face": "glasses", "neck": ""}, "intro": "pop-wink-stars", "text": {"he": ["בהצלחה במבחנים!"], "en": ["Good luck with your exams!"], "fr": ["Bonne chance pour les examens !"]}},
+    {"label": "חגים", "from": "09-01", "to": "10-31", "body": "#ffe3d1", "outfit": {"hat": "partyhat", "face": "", "neck": ""}, "intro": "swing-wink-leaves", "text": {"he": ["חג שמח!"], "en": ["Happy holidays!"], "fr": ["Joyeuses fêtes !"]}},
+]
 
 DEFAULT: Dict[str, Any] = {
     "v": VERSION,
-    "shape": "bubble", "body": "#ffffff", "eyes": "oval", "spark": True,
+    "body": "#ffffff", "spark": True, "tag": "AI",
     "outfit": {"hat": "", "face": "", "neck": ""},
-    "seasons": [],
-    "behavior": {"blink": True, "look": True, "react": True, "idle": True},
-    "anim": {"enabled": list(ANIMS), "speed": 1.0},
-    "triggers": {
-        "open": ["nod", "wink", "jump"], "think": ["lookaround", "tilt"], "done": ["nod", "jump", "pulse"], "error": ["shake"], "idle": ["float", "wink", "lookaround"],
-    },
-    "talk": {"open": 35, "think": 25, "done": 15, "error": 100, "idle": 8},
-    "idle": {"min": 40, "max": 90},
-    "phrases": {
-        "open": ["היי, במה אפשר לעזור?", "אני מקשיב"],
-        "open_morning": ["בוקר טוב, במה אפשר לעזור?", "בוקר אור"],
-        "open_noon": ["צהריים טובים, אני כאן", "במה אפשר לעזור?"],
-        "open_evening": ["ערב טוב, במה אפשר לעזור?", "אני כאן אם צריך"],
-        "open_night": ["מאוחר, אבל אני כאן", "במה אפשר לעזור?"],
-        "think": ["רגע, בודק", "עוד שנייה", "מחפש את התשובה"],
-        "done": ["הנה", "מקווה שזה עוזר", "יש עוד משהו?"],
-        "error": ["משהו השתבש, נסה שוב", "תקלה קטנה, נסה שוב בעוד רגע"],
-        "idle": ["אני כאן אם צריך", "יש שאלה על הלימודים?"],
-    },
-    "look": {"eye": "", "outline": "", "outlineW": 0, "aura": "", "auraSize": 0, "fab1": "", "fab2": "", "fabScale": 1.0, "tag": "AI"},
-    "bubble": {"shape": "round", "bg": "", "text": "", "border": ""},
+    "themes": [],
+    "intro": {"enabled": True, "mode": "fixed", "fixed": DEFAULT_INTRO_ID, "pool": [], "bg": "", "min": 1.6, "text": DEFAULT_TEXT},
 }
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _MD = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
+
+
+def valid_anim(x: Any) -> bool:
+    p = str(x or "").split("-")
+    return len(p) == 3 and p[0] in ENTRIES and p[1] in FACES and p[2] in AMBIENTS
+
+
+def _anim(x: Any, fallback: str = "") -> str:
+    return str(x) if valid_anim(x) else fallback
+
+
+def _color(v: Any) -> str:
+    return v if isinstance(v, str) and _HEX.match(v) else ""
 
 
 def _outfit(o: Any) -> Dict[str, str]:
@@ -84,57 +99,58 @@ def _num(v: Any, lo: float, hi: float, dflt: float) -> float:
         return dflt
 
 
-def _lines(raw: Any, fallback: List[str]) -> List[str]:
-    out = [str(x).strip()[:70] for x in (raw if isinstance(raw, list) else []) if str(x).strip()][:14]
-    return out or list(fallback)
+def _lines(raw: Any) -> List[str]:
+    return [str(x).strip()[:80] for x in (raw if isinstance(raw, list) else []) if str(x).strip()][:10]
 
 
-def _color(v: Any) -> str:
-    return v if isinstance(v, str) and _HEX.match(v) else ""
+def _texts(raw: Any) -> Dict[str, List[str]]:
+    r = raw if isinstance(raw, dict) else {}
+    return {lang: _lines(r.get(lang)) for lang in LANGS}
 
 
 def clean(cfg: Any) -> Dict[str, Any]:
-    """Whatever arrives (admin form, an older saved version) becomes a complete, safe configuration; unknown values fall back to the defaults.
-    Settings saved before version 2 are ignored completely."""
+    """Whatever arrives (the admin form, an older saved version) becomes a complete, safe configuration; unknown values fall back to the defaults.
+    Version 2 settings (the first, bigger version) keep their colour, star, tag, outfit and seasons; everything else of theirs (movements, phrases, bubble) is gone on purpose."""
     c = cfg if isinstance(cfg, dict) else {}
-    if c.get("v") != VERSION:
+    old = c.get("v") == 2
+    if c.get("v") != VERSION and not old:
         c = {}
     d = DEFAULT
     out: Dict[str, Any] = {
         "v": VERSION,
-        "shape": c.get("shape") if c.get("shape") in SHAPES else d["shape"],
-        "body": c["body"] if isinstance(c.get("body"), str) and _HEX.match(c["body"]) else d["body"],
-        "eyes": c.get("eyes") if c.get("eyes") in EYES else d["eyes"],
+        "body": _color(c.get("body")) or d["body"],
         "spark": c.get("spark") is not False,
         "outfit": _outfit(c.get("outfit")),
     }
-    seasons = []
-    for s in (c.get("seasons") or [])[:12] if isinstance(c.get("seasons"), list) else []:
+    tag = c.get("tag")
+    if old and isinstance(c.get("look"), dict):
+        tag = c["look"].get("tag", tag)
+    out["tag"] = str(tag if tag is not None else d["tag"])[:4]
+    themes = []
+    raw_themes = c.get("themes") if isinstance(c.get("themes"), list) else (c.get("seasons") if old and isinstance(c.get("seasons"), list) else [])
+    for s in raw_themes[:12]:
         if isinstance(s, dict) and _MD.match(str(s.get("from") or "")) and _MD.match(str(s.get("to") or "")):
-            seasons.append({"from": s["from"], "to": s["to"], "label": str(s.get("label") or "")[:30], "outfit": _outfit(s.get("outfit"))})
-    out["seasons"] = seasons
-    b = c.get("behavior") if isinstance(c.get("behavior"), dict) else {}
-    out["behavior"] = {k: b.get(k) is not False for k in d["behavior"]}
-    a = c.get("anim") if isinstance(c.get("anim"), dict) else {}
-    out["anim"] = {"enabled": [x for x in (a.get("enabled") if isinstance(a.get("enabled"), list) else d["anim"]["enabled"]) if x in ANIMS], "speed": round(_num(a.get("speed"), 0.5, 2.0, 1.0), 2)}
-    t = c.get("triggers") if isinstance(c.get("triggers"), dict) else {}
-    out["triggers"] = {k: [x for x in (t.get(k) if isinstance(t.get(k), list) else d["triggers"][k]) if x in ANIMS][:10] for k in TRIGGERS}
-    ta = c.get("talk") if isinstance(c.get("talk"), dict) else {}
-    out["talk"] = {k: int(_num(ta.get(k), 0, 100, d["talk"][k])) for k in TRIGGERS}
-    i = c.get("idle") if isinstance(c.get("idle"), dict) else {}
-    mn = int(_num(i.get("min"), 10, 600, d["idle"]["min"]))
-    out["idle"] = {"min": mn, "max": max(mn, int(_num(i.get("max"), 10, 1200, d["idle"]["max"])))}
-    ph = c.get("phrases") if isinstance(c.get("phrases"), dict) else {}
-    out["phrases"] = {k: _lines(ph.get(k), d["phrases"][k]) for k in PHRASE_KEYS}
-    lk = c.get("look") if isinstance(c.get("look"), dict) else {}
-    look: Dict[str, Any] = {k: _color(lk.get(k)) for k in LOOK_COLORS}
-    look["outlineW"] = round(_num(lk.get("outlineW"), 0, 3, 0), 1)
-    look["auraSize"] = int(_num(lk.get("auraSize"), 0, 24, 0))
-    look["fabScale"] = round(_num(lk.get("fabScale"), 0.8, 1.5, 1.0), 2)
-    look["tag"] = str(lk.get("tag") if "tag" in lk else d["look"]["tag"])[:4]
-    out["look"] = look
-    bb = c.get("bubble") if isinstance(c.get("bubble"), dict) else {}
-    out["bubble"] = {"shape": bb.get("shape") if bb.get("shape") in BUBBLE_SHAPES else d["bubble"]["shape"], **{k: _color(bb.get(k)) for k in BUBBLE_COLORS}}
+            themes.append({
+                "label": str(s.get("label") or "")[:30], "from": s["from"], "to": s["to"], "outfit": _outfit(s.get("outfit")), "body": _color(s.get("body")),
+                "intro": _anim(s.get("intro")), "text": _texts(s.get("text")), "enabled": s.get("enabled") is not False,
+            })
+    out["themes"] = themes
+    i = c.get("intro") if isinstance(c.get("intro"), dict) else {}
+    pool = [x for x in (i.get("pool") if isinstance(i.get("pool"), list) else []) if valid_anim(x)]
+    out["intro"] = {
+        "enabled": i.get("enabled") is not False,
+        "mode": i.get("mode") if i.get("mode") in ("fixed", "random") else "fixed",
+        "fixed": _anim(i.get("fixed"), DEFAULT_INTRO_ID),
+        "pool": list(dict.fromkeys(pool))[:60],
+        "bg": _color(i.get("bg")),
+        "min": round(_num(i.get("min"), 1.2, 6.0, d["intro"]["min"]), 1),
+        "text": _texts(i.get("text")),
+    }
     if isinstance(c.get("rev"), int):
         out["rev"] = c["rev"]
     return out
+
+
+def catalog() -> Dict[str, Any]:
+    """What the admin app needs to draw its controls."""
+    return {"entries": ENTRIES, "faces": FACES, "ambients": AMBIENTS, "presets": PRESETS, "slots": SLOTS, "labels": ITEM_LABELS, "themes": THEME_TEMPLATES, "default_intro": DEFAULT_INTRO_ID}

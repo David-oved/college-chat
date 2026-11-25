@@ -1329,7 +1329,9 @@ async def _stream_chat_response(
         # (Found by testing: a question with none of the marker words - "when is the library open", "CS vs software engineering", "which faculties" - was sent to the model
         # with no material, and the model answered "I have no information" WITHOUT searching. So everything that is not small talk or a pure Moodle question is searched up
         # front; the markers only matter now for splitting several topics.)
-        inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and (bool(_KB_MARKERS.search(head)) or len(head.split()) >= 2)
+        # (found by testing: the single word "Tuition?" was answered "I have no information" without any search - the markers are Hebrew, and one word is not two words.
+        #  A one-word question of 4+ letters is a topic too, so it is searched up front like any other.)
+        inline_kb = (not _is_smalltalk(question)) and (not route["skip_kb"]) and (bool(_KB_MARKERS.search(head)) or len(head.split()) >= 2 or len(re.sub(r"[\W_]+", "", head)) >= 4)
         use_tool = not _is_smalltalk(question)              # the search tool is always there: the model can look up whatever the material fetched up front does not cover
         if emit_status and inline_kb:
             yield status_event(s="kb")
@@ -1839,8 +1841,7 @@ async def public_mascot():
 @app.get("/api/admin/mascot", dependencies=[Depends(require_admin)])
 async def admin_get_mascot():
     import mascot
-    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), "slots": mascot.SLOTS, "labels": mascot.ITEM_LABELS, "shapes": mascot.SHAPES, "eyes": mascot.EYES, "moods": mascot.MOODS, "mood_labels": mascot.MOOD_LABELS, "shape_labels": mascot.SHAPE_LABELS,
-            "anims": mascot.ANIMS, "triggers": mascot.TRIGGERS, "phrase_keys": mascot.PHRASE_KEYS}
+    return {"config": await _mascot_cfg(), "defaults": mascot.clean({}), **mascot.catalog()}
 
 
 @app.put("/api/admin/mascot", dependencies=[Depends(require_admin)])
