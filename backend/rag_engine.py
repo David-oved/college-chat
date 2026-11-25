@@ -105,11 +105,6 @@ def chunk_text(text: str, title: str = "מסמך מכללה", chunk_size: int = 
     return chunks
 
 
-from collections import OrderedDict
-_EMB_CACHE: "OrderedDict[str, List[float]]" = OrderedDict()
-_EMB_CACHE_MAX = 300
-
-
 async def get_embedding(text: str, api_key: str) -> List[float]:
     """
     הופך טקסט לוקטור (Embedding) באמצעות ה-API של Gemini.
@@ -119,10 +114,6 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
     """
     if not api_key:
         return []
-    short = len(text) <= 400                       # a question: the same question comes again and again, and its vector never changes
-    if short and text in _EMB_CACHE:
-        _EMB_CACHE.move_to_end(text)
-        return _EMB_CACHE[text]
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
     payload = {
@@ -139,12 +130,7 @@ async def get_embedding(text: str, api_key: str) -> List[float]:
                 resp = await client.post(url, json=payload)
             gemini_stats.record("embedding", resp.status_code)
             if resp.status_code == 200:
-                vec = resp.json().get("embedding", {}).get("values", [])
-                if vec and short:
-                    _EMB_CACHE[text] = vec
-                    while len(_EMB_CACHE) > _EMB_CACHE_MAX:
-                        _EMB_CACHE.popitem(last=False)
-                return vec
+                return resp.json().get("embedding", {}).get("values", [])
             if resp.status_code not in (429, 500, 502, 503, 504):
                 break  # שגיאה קבועה (מפתח לא תקין וכד') - אין טעם לנסות שוב
         except Exception:
@@ -1008,48 +994,6 @@ _INTENTS = (
 _CLAUSE_START = re.compile(r"\s*[,;]\s*|\s+(?=(?:וגם|בנוסף|ו(?:מה|איך|כמה|מתי|איפה|למי|האם|אילו|איזה)|ו[א-ת]{3,})(?![א-ת]))")
 
 
-# Other languages: the question is cut where a new question starts. Each piece must be a real clause (3+ words); the whole question is the fallback.
-_OTHER_CUT = re.compile(r"\s*[?؟;]\s+|\s*,\s+(?=(?:and|also|et|aussi|и|а также|و)\s)|\s+(?:and also|and|plus|as well as|et aussi|et|aussi|а также|и|و)\s+(?=(?:how|what|when|where|which|who|can|do|does|is|are|will|comment|quel|quelle|quels|quelles|quand|où|puis|est|как|что|когда|где|какой|какие|можно|كيف|ما|ماذا|متى|أين|هل)\b)", re.I)
-_PERSONAL_OTHER = re.compile(r"\b(?:my|mine|me)\b.{0,25}\b(?:grades?|marks?|tasks?|assignments?|exams?|deadlines?|courses?|schedule)\b|\b(?:mes|mon|ma)\b.{0,25}\b(?:notes?|devoirs?|examens?|cours)\b|\bмои\w*\s+(?:оценк|заданi|задани|экзамен|курс)\w*", re.I)
-
-
-def _split_topics_other(head: str) -> List[str]:
-    parts = [p.strip(" ,;?؟.") for p in _OTHER_CUT.split(head) if p and p.strip(" ,;?؟.")]
-    parts = [p for p in parts if len(p.split()) >= 3 and not _PERSONAL_OTHER.search(p)]
-    return parts[:4] if len(parts) >= 2 else [head]
-
-
-# A short follow-up ("and how much does it cost?", "ומתי היא פתוחה") means nothing to a search on its own: it is searched together with the question before it.
-_FOLLOW_START = re.compile(r"^(?:ו|וגם\b|אז\b|ואם\b|and\b|also\b|so\b|then\b|but\b|what about\b|how about\b|et\b|alors\b|mais\b|и\b|а\b|ну\b|و|ماذا عن\b)", re.I)
-_FOLLOW_REF = re.compile(r"(?<![א-ת])(?:שם|זה|זאת|זו|היא|הוא|הם|הן|אותו|אותה|אליו|אליה|אליהם|אליהן|בו|בה|בהם|בהן|שלו|שלה|שלהם|עליו|עליה|עליהם|ממנו|ממנה)(?![א-ת])|\b(?:it|its|that|this|there|them|they|those|these|il|elle|ils|elles|ça|cela|y|там|это|его|её|их|هذا|هناك)\b", re.I)
-
-
-def contextual_query(head: str, previous: str) -> Optional[str]:
-    """The text to ALSO search for when `head` looks like a follow-up to the student's previous question, else None."""
-    head = " ".join(str(head or "").split())
-    previous = " ".join(str(previous or "").split("\n\n[")[0].split())[:200]
-    if not head or not previous or head == previous:
-        return None
-    n = len(head.split())
-    if n <= 4 or _FOLLOW_START.search(head) or (n <= 9 and _FOLLOW_REF.search(head)):
-        return (previous + " " + head)[:320]
-    return None
-
-
-def merge_chunk_lists(*lists: List[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
-    """Interleaves the result lists (best of each first), without the same chunk twice."""
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    for i in range(max((len(l) for l in lists), default=0)):
-        for l in lists:
-            if i < len(l):
-                key = l[i].get("id") or (l[i].get("title"), str(l[i].get("text"))[:80])
-                if key not in seen:
-                    seen.add(key)
-                    out.append(l[i])
-    return out[:limit]
-
-
 def split_topics(head: str) -> List[str]:
     """A question that asks about several college topics at once ("דרכי הגעה ומדיניות המעונות") becomes one focused search per topic: a single search for the whole
     sentence returns only a blend of them. Clauses about the student's own Moodle data are left out (the Moodle tools answer those); a clause with no topic of its own
@@ -1057,8 +1001,6 @@ def split_topics(head: str) -> List[str]:
     head = " ".join(str(head or "").split())
     if len(head) < 12:
         return [head]
-    if not re.search(r"[א-ת]", head):                              # English / French / Russian / Arabic: the Hebrew clause words above do not apply
-        return _split_topics_other(head)
     cuts = [0] + [m.end() for m in _CLAUSE_START.finditer(head)]
     parts = [head[a:b].strip(" ,;") for a, b in zip(cuts, cuts[1:] + [len(head)])]
     clauses: List[List[str]] = []                                 # [text, kind] kind: kb / personal / other
@@ -1108,7 +1050,7 @@ def personal_route(question: str, connected: bool) -> Dict[str, Any]:
     return {"skip_kb": hit, "tools": tools[:2]}
 
 
-_SMALLTALK = re.compile(r"^(?:היי+|הי|שלום|אהלן|אהלא|בוקר טוב|ערב טוב|צהריים טובים|תודה(?: רבה| לך)?|תודה!+|סבבה|אוקי|אוקיי|אחלה|מעולה|יופי|מצוין|ביי|להתראות|לילה טוב|hi|hello|hey|thanks|thank you|thanks a lot|thank you very much|ok|okay|good morning|good evening|bye|goodbye|merci|merci beaucoup|bonjour|bonsoir|salut|au revoir|привет|здравствуй(?:те)?|спасибо|большое спасибо|спасибо большое|пока|до свидания|добрый день|добрый вечер|доброе утро|مرحبا|مرحباً|أهلا|اهلا|أهلاً|السلام عليكم|شكرا|شكراً|شكرا جزيلا|مع السلامة|صباح الخير|مساء الخير)[\s!.,?]*$", re.I)
+_SMALLTALK = re.compile(r"^(?:היי+|הי|שלום|אהלן|אהלא|בוקר טוב|ערב טוב|צהריים טובים|תודה(?: רבה| לך)?|תודה!+|סבבה|אוקי|אוקיי|אחלה|מעולה|יופי|מצוין|ביי|להתראות|לילה טוב|hi|hello|hey|thanks|thank you|ok|okay|merci|bonjour|salut)[\s!.,?]*$", re.I)
 
 
 def _is_smalltalk(q: str) -> bool:

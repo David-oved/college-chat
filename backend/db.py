@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import asyncio
 from datetime import date
@@ -532,33 +531,6 @@ class Database:
                     limit %s;
                     """,
                     (vec, vec, top_k),
-                )
-                rows = await cur.fetchall()
-        return [dict(r) for r in rows]
-
-    async def keyword_search_chunks(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """The fallback when the embedding service is down: a plain word search (title matches count triple). Hebrew one-letter prefixes (ב ל ה ו מ ש כ) are also tried off."""
-        words = []
-        for w in re.findall(r"[\w'\"׳״-]{3,}", str(query or "").lower()):
-            w = w.strip("'\"-")
-            for v in {w, w[1:] if len(w) > 3 and w[0] in "בלהומשכ" else w}:
-                if len(v) >= 3 and v not in words:
-                    words.append(v)
-        words = [w.replace("\\", "").replace("%", "").replace("_", "") for w in words][:12]
-        if not words:
-            return []
-        async with _get_pool().connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(
-                    """
-                    select id, title, text, category, score::float / 10 as similarity from (
-                      select c.id, c.title, c.text, c.category,
-                             (select count(*) from unnest(%s::text[]) t where c.title ilike '%%' || t || '%%') * 3
-                           + (select count(*) from unnest(%s::text[]) t where c.text ilike '%%' || t || '%%') as score
-                      from knowledge_chunks c
-                    ) s where score > 0 order by score desc limit %s;
-                    """,
-                    (words, words, top_k),
                 )
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]

@@ -1322,7 +1322,7 @@ async def _stream_chat_response(
             return
 
         route = personal_route(question, bool(moodle_token and moodle_user_id))
-        from rag_engine import _is_smalltalk, _KB_MARKERS, split_topics, contextual_query, merge_chunk_lists
+        from rag_engine import _is_smalltalk, _KB_MARKERS, split_topics
         head = question.split("\n\n[")[0]
         # Only a plainly college-information question is searched up front (the answer needs it anyway). Everything else goes STRAIGHT to the model, which
         # decides: it can call search_college_info, the Moodle tools, or answer at once. (A greeting or a Moodle question never waits for a search.)
@@ -1339,15 +1339,10 @@ async def _stream_chat_response(
         async def search_q(q):
             try:
                 embedding = await get_embedding(q, api_key)
-                if not embedding:                                    # the embedding service is down or out of quota: a plain word search is better than "no information"
-                    print("[chat] no embedding: keyword search instead")
-                    return await db.keyword_search_chunks(q, top_k=3)
                 return await db.search_similar_chunks(embedding, top_k=3)
             except Exception as e:
                 print(f"[chat] knowledge search failed: {type(e).__name__}: {e}")
                 return []
-
-        recent_task = asyncio.create_task(db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES))     # (also needed by the search, to understand a follow-up)
 
         async def search():
             """A plain college question is searched up front. When it asks about several topics at once ("how to get there AND the dorm policy") every topic gets
@@ -1358,15 +1353,6 @@ async def _stream_chat_response(
                 return await search_q("יצירת קשר מזכירות מידע ורישום טלפון")       # "I want a human": the general contact details, not whatever department the words happen to match
             topics = split_topics(head)
             if len(topics) <= 1:
-                # a short follow-up ("and how much does it cost?") is searched as it is AND together with the student's previous question
-                try:
-                    prev = next((m.get("content") for m in reversed(await recent_task or []) if m.get("role") == "user"), "") if len(head.split()) <= 9 else ""
-                except Exception:
-                    prev = ""
-                ctx_q = contextual_query(head, prev)
-                if ctx_q:
-                    plain, with_ctx = await asyncio.gather(search_q(question), search_q(ctx_q))
-                    return merge_chunk_lists(plain, with_ctx, limit=5)
                 return await search_q(question)
             groups = await asyncio.gather(*[search_q(t) for t in topics])
             merged, seen = [], set()
@@ -1394,7 +1380,7 @@ async def _stream_chat_response(
             db.get_bot_identity(),
             db.get_catalog(),
             db.get_conversation_summary(conversation_id),
-            recent_task,
+            db.get_recent_messages(conversation_id, limit=KEEP_RECENT_MESSAGES),
             db.list_memories(user_id) if user_id else _empty(),
             db.get_moodle_enabled_functions() if (moodle_token and moodle_user_id) else _none(),
         )
