@@ -1356,6 +1356,22 @@ async def _stream_chat_response(
                 return await search_q("יצירת קשר מזכירות מידע ורישום טלפון")       # "I want a human": the general contact details, not whatever department the words happen to match
             topics = split_topics(head)
             if len(topics) <= 1:
+                # a short follow-up ("and how much does it cost?") is searched as it is AND together with the student's previous question.
+                # (Only a question that LOOKS like a follow-up costs the extra lookup of the previous message.)
+                ctx_q = None
+                if contextual_query(head, "x"):
+                    try:
+                        prev = ""
+                        for m in reversed(await db.get_recent_messages(conversation_id, limit=4) or []):
+                            if m.get("role") == "user":
+                                prev = str(m.get("content") or "")
+                                break
+                        ctx_q = contextual_query(head, prev)
+                    except Exception as e:
+                        print(f"[chat] follow-up lookup failed: {type(e).__name__}: {e}")
+                if ctx_q:
+                    plain, with_ctx = await asyncio.gather(search_q(question), search_q(ctx_q))
+                    return merge_chunk_lists(plain, with_ctx, limit=5)
                 return await search_q(question)
             groups = await asyncio.gather(*[search_q(t) for t in topics])
             merged, seen = [], set()
