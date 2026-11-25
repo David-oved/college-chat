@@ -169,6 +169,36 @@
     .gsHead{font-size:11px;font-weight:800;color:var(--muted);padding:10px 12px 2px;letter-spacing:.02em}
     @keyframes gsFlash{0%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 3px transparent}}
     .gsFlash{animation:gsFlash 1.8s ease-out}
+  
+    .rsModal{background:var(--surface);border-radius:18px;box-shadow:var(--shadow-pop);width:100%;max-width:880px;max-height:94vh;display:flex;flex-direction:column;overflow:hidden}
+    .rsTop{display:flex;align-items:flex-start;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--accent-soft),var(--surface))}
+    .rsTop b{font-size:17px}
+    .rsSentence{margin-top:6px;font-size:13.5px;line-height:1.9;color:var(--text-2)}
+    .rsSentence .k{display:inline-block;font-weight:800;font-size:11px;padding:1px 10px;border-radius:99px;margin-inline-end:6px}
+    .rsSentence .kw{background:#dbeafe;color:#1d4ed8}.rsSentence .kt{background:#d1fae5;color:#047857}
+    .rsBody{flex:1;overflow-y:auto;padding:16px 20px 10px;display:flex;flex-direction:column;gap:14px}
+    .rsSec{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--surface)}
+    .rsSecH{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .rsNum{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none}
+    .rsSecH b{font-size:15px}
+    .rsChips{display:flex;flex-wrap:wrap;gap:8px}
+    .rsChip{padding:8px 14px;border-radius:999px;border:1.5px solid var(--line-strong);background:var(--surface);font:inherit;font-size:13.5px;font-weight:700;color:var(--text-2);cursor:pointer;transition:border-color .15s,background .15s}
+    .rsChip:hover{border-color:var(--accent)}
+    .rsChip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+    .rsChip.small{padding:4px 11px;font-size:12px;font-weight:600}
+    .rsSub{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+    .rsTpl{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+    .rsTplC{flex:none;width:210px;text-align:right;padding:12px;border-radius:12px;border:1.5px solid var(--line-strong);background:var(--surface);cursor:pointer;font:inherit}
+    .rsTplC:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .rsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+    .rsCard{display:flex;align-items:center;gap:10px;text-align:right;padding:10px 12px;border-radius:12px;border:1.5px dashed var(--line-strong);background:var(--surface);cursor:pointer;font:inherit}
+    .rsCard:hover{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+    .rsCard.sel{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+    .rsIc{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none}
+    .rsIc svg{width:17px;height:17px}
+    .rsAct{border:1.5px solid var(--line);border-inline-start-width:5px;border-radius:12px;padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+    .rsEmpty{padding:14px;border-radius:12px;background:var(--bg);color:var(--muted);font-size:13px;text-align:center}
+    .rsFoot{border-top:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--surface)}
   </style>
 </head>
 <body>
@@ -457,7 +487,7 @@
                   <button type="button" onclick="pmOpenAll(true)" class="btn btn-sm">פתח הכול</button>
                   <button type="button" onclick="pmOpenAll(false)" class="btn btn-sm">סגור הכול</button>
                   <select id="pmTplSel" class="select" style="width:auto;height:34px"><option value="">תבנית מוכנה...</option></select>
-                  <button type="button" onclick="pmAddRule()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>כלל חדש</button>
+                  <button type="button" onclick="rsOpen()" class="btn btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>כלל חדש</button>
                 </div>
               </div>
               <div class="card-body"><div id="pmRuleChips" class="flex flex-wrap gap-1.5 mb-3"></div><div id="pmMine" class="space-y-3"></div></div>
@@ -645,6 +675,24 @@
   </div>
 
   <!-- בוחר עיצוב מהגלריה -->
+  <!-- סטודיו הכללים: יצירה ועריכה של כלל -->
+  <div id="rsOverlay" class="hidden modal-bg" onclick="if (event.target === this) rsClose()" style="align-items:flex-start;padding:3vh 12px;overflow:auto">
+    <div class="rsModal" role="dialog" aria-modal="true" aria-label="עורך כלל">
+      <div class="rsTop">
+        <div class="min-w-0 flex-1"><b id="rsTitle">כלל חדש</b><div id="rsSentence" class="rsSentence"></div></div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="rsClose()" title="סגור (Esc)"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div id="rsBody" class="rsBody"></div>
+      <div class="rsFoot">
+        <div id="rsWarn" class="flex flex-wrap gap-1.5 items-center" style="flex:1 1 100%;min-height:22px"></div>
+        <label class="flex items-center gap-2 text-[12.5px] font-bold">פעיל <button type="button" id="rsEnabled" class="pmSw on" role="switch" onclick="RS.rule.enabled = !(RS.rule.enabled !== false); rsLive()"></button></label>
+        <button type="button" class="btn" onclick="rsClose()">ביטול</button>
+        <button type="button" id="rsListBtn" class="btn" onclick="rsSave(false)">הוסף לרשימה</button>
+        <button type="button" id="rsSaveBtn" class="btn btn-primary" onclick="rsSave(true)" title="Ctrl+Enter">שמור ופרסם</button>
+      </div>
+    </div>
+  </div>
+
   <div id="pmPicker" class="hidden modal-bg" style="overflow:auto">
     <div class="modal" style="max-width:980px">
       <div class="modal-head"><span>בחירת עיצוב</span><button type="button" onclick="pmPickClose()" class="btn btn-ghost btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
@@ -2292,12 +2340,13 @@
         saveBtn.disabled = st === 'saved';
       };
       stBadge._upd();
+      const edBtn = el('button', 'btn btn-sm btn-soft', 'ערוך'); edBtn.type = 'button'; edBtn.onclick = () => rsOpen(rule, list, idx); top.appendChild(edBtn);
       top.appendChild(pmSwitch(rule.enabled, v => { rule.enabled = v; pmRenderAll(); }));
       const mv = (d) => { const k = idx + d; if (k < 0 || k >= list.length) return; [list[idx], list[k]] = [list[k], list[idx]]; pmRenderAll(); pmDirty(); };
       const dup = () => { const r2 = JSON.parse(JSON.stringify(rule)); r2.id = uid(); r2.cubes.forEach(c => { c.id = uid(); }); r2.title = (rule.title || '') + (rule.title ? ' (עותק)' : ''); list.splice(idx + 1, 0, r2); PM_OPEN[r2.id] = true; pmRenderAll(); pmDirty(); };
       [['שכפל', dup], ['⟦up⟧', () => mv(-1)], ['⟦down⟧', () => mv(1)], ['⟦trash⟧', () => { if (confirm('למחוק את הכלל?')) { list.splice(idx, 1); pmRenderAll(); pmDirty(); } }]].forEach(([t, f]) => { const b = el('button', 'text-slate-400 hover:text-slate-700 text-sm px-1', t); b.type = 'button'; b.onclick = f; top.appendChild(b); });
       card.appendChild(top);
-      if (!open) { if (!rule.title) { const pv = el('div', 'px-3 pb-2 text-xs text-slate-500 truncate', rule.cubes.map(c => c.text || (CUBE_META[c.t] || {}).label || '').join(' ').slice(0, 140)); card.appendChild(pv); } return card; }
+      if (!open) { const pv = el('div', 'px-3 pb-2 text-[12.5px] text-slate-600'); pv.textContent = rsSentenceText(rule); card.appendChild(pv); return card; }
       const body = el('div', 'p-2 pt-0 space-y-2');
       const row = el('div', 'flex flex-wrap gap-2 items-start');
       rule.cubes.forEach((c, i) => row.appendChild(pmCube(rule, i)));
@@ -2316,12 +2365,12 @@
     function pmRenderMine() {
       const box = document.getElementById('pmMine'); if (!box || !PM) return; box.innerHTML = '';
       if (!PM.mine.length) box.appendChild(el('div', 'text-sm text-slate-400', 'עדיין אין כללים. לחץ "כלל חדש" או בחר תבנית מוכנה.'));
-      let shown = 0; PM.mine.forEach((r, i) => { if (ruleMatches(r)) { shown++; box.appendChild(pmRule(r, PM.mine, i, false)); } });
+      let shown = 0; PM.mine.forEach((r, i) => { if (ruleMatches(r)) { shown++; box.appendChild(pmRule(r, PM.mine, i, true)); } });
       if (PM.mine.length && !shown) box.appendChild(el('div', 'text-sm text-slate-400', 'אין כלל שמתאים לחיפוש.'));
       const sel = document.getElementById('pmTplSel');
       if (PM_META && sel.options.length === 1) {
         PM_META.templates.forEach((t, i) => { const o = el('option', '', t.name + ' - ' + t.desc); o.value = i; sel.appendChild(o); });
-        sel.onchange = () => { if (sel.value === '') return; const t = JSON.parse(JSON.stringify(PM_META.templates[+sel.value].rule)); const r = { ...newRule('mine', t.title), cubes: t.cubes.map(c => ({ ...newCube(c.t), ...c, id: uid() })) }; PM.mine.unshift(r); PM_OPEN[r.id] = true; sel.value = ''; pmRenderAll(); pmDirty(); };
+        sel.onchange = () => { if (sel.value === '') return; const t = PM_META.templates[+sel.value]; sel.value = ''; rsOpen(null, null, -1, t); };
       }
     }
     function pmAddRule() { const r = newRule('mine'); PM.mine.unshift(r); PM_OPEN[r.id] = true; pmRenderAll(); pmDirty(); }
@@ -2395,7 +2444,7 @@
       pmPickRender();
     }
     function pmPickClose() { document.getElementById('pmPicker').classList.add('hidden'); PM_PICK = null; }
-    function pmPickDone() { const c = PM_PICK.cube; c.p = { ...c.p, kind: PM_PICK.kind, style: PM_PICK.style, color: PM_PICK.color }; c.raw = null; pmPickClose(); pmRenderAll(); pmDirty(); }
+    function pmPickDone() { const c = PM_PICK.cube; c.p = { ...c.p, kind: PM_PICK.kind, style: PM_PICK.style, color: PM_PICK.color }; c.raw = null; pmPickClose(); if (typeof RS !== 'undefined' && RS.rule) rsRender(); else { pmRenderAll(); pmDirty(); } }
     function pmChip(text, on, f, color) { const b = el('button', 'text-xs font-bold rounded-full px-3 py-1 border ' + (on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'), text); b.type = 'button'; if (color) { b.style.borderColor = color; if (on) b.style.background = color; } b.onclick = f; return b; }
     async function pmPickRender() {
       const P = PM_PICK, list = document.getElementById('pmPickList'); list.innerHTML = '';
@@ -2935,6 +2984,239 @@
       if (res.ok) { MC.cfg = d.config; mcDirty(false); mcRender(); mcSend(); }
     }
     window.addEventListener('beforeunload', (e) => { if (MC_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+
+    // ===================== סטודיו הכללים: יצירה ועריכה של כלל =====================
+    // A rule is read like a sentence: WHEN it applies, WHAT the bot does. Step by step, with big choices instead of a row of small blocks; a live sentence on top says what the rule means.
+    // The studio edits a COPY of the rule; "save" puts it back in the list (and publishes it), "close" throws the copy away.
+    const RS = { rule: null, list: null, idx: -1, isNew: false, snap: '', tpl: true, sec: null };
+    const RS_WHEN = [
+      ['topic', 'שואלים על נושא', 'הבוט מזהה לפי תוכן השאלה'], ['first_message', 'ההודעה הראשונה', 'רק בפתיחת שיחה'], ['new_student', 'סטודנט חדש', 'עוד אין לבוט זיכרון עליו'],
+      ['moodle', 'מחובר ל-Moodle', 'יש לבוט גישה לנתוני Moodle'], ['no_moodle', 'לא מחובר ל-Moodle', 'אין חיבור ל-Moodle'], ['lang', 'שפה מסוימת', 'עברית, אנגלית או צרפתית'], ['once', 'פעם אחת לכל סטודנט', 'לא חוזר על עצמו'],
+    ];
+    const RS_ACTS = [
+      ['say', 'להגיב או לפעול', 'מה הבוט אומר או עושה', 'chat'], ['design', 'להציג עיצוב', 'כרטיס מהגלריה', 'layout'], ['poll', 'לשאול סקר', 'שאלה עם אפשרויות', 'chart'],
+      ['quick', 'כפתורי תשובה', 'שניים עד ארבעה כפתורים', 'bolt'], ['tool', 'להפעיל כלי', 'חיפוש במאגר, Moodle ועוד', 'plug'], ['length', 'אורך התשובה', 'קצר, מפורט או בכרטיסים', 'sliders'],
+      ['tone', 'טון דיבור', 'חם, רשמי, קצר...', 'face'], ['remember', 'לזכור', 'מה לשמור בזיכרון', 'database'], ['dont', 'אסור', 'מה לא לעשות', 'x'],
+      ['must', 'חובה', 'מה חייבים תמיד', 'alert'], ['example', 'דוגמה', 'דוגמה לתשובה טובה', 'file'], ['info', 'מידע לבוט', 'עובדה שהוא צריך לדעת', 'info'],
+    ];
+    const RS_JOINS = [['then', 'ואז'], ['and', 'וגם'], ['else', 'אחרת'], ['except', 'חוץ מ']];
+    const RS_LANG = { he: 'עברית', en: 'אנגלית', fr: 'צרפתית' };
+    const RS_TONES = ['חם וקצר', 'רשמי ומנומס', 'קליל ועדין', 'מעודד', 'ענייני וישיר'];
+    const RS_TOPICS = ['שכר לימוד', 'מעונות', 'שעות פתיחה', 'מלגות', 'רישום', 'מבחנים', 'חניה והגעה', 'ספרייה'];
+    function rsSelect(opts, val, onchange) { const s = el('select', 'select select-sm'); opts.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; if (v === val) o.selected = true; s.appendChild(o); }); s.onchange = () => onchange(s.value); return s; }
+    const rsClone = o => JSON.parse(JSON.stringify(o));
+    const rsWhens = r => (r || RS.rule).cubes.filter(c => c.t === 'when');
+    const rsActs = r => (r || RS.rule).cubes.filter(c => c.t !== 'when');
+    function rsIcon(name) {
+      const NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg'), u = document.createElementNS(NS, 'use');
+      s.setAttribute('class', 'ic'); s.setAttribute('aria-hidden', 'true'); u.setAttribute('href', '#i-' + name); s.appendChild(u); return s;
+    }
+    // conditions first, then the actions; the connectors between them stay sensible
+    function rsNormalize(r) {
+      const w = rsWhens(r), a = rsActs(r), comb = w.length > 1 && w[1].join === 'or' ? 'or' : 'and';
+      w.forEach((c, i) => { c.join = i === 0 ? '' : comb; });
+      a.forEach((c, i) => { if (i === 0) c.join = w.length ? 'then' : ''; else if (!c.join) c.join = 'then'; });
+      r.cubes = w.concat(a);
+    }
+    // ---- the rule as a sentence (shown on top of the studio and under every rule in the list)
+    function rsWhenText(c) {
+      const k = c.p.kind || 'topic';
+      return k === 'topic' ? (String(c.text || '').trim() || '...') : k === 'first_message' ? 'זו ההודעה הראשונה בשיחה' : k === 'new_student' ? 'הסטודנט חדש' : k === 'moodle' ? 'הסטודנט מחובר ל-Moodle'
+        : k === 'no_moodle' ? 'הסטודנט לא מחובר ל-Moodle' : k === 'lang' ? 'האפליקציה ב' + (RS_LANG[c.p.lang || 'he'] || '') : k === 'once' ? 'זו הפעם הראשונה (בלבד)' : '';
+    }
+    function rsActText(c) {
+      const t = String(c.text || '').replace(/\s+/g, ' ').trim(), cut = (s, n) => (s.length > n ? s.slice(0, n) + '…' : s), p = c.p || {};
+      const kind = p.kind && PM_CAT ? ((PM_CAT.kinds.find(k => k.kind === p.kind) || {}).name || p.kind) : '';
+      switch (c.t) {
+        case 'design': return kind ? 'להציג את העיצוב "' + kind + '"' : 'להציג עיצוב (עוד לא נבחר)';
+        case 'poll': return 'לשאול סקר' + (p.q ? ' "' + cut(p.q, 40) + '"' : '');
+        case 'quick': return 'להציג כפתורים' + ((p.options || []).filter(Boolean).length ? ': ' + (p.options || []).filter(Boolean).join(', ') : '');
+        case 'tool': { const tl = ((PM_META && PM_META.tools) || []).find(x => x.name === p.name); return 'להפעיל את הכלי "' + (tl ? tl.label : p.name) + '"'; }
+        case 'length': return ({ short: 'לענות בקצרה', long: 'לענות בהרחבה', visual: 'לענות בכרטיסים' })[p.mode || 'short'];
+        case 'tone': return 'לדבר בטון: ' + cut(t, 40); case 'remember': return 'לזכור: ' + cut(t, 50); case 'dont': return 'לא ' + cut(t, 50); case 'must': return 'חובה: ' + cut(t, 50);
+        case 'example': return 'דוגמה: ' + cut(t, 50); default: return cut(t, 60) || '(ריק)';
+      }
+    }
+    function rsSentenceParts(rule) {
+      const w = rsWhens(rule), a = rsActs(rule), orJoin = w.length > 1 && w[1].join === 'or';
+      const when = w.length ? w.map(rsWhenText).join(orJoin ? ' או ' : ' וגם ') : 'תמיד';
+      const then = a.length ? a.map((c, i) => (i ? ({ and: ' וגם ', else: ', אחרת ', except: ', חוץ מ' })[c.join] || ' ואז ' : '') + rsActText(c)).join('') : 'עוד לא נבחרה פעולה';
+      return { when, then };
+    }
+    const rsSentenceText = rule => { const s = rsSentenceParts(rule); return (s.when === 'תמיד' ? 'תמיד: ' : 'כאשר ' + s.when + ' - אז ') + s.then; };
+
+    // ---- opening and closing
+    function rsOpen(rule, list, idx, tpl) {
+      if (!PM) { showToast('הכללים עדיין נטענים, נסה שוב בעוד רגע', true); return; }
+      RS.isNew = !rule; RS.list = list || null; RS.idx = rule && list ? idx : -1;
+      RS.rule = rule ? rsClone(rule) : Object.assign(newRule('mine', ''), { cubes: [] });
+      if (tpl) { const t = rsClone(tpl.rule); RS.rule.title = t.title || tpl.name || ''; RS.rule.cubes = t.cubes.map(c => ({ ...newCube(c.t), ...c, id: uid() })); }
+      rsNormalize(RS.rule); RS.snap = JSON.stringify(RS.rule); RS.tpl = RS.isNew && !RS.rule.cubes.length;
+      document.getElementById('rsOverlay').classList.remove('hidden'); document.getElementById('rsTitle').textContent = RS.isNew ? 'כלל חדש' : 'עריכת כלל';
+      rsRender(); const b = document.getElementById('rsBody'); b.scrollTop = 0;
+      setTimeout(() => { const i = document.getElementById('rsName'); if (i && RS.isNew && !tpl) i.focus(); }, 60);
+    }
+    function rsClose(force) {
+      if (!RS.rule) return;
+      if (!force && JSON.stringify(RS.rule) !== RS.snap && !confirm('יש שינויים שלא נשמרו. לסגור בלי לשמור?')) return;
+      document.getElementById('rsOverlay').classList.add('hidden'); RS.rule = null;
+    }
+    // ---- a bit of structure: a numbered step
+    function rsSec(num, title, hint) {
+      const w = el('section', 'rsSec'), h = el('div', 'rsSecH'); h.appendChild(el('span', 'rsNum', String(num)));
+      const t = el('div'); t.appendChild(el('b', '', title)); if (hint) t.appendChild(el('div', 'hint', hint)); t.lastChild.style.margin = '0'; h.appendChild(t); w.appendChild(h);
+      const b = el('div'); w.appendChild(b); return [w, b];
+    }
+    function rsRender() {
+      const body = document.getElementById('rsBody'), keep = body.scrollTop; body.innerHTML = ''; const r = RS.rule; rsNormalize(r);
+      // name
+      const nm = el('input', 'input'); nm.id = 'rsName'; nm.placeholder = 'שם לכלל (רק בשבילך, לא חובה). למשל: מבצע שכר לימוד'; nm.value = r.title || ''; nm.oninput = () => { r.title = nm.value; rsLive(); };
+      body.appendChild(nm);
+      // templates: the quickest start, shown while the rule is still empty
+      if (RS.isNew && PM_META && (PM_META.templates || []).length) {
+        if (RS.tpl && !r.cubes.length) {
+          const [w, b] = rsSec('★', 'התחל מתבנית (לא חובה)', 'לחיצה ממלאת את הכלל, ואחר כך אפשר לשנות הכול');
+          const row = el('div', 'rsTpl');
+          PM_META.templates.forEach(t => { const c = el('button', 'rsTplC'); c.type = 'button'; c.appendChild(el('b', 'text-[13px] block', t.name)); c.appendChild(el('span', 'hint', t.desc)); c.lastChild.style.margin = '0'; c.onclick = () => { const x = rsClone(t.rule); r.title = r.title || x.title || t.name; r.cubes = x.cubes.map(q => ({ ...newCube(q.t), ...q, id: uid() })); RS.tpl = false; rsRender(); }; row.appendChild(c); });
+          b.appendChild(row); body.appendChild(w);
+        } else if (RS.tpl) { RS.tpl = false; }
+      }
+      // 1. when
+      let [sec, sb] = rsSec(1, 'מתי הכלל חל?', 'אפשר לבחור כמה תנאים. "תמיד" = בכל תשובה');
+      const chips = el('div', 'rsChips'), w = rsWhens(r);
+      const always = el('button', 'rsChip' + (!w.length ? ' on' : ''), 'תמיד'); always.type = 'button'; always.onclick = () => { r.cubes = rsActs(r); rsRender(); }; chips.appendChild(always);
+      RS_WHEN.forEach(([k, label, hint]) => {
+        const has = w.some(c => (c.p.kind || 'topic') === k), b = el('button', 'rsChip' + (has ? ' on' : ''), label); b.type = 'button'; b.title = hint;
+        b.onclick = () => {
+          if (has) r.cubes = r.cubes.filter(c => !(c.t === 'when' && (c.p.kind || 'topic') === k));
+          else { const c = newCube('when'); c.p = { kind: k }; if (k === 'lang') c.p.lang = 'he'; const at = r.cubes.findIndex(x => x.t !== 'when'); r.cubes.splice(at < 0 ? r.cubes.length : at, 0, c); }
+          rsRender();
+        };
+        chips.appendChild(b);
+      });
+      sb.appendChild(chips);
+      w.forEach(c => {
+        const k = c.p.kind || 'topic';
+        if (k === 'topic') {
+          const box = el('div', 'rsSub'); box.appendChild(el('div', 'text-[12.5px] font-bold', 'באיזה מצב? תאר במילים שלך, או לחץ על נושא'));
+          const inp = el('input', 'input'); inp.placeholder = 'למשל: שואלים על מחיר או שכר לימוד'; inp.value = c.text || ''; inp.oninput = () => { c.text = inp.value; c.raw = null; rsLive(); }; box.appendChild(inp);
+          const sug = el('div', 'rsChips'); const cats = ((typeof knowledgeData !== 'undefined' && knowledgeData.catalog) || []).map(x => x.category).filter(Boolean).slice(0, 8);
+          (cats.length ? cats : RS_TOPICS).forEach(s => { const x = el('button', 'rsChip small', s); x.type = 'button'; x.onclick = () => { const cur = String(c.text || '').trim(); c.text = cur ? (cur.includes(s) ? cur : cur + ' או ' + s) : 'שואלים על ' + s; c.raw = null; inp.value = c.text; rsLive(); }; sug.appendChild(x); });
+          box.appendChild(sug); sb.appendChild(box);
+        } else if (k === 'lang') {
+          const box = el('div', 'rsSub'); const row = el('div', 'flex items-center gap-2 text-[13px]'); row.appendChild(el('span', 'font-bold', 'השפה של האפליקציה:'));
+          row.appendChild(rsSelect(Object.entries(RS_LANG), c.p.lang || 'he', v => { c.p.lang = v; rsLive(); })); box.appendChild(row); sb.appendChild(box);
+        }
+      });
+      if (w.length > 1) {
+        const comb = w[1].join === 'or' ? 'or' : 'and', box = el('div', 'rsSub'); box.appendChild(el('div', 'text-[12.5px] font-bold', 'איך התנאים משתלבים?'));
+        const seg = el('div', 'seg');
+        [['and', 'כולם צריכים להתקיים (וגם)'], ['or', 'מספיק אחד מהם (או)']].forEach(([v, t]) => { const b = el('button', comb === v ? 'active' : '', t); b.type = 'button'; b.onclick = () => { w.forEach((c, i) => { if (i) c.join = v; }); rsRender(); }; seg.appendChild(b); });
+        box.appendChild(seg); sb.appendChild(box);
+      }
+      body.appendChild(sec);
+      // 2. what
+      [sec, sb] = rsSec(2, 'מה הבוט יעשה?', 'בחר פעולה אחת או כמה, לפי הסדר');
+      const acts = rsActs(r);
+      if (!acts.length) sb.appendChild(el('div', 'rsEmpty', 'עוד לא נבחרה פעולה. בחר אחת מהכרטיסים למטה.'));
+      acts.forEach((c, i) => sb.appendChild(rsActRow(c, i, acts)));
+      const addH = el('div', 'text-[12.5px] font-bold mt-3 mb-2', acts.length ? 'עוד פעולה:' : 'בחר פעולה:'); sb.appendChild(addH);
+      const grid = el('div', 'rsGrid');
+      RS_ACTS.forEach(([t, label, desc, ic]) => {
+        const meta = CUBE_META[t] || CUBE_META.info, b = el('button', 'rsCard'); b.type = 'button';
+        const i = el('span', 'rsIc'); i.style.background = meta.bg; i.style.color = meta.color; i.appendChild(rsIcon(ic)); b.appendChild(i);
+        const tx = el('span'); tx.appendChild(el('b', 'text-[13px] block', label)); tx.appendChild(el('span', 'hint', desc)); tx.lastChild.style.margin = '0'; b.appendChild(tx);
+        b.onclick = () => { const c = newCube(t, 'then'); r.cubes.push(c); RS.fresh = c.id; rsRender(); };
+        grid.appendChild(b);
+      });
+      sb.appendChild(grid); body.appendChild(sec);
+      // 3. what the bot gets
+      [sec, sb] = rsSec(3, 'מה הבוט יקבל', 'הטקסט המדויק שנשלח לבוט בעקבות הכלל (בלי לשלוח כלום לסטודנט)');
+      const eye = el('button', 'btn btn-sm', 'הצג את הטקסט'); eye.type = 'button';
+      const out = el('pre', 'hidden whitespace-pre-wrap text-xs rounded-lg p-3 leading-relaxed mt-2'); out.dir = 'rtl'; out.style.cssText += 'background:var(--bg);border:1px solid var(--line)';
+      eye.onclick = async () => { const h = out.classList.toggle('hidden'); if (!h) { out.textContent = '...'; try { const res = await (await adminFetch(`${API_BASE}/api/admin/prompt/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: [r], ctx: pmCtx() }) })).json(); const x = (res.rules || {})[r.id]; out.textContent = x ? (x.active ? (x.text || '(כלל ריק)') : '(הכלל לא חל בתרחיש הבדיקה של דף הכללים)') : ''; } catch (e) { out.textContent = 'שגיאה בתצוגה'; } } };
+      sb.appendChild(eye); sb.appendChild(out); body.appendChild(sec);
+      body.scrollTop = keep; rsLive();
+      if (RS.fresh) { const n = body.querySelector('[data-cid="' + RS.fresh + '"]'); RS.fresh = null; if (n) { n.scrollIntoView({ block: 'center' }); const f = n.querySelector('textarea,input,select'); if (f) setTimeout(() => f.focus(), 30); } }
+    }
+    // ---- one action: a colour stripe, a title, the friendly editor, move and delete
+    function rsActRow(c, i, acts) {
+      const meta = CUBE_META[c.t] || CUBE_META.info, def = RS_ACTS.find(a => a[0] === c.t) || [c.t, meta.label, '', 'info'], r = RS.rule;
+      const row = el('div', 'rsAct'); row.dataset.cid = c.id; row.style.borderInlineStartColor = meta.color;
+      const head = el('div', 'flex items-center gap-2');
+      const ic = el('span', 'rsIc'); ic.style.background = meta.bg; ic.style.color = meta.color; ic.style.width = ic.style.height = '28px'; ic.appendChild(rsIcon(def[3])); head.appendChild(ic);
+      head.appendChild(el('b', 'text-[13.5px]', def[1])); head.appendChild(el('span', 'flex-1'));
+      if (i > 0) { const j = rsSelect(RS_JOINS, c.join || 'then', v => { c.join = v; rsLive(); }); j.title = 'איך הפעולה הזו מתחברת לקודמת'; head.appendChild(j); }
+      const mv = d => { const k = i + d; if (k < 0 || k >= acts.length) return; const a = r.cubes.indexOf(acts[i]), b = r.cubes.indexOf(acts[k]); [r.cubes[a], r.cubes[b]] = [r.cubes[b], r.cubes[a]]; rsRender(); };
+      [['up', () => mv(-1), 'הזז למעלה'], ['down', () => mv(1), 'הזז למטה'], ['trash', () => { r.cubes.splice(r.cubes.indexOf(c), 1); rsRender(); }, 'מחק']].forEach(([n, f, ti]) => {
+        const b = el('button', 'btn btn-ghost btn-sm'); b.type = 'button'; b.title = ti; b.appendChild(rsIcon(n)); b.onclick = f; head.appendChild(b);
+      });
+      row.appendChild(head); row.appendChild(rsActBody(c)); return row;
+    }
+    function rsText(c, ph, rows) { const t = el('textarea', 'textarea'); t.rows = rows || 3; t.placeholder = ph || ''; t.value = c.text || ''; t.oninput = () => { c.text = t.value; c.raw = null; rsLive(); }; return t; }
+    function rsOptions(c, min, max, ph) {
+      const box = el('div', 'space-y-1.5'); const o = c.p.options || (c.p.options = ['', '']);
+      o.forEach((v, i) => {
+        const r = el('div', 'flex gap-1.5'); const inp = el('input', 'input input-sm flex-1'); inp.placeholder = ph + ' ' + (i + 1); inp.value = v; inp.oninput = () => { o[i] = inp.value; c.raw = null; rsLive(); }; r.appendChild(inp);
+        if (o.length > min) { const x = el('button', 'btn btn-ghost btn-sm'); x.type = 'button'; x.appendChild(rsIcon('x')); x.onclick = () => { o.splice(i, 1); rsRender(); }; r.appendChild(x); }
+        box.appendChild(r);
+      });
+      if (o.length < max) { const a = el('button', 'btn btn-sm btn-soft', 'הוסף אפשרות'); a.type = 'button'; a.onclick = () => { o.push(''); rsRender(); }; box.appendChild(a); }
+      return box;
+    }
+    function rsActBody(c) {
+      const d = el('div', 'space-y-2'), p = c.p || (c.p = {});
+      if (c.t === 'design') {
+        const lab = p.kind ? ((PM_CAT && (PM_CAT.kinds.find(k => k.kind === p.kind) || {}).name) || p.kind) + (p.style ? ' · ' + p.style : '') + (p.color ? ' · ' + p.color : '') : '';
+        const b = el('button', 'btn btn-soft', lab ? 'עיצוב: ' + lab + '  (שנה)' : 'בחר עיצוב מהגלריה'); b.type = 'button'; b.onclick = () => pmPick(c); d.appendChild(b);
+        d.appendChild(rsText(c, 'הערה לבוט: מתי להשתמש בו (למשל: רק כשיש מבצע)', 2));
+      } else if (c.t === 'poll') {
+        const seg = el('div', 'seg'); [['multi', 'בחירה מרובה'], ['single', 'בחירה אחת']].forEach(([v, t]) => { const b = el('button', (p.mode || 'multi') === v ? 'active' : '', t); b.type = 'button'; b.onclick = () => { p.mode = v; c.raw = null; rsRender(); }; seg.appendChild(b); }); d.appendChild(seg);
+        const q = el('input', 'input'); q.placeholder = 'השאלה בסקר'; q.value = p.q || ''; q.oninput = () => { p.q = q.value; c.raw = null; rsLive(); }; d.appendChild(q); d.appendChild(rsOptions(c, 2, 12, 'אפשרות'));
+      } else if (c.t === 'quick') {
+        d.appendChild(el('div', 'hint', 'הסטודנט לוחץ על כפתור, והתשובה נשלחת בשמו. בין 2 ל-4.')); d.lastChild.style.margin = '0'; d.appendChild(rsOptions(c, 2, 4, 'כפתור'));
+      } else if (c.t === 'tool') {
+        const tools = ((PM_META && PM_META.tools) || []).map(x => [x.name, x.label + ' (' + x.name + ')']);
+        d.appendChild(rsSelect(tools.length ? tools : [[p.name || '', p.name || '']], p.name, v => { p.name = v; c.raw = null; rsLive(); })); d.appendChild(rsText(c, 'מתי ואיך להפעיל (לא חובה)', 2));
+      } else if (c.t === 'length') {
+        const g = el('div', 'rsGrid');
+        [['short', 'קצר', 'עד שלוש שורות, טקסט'], ['long', 'מפורט', 'תשובה מורחבת'], ['visual', 'ויזואלי', 'כרטיסים ועיצובים']].forEach(([v, t, ds]) => { const b = el('button', 'rsCard' + ((p.mode || 'short') === v ? ' sel' : '')); b.type = 'button'; b.appendChild(el('span', '', '')); const x = el('span'); x.appendChild(el('b', 'text-[13px] block', t)); x.appendChild(el('span', 'hint', ds)); x.lastChild.style.margin = '0'; b.appendChild(x); b.onclick = () => { p.mode = v; c.raw = null; rsRender(); }; g.appendChild(b); });
+        d.appendChild(g);
+      } else if (c.t === 'tone') {
+        d.appendChild(rsText(c, 'באיזה טון? למשל: חם וקצר', 2)); const s = el('div', 'rsChips');
+        RS_TONES.forEach(t => { const x = el('button', 'rsChip small', t); x.type = 'button'; x.onclick = () => { c.text = t; c.raw = null; rsRender(); }; s.appendChild(x); }); d.appendChild(s);
+      } else {
+        const ph = { say: 'מה הבוט אומר או עושה? למשל: הצע לסטודנט לפנות למזכירות', info: 'עובדה או מידע שהבוט צריך לדעת', text: 'טקסט חופשי לבוט', dont: 'מה הבוט לא יעשה? (אל...)', must: 'מה הבוט חייב תמיד?', example: 'דוגמה לתשובה טובה', remember: 'מה לשמור בזיכרון על הסטודנט?' }[c.t] || '';
+        d.appendChild(rsText(c, ph, 3));
+      }
+      return d;
+    }
+    // ---- the sentence on top, what is missing, and the buttons: updated on every keystroke without redrawing the form
+    function rsLive() {
+      if (!RS.rule) return; const r = RS.rule, s = rsSentenceParts(r), box = document.getElementById('rsSentence'); box.innerHTML = '';
+      const k1 = el('span', 'k kw', s.when === 'תמיד' ? 'תמיד' : 'כאשר'); box.appendChild(k1); if (s.when !== 'תמיד') box.appendChild(document.createTextNode(s.when + ' '));
+      box.appendChild(el('span', 'k kt', 'אז')); box.appendChild(document.createTextNode(s.then));
+      const warns = rsActs(r).length ? ruleWarnings(r) : [], wb = document.getElementById('rsWarn'); wb.innerHTML = '';
+      warns.forEach(m => wb.appendChild(el('span', 'badge badge-warn', m)));
+      if (!rsActs(r).length) wb.appendChild(el('span', 'hint', 'בחר לפחות פעולה אחת כדי לשמור')); wb.lastChild && (wb.lastChild.style.margin = '0');
+      const can = rsActs(r).length > 0; ['rsSaveBtn', 'rsListBtn'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = !can; });
+      const en = document.getElementById('rsEnabled'); if (en) en.classList.toggle('on', r.enabled !== false);
+    }
+    function rsApply() {
+      const r = rsClone(RS.rule); rsNormalize(r);
+      if (RS.list && RS.idx >= 0) RS.list[RS.idx] = r; else PM.mine.unshift(r);
+      PM_OPEN[r.id] = false; RS.snap = JSON.stringify(RS.rule); return r;
+    }
+    async function rsSave(publish) {
+      if (!RS.rule || !rsActs(RS.rule).length) { showToast('בחר מה הבוט יעשה', true); return; }
+      rsApply(); rsClose(true); pmRenderAll(); pmDirty();
+      if (publish) await pmSave(); else showToast('הכלל נוסף לרשימה. הוא יפעל אחרי "שמור ופרסם"', false);
+    }
+    document.addEventListener('keydown', (e) => {
+      const ov = document.getElementById('rsOverlay'); if (!ov || ov.classList.contains('hidden') || !RS.rule) return;
+      const pk = document.getElementById('pmPicker'); if (pk && !pk.classList.contains('hidden')) return;
+      if (e.key === 'Escape') { e.preventDefault(); rsClose(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); rsSave(true); }
+    });
 
     // ===================== חיפוש וסינון בכל הקונסולה =====================
     // One way of searching everywhere: the words are normalised (no vowel marks or quotes, any case) and EVERY word must be found, in any order; matches are marked.
